@@ -1,471 +1,437 @@
-# Math IA — Prototipo web funcional
+# MentorIA Math — PMV 1
 
-IA educativa de matemáticas: el alumno consulta por **texto o voz**, el sistema
-**clasifica la intención**, una **IA generativa (Google Gemini)** produce una
-lección como **LSG (Learning Scene Graph)** — salida estructurada de directivas —
-y el **PRE Light** la normaliza en bloques predecibles.
+Plataforma educativa de matemáticas: un tutor que explica paso a paso, corrige
+con un motor determinista en servidor (sin depender de la IA para la
+matemática) y adapta cada lección al nivel real del estudiante.
 
-> **Estado: Fases 1 y 2 construidas, verificadas y DESPLEGADAS.**
-> 🔗 **Enlace de prueba:** https://math-ia.onrender.com
-> La **Fase 2** añade el **avatar visual 2D**, la **voz TTS en español**, el
-> **PSE Light** (reproduce el LSG sincronizando voz ↔ pizarra ↔ revelación
-> progresiva) y la **ramificación ligera** (un reintento).
+Este repositorio contiene la migración del prototipo Node.js/Express a la
+arquitectura del PMV 1: **Next.js (App Router) + TypeScript + PostgreSQL**.
+
+> **Estado: Paso 1 completado** — fundación, arquitectura, persistencia,
+> autenticación con roles y diagnóstico inicial. Los pasos 2, 3 y 4 (motor
+> pedagógico LSG, capa multimodal y panel docente) están descritos al final.
 
 ---
 
-## Arquitectura (pipeline)
+## Índice
 
-```
-Consulta (texto / voz)
-        │
-        ▼
- Clasificador de intención   →  resolver | aprender | explicar | practicar   (src/classifier.js)
-        │
-        ▼
- ¿Es un TEMA NÚCLEO?  ──── SÍ ──→  MOTOR DETERMINISTA                        (leccionBotonLSG, src/lsgPrompt.js)
-        │                          ecuaciones lineales · derivadas ·
-        │                          factorización · fracciones · aritmética
-        NO                         (0 coste de IA · matemática GARANTIZADA)
-        │                                   │
-        ▼                                   │
- IA generativa (Gemini)      →  genera el LSG con salida estructurada          (src/geminiClient.js + src/lsgPrompt.js)
-        │                                   │
-        ▼                                   ▼
- PRE Light                   →  valida y normaliza el LSG en pasos/módulos     (src/preLight.js)
-        │
-        ▼
- Frontend                    →  render de pasos + vista JSON + historial        (public/)
-```
-
-> **Importante para entender el sistema:** la ruta por defecto de los **cinco temas núcleo**
-> (ecuaciones lineales, derivadas, factorización por diferencia de cuadrados, fracciones y
-> aritmética básica) **no pasa por la IA**. La lección la genera un **motor determinista**
-> (`leccionBotonLSG`), de modo que el cálculo es siempre correcto, la lección es reproducible y no
-> consume saldo. Gemini interviene en los temas **fuera** de esa lista, donde la lección es de
-> *mejor esfuerzo* y su aritmética **no está garantizada** (ver *Validación matemática*).
-
-- **Backend:** Node.js + Express (`server.js`). La **API key vive solo en el
-  entorno** (`.env`); el navegador nunca la ve.
-- **Frontend:** HTML + CSS + JavaScript vanilla (`public/`). Voz por **Web Speech API**.
-- **IA:** Google Gemini vía REST. Si no hay clave, arranca en **modo demo (mock)**
-  con LSG simulado para poder probar el flujo completo sin coste.
+1. [Requisitos](#requisitos)
+2. [Puesta en marcha paso a paso](#puesta-en-marcha-paso-a-paso)
+3. [Variables de entorno](#variables-de-entorno)
+4. [Comandos disponibles](#comandos-disponibles)
+5. [Suite de validación (QA)](#suite-de-validación-qa)
+6. [Arquitectura](#arquitectura)
+7. [Modelo de datos](#modelo-de-datos)
+8. [El diagnóstico inicial](#el-diagnóstico-inicial)
+9. [Qué entra en el Paso 1 y qué no](#qué-entra-en-el-paso-1-y-qué-no)
 
 ---
 
 ## Requisitos
 
-- **Node.js 18 o superior** (se usa `fetch` nativo).
-- Una **API key de Google Gemini** (gratuita): https://aistudio.google.com/app/apikey
-- Para la entrada por voz: navegador **Chrome** o **Edge** (Web Speech API).
+- **Node.js 18 o superior** (probado en Node 24).
+- **PostgreSQL**: una instancia de Supabase o un PostgreSQL local.
+- Una **API key de Google Gemini** (opcional en el Paso 1: sin ella la
+  aplicación arranca en modo demostración y la suite de QA se ejecuta igual).
 
 ---
 
-## Instalación
+## Puesta en marcha paso a paso
+
+### 1. Clonar e instalar
 
 ```bash
-# 1) Instalar dependencias
+git clone https://github.com/vladimirgds/docenteia.git
+cd docenteia
 npm install
-
-# 2) Configurar la clave de la IA (NUNCA se escribe en el código)
-cp .env.example .env       # en Windows PowerShell:  Copy-Item .env.example .env
-# Edita .env y pega tu clave en GEMINI_API_KEY=
 ```
 
-Ejemplo de `.env`:
-
-```
-GEMINI_API_KEY=tu_clave_aqui
-GEMINI_MODEL=gemini-2.5-flash-lite
-PORT=3000
-```
-
-> **Modelos de Gemini:** Google **retira modelos con frecuencia** (durante el proyecto
-> retiró `gemini-2.0-flash` y `gemini-2.5-flash`). El cliente usa `gemini-2.5-flash-lite`
-> por defecto y tiene **fallback automático**: si un modelo devuelve 404, prueba el
-> siguiente y recuerda cuál funciona. No hay que tocar código cuando Google cambia algo.
-
-> **Nota de región (importante):** la API de Gemini (`generativelanguage.googleapis.com`)
-> **no está disponible en todos los países** — devuelve `400 User location is not supported`
-> incluso con facturación activa. Si estás en una región no soportada, el prototipo
-> corre en **modo demo (mock)** en local y llama a Gemini real **una vez desplegado en
-> una región US** (ver sección *Despliegue*). El código no cambia; solo cambia *desde
-> dónde* se hace la llamada.
-
----
-
-## Ejecución
+### 2. Configurar el entorno
 
 ```bash
-npm start          # inicia el servidor
-# o, con recarga automática en desarrollo:
+cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
+```
+
+Abre `.env` y rellena, como mínimo, `DATABASE_URL`, `DIRECT_URL` y
+`AUTH_SECRET`. Para generar el secreto:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+> Se usa `.env` y no `.env.local` porque la CLI de Prisma **sólo lee `.env`**:
+> con la configuración en `.env.local` las migraciones fallan. Así hay una sola
+> copia de la configuración, que leen a la vez Next.js, Prisma y los scripts de
+> `qa/`. Ninguno de los dos ficheros se sube al repositorio.
+
+#### Si usas Supabase
+
+En *Project Settings → Database → Connection string*:
+
+- `DATABASE_URL` → cadena del **pooler**, puerto `6543`, añadiendo
+  `?pgbouncer=true&connection_limit=1`.
+- `DIRECT_URL` → cadena de **conexión directa**, puerto `5432`.
+
+Prisma usa la primera para consultar y la segunda para migrar. Con un
+PostgreSQL local, ambas son la misma cadena.
+
+### 3. Crear las tablas
+
+```bash
+npx prisma migrate deploy     # aplica la migración incluida en el repositorio
+npm run db:generate           # genera el cliente de Prisma
+```
+
+Durante el desarrollo, para crear migraciones nuevas:
+
+```bash
+npm run db:migrate            # equivale a: prisma migrate dev
+```
+
+### 4. Sembrar los datos base
+
+```bash
+npm run db:seed
+```
+
+Crea la materia, el árbol de conocimiento de los cinco temas, el banco de
+preguntas del diagnóstico y dos usuarios que el registro público **no** puede
+crear:
+
+| Rol     | Correo                        | Contraseña     |
+| ------- | ----------------------------- | -------------- |
+| ADMIN   | `admin@mentoriamath.local`    | `Admin-2026`   |
+| DOCENTE | `docente@mentoriamath.local`  | `Docente-2026` |
+
+> **Cámbialas antes de cualquier despliegue.** Se pueden fijar por entorno con
+> `SEED_ADMIN_EMAIL`, `SEED_ADMIN_PASSWORD`, `SEED_DOCENTE_EMAIL` y
+> `SEED_DOCENTE_PASSWORD`.
+
+### 5. Levantar la aplicación
+
+```bash
 npm run dev
 ```
 
-Abre **http://localhost:3000** en el navegador.
+Abre **http://localhost:3000**.
 
-- Escribe una consulta (o pulsa 🎤 para dictarla) y pulsa **Enviar**.
-- La cabecera indica el modo: **Gemini** (clave configurada) o **modo demo**.
-- Prueba los ejemplos: `Resuelve 2x + 5 = 15`, `Enséñame derivadas`,
-  `¿Por qué factorizar x² - 9?`, `Dame un ejercicio de fracciones`.
+### 6. Verificación del cierre del Hito 1
 
-> **Sin API key:** el prototipo igual funciona en *modo demo* con un LSG simulado,
-> útil para validar el flujo. Para respuestas reales, configura `GEMINI_API_KEY`.
+Los cuatro puntos comprometidos para el Paso 1, en el orden en que conviene
+comprobarlos.
 
----
+#### A. Flujo funcional: registro → diagnóstico → nivel → persistencia
 
-## Qué se puede validar en la Fase 1
+1. Entra en `/registro` y crea una cuenta de estudiante.
+2. Al terminar entras directamente en la **evaluación diagnóstica** (5 preguntas).
+3. Responde y pulsa *Terminar evaluación*: el servidor corrige, aplica la regla
+   de corte (0-2 Básico · 3-4 Intermedio · 5 Avanzado) y muestra el **nivel**.
+4. En `/estudiante` verás el nivel y el historial, **leídos de PostgreSQL**.
+5. Recarga la página o vuelve a entrar: el nivel sigue ahí. Eso es la persistencia.
 
-- ✅ Entrada por **texto** y por **voz** (con manejo de errores de reconocimiento).
-- ✅ **Clasificador** que distingue las 4 intenciones (se muestra intención + confianza).
-- ✅ **Integración con la IA** (Gemini) y **salida en LSG**.
-- ✅ **PRE Light** normalizando el LSG (pasos numerados, cierre con pregunta, avisos).
-- ✅ Vista del **LSG en JSON** e **historial** de la sesión.
+Para comprobar que la corrección es real, no cosmética: repite el registro con
+otra cuenta y responde a propósito 2 preguntas bien y 3 mal → debe salir
+**Básico**. Con las 5 bien → **Avanzado**.
 
-### Fase 2 (capa pedagógica visible)
+#### B. Control de roles (RBAC)
 
-- ✅ **Avatar 2D** con estados (neutral, hablando, sonriendo, preguntando) y boca animada.
-- ✅ **Voz TTS en español** (elige voz `es-ES` si el navegador la tiene; si no, subtítulos temporizados).
-- ✅ **PSE Light:** pulsa **▶ Reproducir**; ejecuta el LSG directiva por directiva
-  sincronizando la voz del avatar con la revelación del contenido en la pizarra y el
-  resaltado con puntero.
-- ✅ **Ramificación ligera:** en cada `preguntar`, el alumno responde; se evalúa
-  (correcto → felicita · incorrecto → **pista del método + reintento**, sin revelar la respuesta;
-  ver *Ramificación ligera*).
-- ✅ Resaltado del **paso activo** en el transcript durante la reproducción.
+6. Sal y entra con el usuario **docente** de la semilla. En `/docente` verás al
+   estudiante que acabas de crear, con su nivel.
+7. Con ese mismo usuario, intenta abrir `/admin`: el sistema te devuelve a tu
+   zona. Sin sesión, cualquier ruta protegida te manda a `/login`.
+8. Entra como **admin** y abre `/admin`: verás el recuento de usuarios,
+   preguntas activas, nodos del árbol y diagnósticos completados.
 
-> **Voz:** requiere **Chrome/Edge** (mejor soporte de voces en español). El escenario
-> también funciona en **modo demo (mock)** sin API key.
-
----
-
-## Metodología de enseñanza
-
-El corazón de la app es *cómo* enseña, no solo *qué* responde. El prompt fuerza a la IA a:
-
-- **Explicar el porqué de cada paso** con voz (`hablar`) **antes** de escribirlo en la
-  pizarra — nunca vuelca la solución sin razonarla.
-- Cerrar con **un ejercicio NUEVO de práctica** (números distintos), nunca preguntar por
-  un valor que ya está en la pizarra.
-- Una **sola pregunta** por lección, con su respuesta correcta (el backend la deduce
-  resolviendo la ecuación si la IA no la da), para evaluar bien al alumno.
-
-El backend **verifica la calidad**: si la IA devuelve una lección sin explicaciones,
-la rechaza y reintenta (hasta obtener una con explicaciones).
-
----
-
-## Control de consumo de la API (importante)
-
-Cada llamada a Gemini consume saldo. La arquitectura está optimizada para gastar lo mínimo:
-
-- **Single-shot:** **UNA sola llamada** a la IA por consulta (sin llamadas encadenadas ni
-  reintentos por clic). La IA resuelve y estructura el LSG en una única respuesta JSON.
-- **Clasificador local:** la intención (resolver/aprender/explicar/practicar) se decide con
-  **lógica de palabras clave en el código** ([classifier.js](src/classifier.js)) — NO consume IA.
-- **Context Caching (Gemini):** el prompt del sistema (metodología + reglas del PRE Light) es
-  ESTABLE y se **cachea en Gemini** (`cachedContents`), así sus tokens de entrada **no se cobran**
-  en cada consulta (la intención va en el mensaje del usuario). Si el caché no está disponible,
-  se envía inline (los modelos 2.5 aplican caché implícito igualmente).
-- **Caché de respuestas:** la misma consulta no vuelve a llamar a Gemini (se sirve de memoria).
-- **Modelos retirados** se recuerdan → no se gasta una llamada 404 por petición.
-- **Enfriamiento por cuota:** un `429` casi siempre es un **límite por minuto** (RPM/TPM) transitorio,
-  no falta de saldo. En modo automático la app espera ~20 s antes de reintentar y sirve **modo demo**
-  mientras tanto (en **Modo IA** explícito siempre intenta Gemini). Esto evita reintentar en bucle.
-- **thinking desactivado** (`thinkingBudget: 0`): sin tokens de razonamiento extendido.
-
-> Si Gemini no responde, la app **no se cae**: degrada a modo demo y **lo avisa con claridad**
-> (ver *Manejo transparente de errores*). La facturación/cuota de Gemini es de la cuenta del cliente.
-
----
-
-## QA — control de calidad antes de entregar
+#### C. Persistencia en base de datos
 
 ```bash
-npm run qa                     # lógica + lecciones reales en producción → APROBADO/RECHAZADO
-QA_SKIP_LIVE=1 npm run qa       # solo lógica (no consume saldo de Gemini)
-QA_URL=http://localhost:3137 npm run qa   # contra otra URL
+npm run db:studio
 ```
 
-`qa/qa.mjs` verifica, para las 4 intenciones, que la lección **explique paso a paso**,
-tenga **una sola pregunta** con **respuesta correcta**, y no contenga LaTeX ni `$`.
-Falla (exit 1) si algo no pasa. **Correr antes de cada entrega.**
+Abre Prisma Studio y comprueba las tablas `usuarios`, `perfiles_estudiante`
+(con `nivelActual` relleno), `intentos_diagnostico`, `respuestas_diagnostico` e
+`historial_nivel`.
 
----
+#### D. Paridad con el prototipo (suite de validación)
 
-## El formato LSG (Learning Scene Graph)
+Con la aplicación levantada en otra terminal:
 
-La IA devuelve una escena compuesta por **directivas discretas** (cada acción es un
-evento). Dos formas según la intención:
-
-- **Secuencial** (`resolver` / `explicar`): campo `directivas: [...]`.
-- **Modular** (`aprender` / `practicar`): campo `modulos: [{ id, directivas }]`.
-
-Tipos de directiva: `avatar`, `hablar`, `esperar`, `pizarra`, `puntero`, `preguntar`
-(esta última con ramificación `si_correcto` / `si_incorrecto`).
-
-Ejemplo — "Resuelve 2x + 5 = 15":
-
-```json
-{
-  "escena": "resolver_ecuacion",
-  "intencion": "resolver",
-  "duracion_estimada": 60,
-  "directivas": [
-    { "id": 1, "tipo": "hablar", "texto": "Restamos 5 en ambos lados para despejar el término con x." },
-    { "id": 2, "tipo": "pizarra", "accion": "escribir", "contenido": "2x = 10" },
-    { "id": 3, "tipo": "hablar", "texto": "Ahora dividimos entre 2 para dejar la x sola." },
-    { "id": 4, "tipo": "pizarra", "accion": "escribir", "contenido": "x = 5" },
-    { "id": 5, "tipo": "preguntar", "texto": "Ahora tú: ¿cuánto vale x en x + 3 = 7?",
-      "respuesta": "4", "esperar_respuesta": true, "si_correcto": "felicitar",
-      "si_incorrecto": "mostrar_otro_ejemplo" }
-  ]
-}
+```bash
+npm test
 ```
 
----
-
-## PRE Light — de la respuesta de la IA a pasos didácticos
-
-El **PRE Light** ([`src/preLight.js`](src/preLight.js), función `processLSG`) es la capa que
-convierte el LSG **crudo** que devuelve Gemini (que puede venir imperfecto) en bloques
-**predecibles y didácticos** que el resto del sistema puede reproducir con seguridad. Sin esta
-capa, el PSE Light (Fase 2) no tendría eventos fiables que sincronizar.
-
-**Qué transforma, paso a paso:**
-
-1. **Valida la estructura de la escena** y detecta el formato:
-   - **Secuencial** (`directivas: [...]`) para `resolver` / `explicar` — resolución paso a paso.
-   - **Modular** (`modulos: [{ id, directivas }]`) para `aprender` / `practicar` — la lección se
-     organiza en módulos didácticos: **concepto → regla → ejemplo guiado → práctica** (para
-     "aprender") o **recordatorio → práctica** (para "practicar").
-2. **Sanea cada directiva** (`sanitizeDirectiva`): verifica el `tipo`, completa campos por defecto,
-   descarta las inválidas y **limpia la notación** (`sanitizeMath`): convierte LaTeX/`$` a texto
-   plano legible (`x^2` → `x²`, `\frac{a}{b}` → `(a)/(b)`), porque la pizarra y la voz no renderizan LaTeX.
-3. **Numera las directivas** (id incremental) para que el PSE Light tenga referencias exactas y pueda
-   resaltar el paso activo.
-4. **Garantiza UNA sola pregunta de práctica** (`enforceSingleQuestion`): elimina preguntas duplicadas
-   y, si la IA escribió el ejercicio como pizarra (a veces sin `preguntar`), lo **recupera** y lo
-   convierte en la pregunta real y calificable.
-5. **Calcula y verifica la respuesta correcta** (`fixPracticeAnswer` + `computeAnswer`): la respuesta a
-   calificar se **calcula de forma determinista en el servidor** (ver *Validación matemática*), no se
-   confía ciegamente en la IA. Nunca se muestra un ejercicio con una respuesta errónea.
-6. **Estima la duración** de la lección y devuelve además una **lista PLANA de pasos** (útil para el
-   render, el transcript y la depuración).
-
-**Módulos didácticos (formato modular).** Para "aprender" un tema, la lección se estructura así:
-
-| Módulo | Contenido |
-|---|---|
-| `concepto` | Qué es el tema, con un ejemplo cotidiano (la balanza, repartir, etc.). |
-| `regla` | La regla o método general, explicado con palabras sencillas. |
-| `ejemplo_guiado` | Un ejemplo RESUELTO paso a paso, explicando el porqué de cada paso. |
-| `practica` | Cierra con un ejercicio NUEVO (números distintos) para que lo resuelva el alumno. |
-
-Cada módulo empieza con una directiva `hablar` (el porqué) y cada `pizarra` va precedida de su
-explicación hablada. El PRE Light valida esta estructura y descarta módulos vacíos.
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.673
+comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
+detalle está en [Suite de validación](#suite-de-validación-qa).
 
 ---
 
-## Validación matemática (la respuesta siempre es correcta)
+## Variables de entorno
 
-El modelo económico (`flash-lite`) **puede equivocarse en aritmética simple** (llegó a responder
-"7 × 3 = 12"). Por eso **no se confía en la respuesta de la IA**: el servidor **calcula la respuesta
-él mismo** con una calculadora determinista de aritmética exacta (`computeAnswer` en `preLight.js`).
+| Variable          | Obligatoria | Para qué sirve                                                        |
+| ----------------- | ----------- | --------------------------------------------------------------------- |
+| `DATABASE_URL`    | Sí          | Conexión de la aplicación a PostgreSQL (pooler en Supabase).           |
+| `DIRECT_URL`      | Sí          | Conexión directa que usa Prisma para migrar.                          |
+| `AUTH_SECRET`     | Sí          | Firma de la sesión de NextAuth.                                        |
+| `AUTH_TRUST_HOST` | En la nube  | Necesaria detrás de un proxy (Vercel, Render).                        |
+| `GEMINI_API_KEY`  | No          | Sin ella, la IA funciona en **modo demostración** (LSG simulado).      |
+| `GEMINI_MODEL`    | No          | Por defecto `gemini-2.5-flash-lite`, con fallback automático.           |
+| `BASE_URL`        | No          | URL contra la que corre la suite de QA. Por defecto `localhost:3000`.  |
 
-- Cubre: operaciones (`+ − × ÷`), **fracciones** exactas (`2/5 + 1/10 = 1/2`), paréntesis y
-  precedencia, y fórmulas de problemas verbales: **velocidad** (distancia/tiempo), **área y
-  perímetro** (rectángulo, cuadrado, triángulo), **porcentajes**, **potencias**, **raíces exactas**,
-  **promedios** y **volúmenes**.
-- **Ecuaciones lineales**, con un único analizador exacto (racionales) compartido por la calificación
-  y por la lección paso a paso — así lo que se enseña y lo que se califica salen del MISMO cálculo.
-  Resuelve la variable en **ambos lados** (`5x − 7 = 2x + 5`), con **paréntesis** (`2(x + 3) = 10`,
-  que se enseña repartiendo el factor), con **denominador** (`x/2 = 4`) y con **coeficiente decimal**
-  (`0,5x = 4`, que se enseña multiplicando para quitar el decimal). Rechaza lo que NO es de primer
-  grado (potencias, productos de binomios, multivariable) en vez de arriesgar una respuesta falsa.
-- **Derivadas de polinomios completos**: `deriva 3x⁴ − 2x²` deriva la función ENTERA (`12x³ − 4x`) y
-  muestra el desglose **término a término**, no solo el primer monomio.
-- Si el ejercicio no es reconocible, usa el resultado que la IA calculó **paso a paso** (`Resultado:`)
-  como último recurso; y las raíces irracionales **no se adivinan**.
-- Resultado: se evita mostrar errores como "200 ÷ 25 = 200". Verificado en producción.
+Todas están documentadas con más detalle en [`.env.example`](.env.example).
+
+> **Sobre Gemini:** Google retira modelos con frecuencia, así que el cliente
+> lleva *fallback* automático: si un modelo devuelve 404, prueba el siguiente y
+> recuerda cuál funcionó. Además, la API no está disponible en todas las
+> regiones (`400 User location is not supported`) y, sin un proyecto de Google
+> Cloud con **facturación activa**, los `429` son frecuentes.
 
 ---
 
-## Continuidad conversacional (contexto de sesión)
+## Comandos disponibles
 
-Para que la IA entienda seguimientos como *"explícamelo con manzanas"* o *"dame otro ejemplo"* sin
-perder el tema, el frontend **arrastra el contexto** en cada consulta:
-
-- `currentTopic`: el **tema activo** de la conversación.
-- `historial`: las **últimas consultas** del alumno.
-
-El backend los reenvía a Gemini como *contexto de la conversación*, con la instrucción de **mantener
-el tema activo** en un seguimiento y **cambiar solo** ante un tema nuevo y claro. Además, un detector
-local clasifica el seguimiento (`reexplicar` / `más fácil` / `más difícil` / `otro ejemplo` /
-`desglosar`) — en **español e inglés**. Así, "con manzanas" sobre *diferencia de cuadrados* sigue
-siendo diferencia de cuadrados con manzanas, y no "baja" a sumas.
-
----
-
-## Continuidad de artefacto — "explícame los pasos" del ejercicio actual
-
-Además del *tema*, el sistema recuerda el **ejercicio que está en pantalla**. Cuando el alumno pide
-*"explícame los pasos anteriores"*, *"paso a paso"*, *"desglósalo"* o *"¿cómo se resuelve?"*, el
-detector `pidePasos` lo clasifica como seguimiento **`desglosar`** (en español e inglés) — **antes**
-de que el clasificador vea la palabra "ejercicio(s)" y lo confunda con *pedir práctica* (el defecto
-que generaba **ejercicios nuevos** en lugar de explicar).
-
-El frontend envía el **ejercicio actual + su respuesta** (`ejercicio`, `respuesta`) al backend, que
-**re-narra la solución de ESE ejercicio, paso a paso y de forma determinista** (`processStepByStep`
-en [preLight.js](src/preLight.js)) — **sin llamar a la IA** (sin coste): reutiliza `solveLinearSteps`
-para ecuaciones y `computeAnswer` para aritmética/fórmulas, así que los pasos coinciden exactamente
-con la respuesta que el sistema califica. La lección resultante se marca como fuente `local` (no es
-Gemini ni un fallo → **no** muestra el aviso de modo demostración). Si no hay un ejercicio
-reconocible, degrada con elegancia a `reexplicar` (re-enseñar el tema).
+| Comando               | Qué hace                                              |
+| --------------------- | ----------------------------------------------------- |
+| `npm run dev`         | Arranca la aplicación en desarrollo (puerto 3000).    |
+| `npm run build`       | Genera el cliente de Prisma y compila para producción.|
+| `npm start`           | Sirve la compilación de producción.                   |
+| `npm run typecheck`   | Comprueba los tipos sin compilar.                     |
+| `npm run db:migrate`  | Crea y aplica migraciones (desarrollo).               |
+| `npm run db:deploy`   | Aplica migraciones existentes (producción).           |
+| `npm run db:seed`     | Siembra datos base y usuarios de demostración.        |
+| `npm run db:studio`   | Abre Prisma Studio para inspeccionar la base.         |
+| `npm test`            | Ejecuta la suite de validación completa.              |
+| `npm run qa:diagnostico` | Valida el banco de preguntas (no necesita servidor).|
+| `npm run legacy:start`| Arranca el prototipo Express original (puerto 3001).  |
 
 ---
 
-## Ramificación ligera (pista + reintento, sin revelar la respuesta)
+## Suite de validación (QA)
 
-Cuando el alumno se equivoca, el sistema **no repite el mismo ejercicio a secas ni revela la
-respuesta**. En su lugar (en `pseLight.js`, `_handleQuestion` + `buildHint`):
+La suite heredada del prototipo se conserva íntegra y **ya no depende de
+Render**: corre contra `http://localhost:3000` o contra lo que indique
+`BASE_URL`.
 
-1. Da una **pista del método** adaptada al tipo de ejercicio (ecuación → "usa la operación inversa";
-   fracciones → "fíjate en los denominadores"; problema verbal → "qué fórmula relaciona los datos")
-   y **reabre la caja para reintentar**.
-2. Si vuelve a fallar, da una **pista más concreta** (el primer paso del método) y permite otro intento.
-3. Si aún no acierta, **recuerda el método y anima a repasar** la lección — **sin decir el número**
-   de la respuesta. Las pistas nunca contienen la respuesta (la función ni siquiera la recibe).
+```bash
+npm run dev      # en una terminal
+npm test         # en otra
+```
 
----
+`npm test` empieza por una comprobación previa (`qa/preflight.mjs`) que verifica
+que hay un servidor escuchando. Sin ella, una aplicación no arrancada se
+manifiesta como una cascada de fallos de prueba, que es un síntoma engañoso.
 
-## Manejo transparente de errores
+| Batería               | Qué comprueba                                                       |
+| --------------------- | ------------------------------------------------------------------- |
+| `qa/diagnostico.mjs`  | El banco oficial de preguntas, contra el motor determinista.         |
+| `qa/qa.mjs`           | Lógica (clasificador, solver, saneo) y lecciones reales end-to-end.  |
+| `qa/frontend.mjs`     | Funciones de decisión del frontend, sin servidor.                    |
+| `qa/sesiones.mjs`     | Continuidad de tema a lo largo de una conversación.                  |
+| `qa/aceptacion.mjs`   | Los casos de aceptación de los cinco temas garantizados.             |
+| `qa/barrido.mjs`      | Barrido por propiedades: genera conversaciones y exige invariantes.  |
 
-Si Gemini falla por **cuota (429), conexión o respuesta inválida**, la plataforma degrada a **modo
-demostración** (contenido local de respaldo) pero **lo informa con claridad**, sin presentarlo como
-una respuesta normal de la IA:
-
-- Un **aviso visible** sobre el escenario: *"⚠️ Modo demostración. Gemini alcanzó su límite… Esta
-  lección es contenido de respaldo, no una respuesta generada por la IA."*
-- La píldora de origen cambia de **"IA: Gemini"** a **"IA: Modo demostración"** (resaltada).
-- Se distingue el **modo demostración elegido por el usuario** (aviso neutro) del **fallo de Gemini**
-  (aviso de error), para que el alumno siempre sepa qué está viendo.
-
----
-
-## Estructura del proyecto
+Resultado de la última ejecución completa sobre esta versión:
 
 ```
-.
-├─ server.js              # Servidor Express + endpoint /api/query
-├─ src/
-│  ├─ classifier.js       # Clasificador de intención (4 intenciones)
-│  ├─ geminiClient.js     # Integración con Gemini (+ fallback mock)
-│  ├─ lsgPrompt.js        # Esquema LSG + prompt + generador simulado
-│  └─ preLight.js         # PRE Light: validación/normalización del LSG
-├─ public/
-│  ├─ index.html          # UI (escenario Fase 2 + paneles Fase 1)
-│  ├─ styles.css          # Estilos
-│  ├─ app.js              # Texto/voz, backend, render, historial + wiring del escenario
-│  ├─ avatar.js           # Fase 2: avatar 2D (SVG) con estados
-│  ├─ tts.js              # Fase 2: voz TTS en español (SpeechSynthesis)
-│  └─ pseLight.js         # Fase 2: PSE Light (sincronización) + ramificación ligera
-├─ qa/
-│  └─ qa.mjs              # Control de calidad (npm run qa): lógica + producción real
-├─ render.yaml            # Blueprint de despliegue (Render, región US)
-├─ .env.example           # Plantilla de configuración (copiar a .env)
-├─ .gitignore             # Ignora node_modules y .env
-└─ package.json
+Banco de preguntas    51 aprobadas · 0 fallidas
+qa.mjs              1462 aprobadas · 0 fallidas
+frontend.mjs          10 cargas    · 0 fallidas
+sesiones.mjs         126 aprobadas · 0 fallidas
+aceptacion.mjs        24 / 24 correctas
+barrido.mjs          200 sesiones · 1800 turnos · 0 violaciones
+```
+
+Baterías sueltas y parámetros:
+
+```bash
+npm run qa:barrido
+BASE_URL=http://localhost:3000 BARRIDO_TURNOS=10 BARRIDO_SEC=20 node qa/barrido.mjs
+```
+
+> `qa/qa.mjs` genera lecciones **reales con Gemini** cuando hay
+> `GEMINI_API_KEY` configurada. Sin clave, funciona en modo demostración y no
+> consume cuota.
+
+---
+
+## Arquitectura
+
+```
+Consulta (texto / voz)
+        │
+        ▼
+ Clasificador de intención  →  resolver | aprender | explicar | practicar   (src/classifier.js)
+        │
+        ▼
+ ¿Es un TEMA NÚCLEO?  ── SÍ ──→  MOTOR DETERMINISTA                         (src/lsgPrompt.js)
+        │                        ecuaciones lineales · derivadas ·
+        NO                       factorización · fracciones · aritmética
+        │                        (0 coste de IA · matemática GARANTIZADA)
+        ▼                                  │
+ IA generativa (Gemini)  →  genera el LSG  │                                (src/geminiClient.js)
+        │                                  │
+        ▼                                  ▼
+ PRE Light  →  valida y normaliza el LSG en pasos/módulos                   (src/preLight.js)
+        │
+        ▼
+ Next.js  →  App Router, RSC, rutas de API                                  (app/)
+```
+
+### Por qué el núcleo sigue en JavaScript
+
+`src/` contiene unas 5.000 líneas de lógica matemática validada en producción y
+respaldada por la suite de QA. Reescribirlas en TypeScript habría sido
+reescribir la pedagogía, que es justamente lo que este contrato pide **no**
+hacer. En su lugar:
+
+- El núcleo se mantiene tal cual y se declara su superficie pública en
+  `src/queryCore.d.ts`.
+- **Todo el código nuevo del PMV 1 es TypeScript en modo estricto** y consume
+  ese núcleo con tipos.
+
+### Paridad con el prototipo
+
+El manejador de `/api/query` se extrajo a `src/queryCore.js`, un módulo
+independiente del framework. Lo llaman **los dos** caminos:
+
+- `app/api/query/route.ts` — la aplicación del PMV 1.
+- `server.js` — el prototipo Express, que se conserva como referencia
+  ejecutable (`npm run legacy:start`, puerto 3001).
+
+Al compartir implementación no pueden divergir: la paridad algorítmica es
+**estructural**, no algo que haya que verificar a mano tras cada cambio.
+
+### Estructura del repositorio
+
+```
+app/                    Rutas y páginas (App Router)
+  api/                    query · diagnostico · registro · health · auth
+  estudiante/             panel y evaluación diagnóstica
+  docente/  admin/        zonas protegidas por rol
+components/             Componentes de UI (shadcn/ui) y KaTeX
+lib/                    prisma · rbac · diagnóstico · utilidades
+prisma/                 schema.prisma · migraciones · semilla
+src/                    NÚCLEO HEREDADO: classifier · preLight · lsgPrompt ·
+                        geminiClient · queryCore  (+ declaraciones .d.ts)
+public/                 Frontend del prototipo (referencia del Paso 3)
+qa/                     Suite de validación
+auth.ts / auth.config.ts / middleware.ts    Autenticación y RBAC
 ```
 
 ---
 
-## Seguridad
+## Modelo de datos
 
-- La **API key** se lee de variables de entorno (`process.env.GEMINI_API_KEY`) y
-  **nunca** se incluye en el código ni se envía al navegador.
-- El archivo `.env` está en `.gitignore`: no se sube al repositorio.
+13 tablas en tres bloques (ver [`prisma/schema.prisma`](prisma/schema.prisma)):
 
----
+**Usuarios y roles**
+`usuarios` con RBAC de tres perfiles: `ESTUDIANTE`, `DOCENTE`, `ADMIN`.
 
-## Despliegue (Render — región US)
+**Perfil académico**
+`perfiles_estudiante` (ciclo, grado, nivel vigente y metadatos de contexto que
+se inyectan en cada consulta a la IA), `materias`, `perfil_materias` e
+`historial_nivel`, que registra cada cambio de nivel con su motivo.
 
-El backend guarda la API key y llama a Gemini; desplegándolo en una **región US** la
-llamada funciona aunque tu ubicación esté bloqueada. El repo incluye
-[`render.yaml`](render.yaml) (blueprint listo).
+**Knowledge Tree**
+`nodos_conocimiento` (árbol real, con padre e hijos), `ejercicios` (banco con
+metadatos y marca de validado), `sesiones_aprendizaje`, `registros_progreso` y
+`registros_error` (catálogo de debilidades frecuentes, acumulado por tipo).
 
-**Pasos:**
+**Diagnóstico**
+`preguntas_diagnostico`, `intentos_diagnostico` y `respuestas_diagnostico`.
 
-1. **Sube el código a GitHub** (requerido por Render y por el entregable):
-   ```bash
-   git init && git add . && git commit -m "Math IA — Fase 1"
-   git branch -M main
-   git remote add origin https://github.com/<tu-usuario>/math-ia.git
-   git push -u origin main
-   ```
-   > `.env` **no** se sube (está en `.gitignore`); la clave se configura en Render.
+### Sobre la autenticación
 
-2. **Crea el servicio en Render:**
-   - Entra a https://render.com → **New +** → **Blueprint**.
-   - Conecta tu cuenta de GitHub y elige el repo `math-ia`.
-   - Render lee `render.yaml` y crea un Web Service en **Oregon (US)**.
+Se usa **NextAuth v5 (Auth.js)** con proveedor *Credentials* y estrategia JWT.
+Esa combinación no utiliza las tablas `Account`/`Session`/`VerificationToken`
+del adaptador de base de datos, así que no están en el esquema: no son tablas
+muertas, sencillamente no intervienen.
 
-3. **Configura la clave secreta:**
-   - En el servicio → **Environment** → añade `GEMINI_API_KEY` con tu clave.
-   - (`GEMINI_MODEL` y `NODE_VERSION` ya vienen del blueprint.)
-
-4. **Deploy.** Render instala (`npm install`) y arranca (`npm start`). El health
-   check `/api/health` debe responder `{"modo_ia":"gemini"}`. Tu enlace de prueba
-   queda en `https://math-ia.onrender.com` (o el nombre que asigne Render).
-
-> El puerto lo asigna Render vía `PORT` (el servidor ya lo respeta). El plan `free`
-> "duerme" tras inactividad; la primera petición tras dormir tarda unos segundos.
-
-### Cambiar la API key de Gemini
-
-La clave vive **solo** en la variable de entorno `GEMINI_API_KEY` (nunca en el código). Para cambiarla:
-
-- **En local:** edita `.env`, actualiza `GEMINI_API_KEY=...` y reinicia (`npm start`).
-- **En Render (interfaz):** servicio → **Environment** → edita `GEMINI_API_KEY` → **Save changes**
-  (Render redepliega solo). Comprueba `/api/health` → `{"modo_ia":"gemini"}`.
-- **En Render (API), sin abrir la web:**
-  ```bash
-  # 1) Instala la nueva clave
-  curl -X PUT -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
-    "https://api.render.com/v1/services/$SVC/env-vars/GEMINI_API_KEY" -d '{"value":"NUEVA_CLAVE"}'
-  # 2) Dispara un despliegue para que tome la clave
-  curl -X POST -H "Authorization: Bearer $RENDER_API_KEY" -H "Content-Type: application/json" \
-    "https://api.render.com/v1/services/$SVC/deploys" -d '{"clearCache":"do_not_clear"}'
-  ```
-  (`$SVC` = id del servicio, p.ej. `srv-...`; `$RENDER_API_KEY` = token de Render.)
-
-> **La clave y su facturación son de la cuenta del cliente.** Conviene usar una clave de un
-> **proyecto de Google Cloud con facturación activa** (no "Nivel gratuito"), o los `429` serán frecuentes.
+El registro público crea **siempre** usuarios `ESTUDIANTE`. El rol nunca se
+acepta desde el cuerpo de la petición: un registro abierto que permita elegir
+`ADMIN` es una escalada de privilegios servida en bandeja. Los perfiles docente
+y administrador los crea la semilla o un administrador.
 
 ---
 
-## Cierre de Fases 1 y 2 — checklist de aceptación
+## El diagnóstico inicial
 
-| # | Compromiso | Estado | Dónde |
-|---|---|---|---|
-| 1 | **Continuidad conversacional** (contexto de mensajes previos para seguimientos) | ✅ | `currentTopic`+`historial` → Gemini · [app.js](public/app.js), [server.js](server.js), [geminiClient.js](src/geminiClient.js) |
-| 1b | **Continuidad de artefacto** ("explícame los pasos" re-narra el ejercicio actual, no crea uno nuevo) | ✅ | `pidePasos`+`lastExercise` · [app.js](public/app.js) · `processStepByStep` · [preLight.js](src/preLight.js) |
-| 2 | **Validación matemática** (verificar respuestas/ejercicios antes de mostrarlos) | ✅ | `computeAnswer`/`fixPracticeAnswer` · [preLight.js](src/preLight.js) |
-| 3 | **Ramificación ligera** (pista o alternativa + reintento, sin repetir/revelar) | ✅ | `_handleQuestion`+`buildHint` · [pseLight.js](public/pseLight.js) |
-| 4 | **PRE Light** documentado (transforma la salida de la IA en pasos y módulos) | ✅ | Sección *PRE Light* de este README · `processLSG` en [preLight.js](src/preLight.js) |
-| 5 | **Manejo transparente de errores** (avisar cuando usa modo demostración) | ✅ | Aviso en el escenario · [app.js](public/app.js) `renderResult` |
-| 6 | **Validación final y entrega técnica** (pruebas con Gemini, reporte, versión, instrucciones) | ✅ | `npm run qa` (876/0) · `qa/aceptacion.mjs` (24/24 en vivo) · este README · [ENTREGA.md](ENTREGA.md) |
+Cinco preguntas, una por cada tema garantizado por PRE Light, ordenadas de menor
+a mayor dificultad. Regla de corte acordada:
+
+| Aciertos | Nivel        |
+| -------- | ------------ |
+| 0 – 2    | `BASICO`     |
+| 3 – 4    | `INTERMEDIO` |
+| 5        | `AVANZADO`   |
+
+Es **totalmente determinista**: se cuentan las respuestas correctas y se aplica
+el tramo. La IA no interviene en ningún punto.
+
+Dos decisiones de implementación que conviene conocer:
+
+- **La respuesta correcta nunca sale del servidor.** Ni el `GET` de preguntas ni
+  la respuesta del `POST` la incluyen; si viajara al navegador, falsear el
+  diagnóstico sería cuestión de abrir las herramientas de desarrollo.
+- **El envío debe cubrir el banco completo.** Un diagnóstico a medias produciría
+  un recuento que no significa nada, así que se rechaza en lugar de clasificarlo.
+
+El banco vive en
+[`prisma/seed-data/preguntas-diagnostico.json`](prisma/seed-data/preguntas-diagnostico.json)
+y la regla, en un único sitio:
+[`lib/diagnostico/clasificar.ts`](lib/diagnostico/clasificar.ts).
 
 ---
 
-## Estado y pendientes
+## Qué entra en el Paso 1 y qué no
 
-- ✅ **Fase 1** (núcleo funcional) — construida y verificada.
-- ✅ **Fase 2** (capa pedagógica visible) — avatar, voz TTS, PSE Light y ramificación,
-  verificados (tests de lógica + integración DOM + render en navegador).
-- ✅ **Gemini real verificado** en producción (región US) — genera lecciones con
-  explicaciones, una pregunta y respuesta correcta.
-- ✅ **Desplegado y en vivo:** https://math-ia.onrender.com
-- 🔑 **Requiere saldo de Gemini** para la IA real; sin saldo degrada a modo demo.
-- ℹ️ **Cold-start (plan free):** el servicio "duerme" tras inactividad; la primera
-  carga puede tardar ~30-50 s. Se elimina con un *keep-warm* (ping periódico) o plan de pago.
-```
+### Entregado en el Paso 1
+
+- Next.js (App Router) + TypeScript + Tailwind + shadcn/ui + Framer Motion.
+- KaTeX configurado y en uso en el diagnóstico.
+- PostgreSQL + Prisma: esquema completo, migración y semilla.
+- RBAC de tres roles, con protección en middleware **y** en las rutas de API.
+- Diagnóstico inicial determinista, con persistencia del nivel y su historial.
+- Núcleo heredado integrado: Gemini por variables de entorno, PRE Light y
+  esquemas LSG operativos desde la aplicación Next.
+- Suite de QA ejecutable en local, sin dependencia de Render.
+
+### Pasos siguientes
+
+- **Paso 2** — Motor pedagógico LSG con las 4 fases obligatorias, validador
+  ampliado y ramificación de errores con pistas.
+- **Paso 3** — SmartBoard con renderizado progresivo, TTS sincronizado en
+  español y avatar 2D reactivo. El avatar reutiliza el SVG existente
+  (`public/avatar.js`) remapeando estados: *esperando* → `neutral`,
+  *hablando* → `hablando`, *pensando* → `pensando`, *corrigiendo* →
+  `preguntando`.
+- **Paso 4** — Panel docente con métricas y mapa de calor, y despliegue
+  productivo en Vercel + Supabase.
+
+### Nota sobre el banco de preguntas
+
+`prisma/seed-data/preguntas-diagnostico.json` contiene el **banco oficial**
+entregado por el cliente, **guardado con su formato original tal cual** (`id`,
+`tema` en minúsculas, `pregunta`, `opciones` como lista de textos,
+`respuesta_correcta`). No se ha reescrito a propósito: así, sustituirlo por una
+versión nueva es copiar y pegar el fichero y volver a ejecutar
+`npm run db:seed`, sin tocar código.
+
+La adaptación al esquema ocurre en la semilla ([`prisma/seed.ts`](prisma/seed.ts)):
+
+- Las opciones pasan de lista de textos a pares `{ id, texto }` y la respuesta
+  correcta pasa de ser el **texto** a ser el **id** de esa opción. Así, lo que
+  el navegador envía al corregir es un identificador opaco y no la propia
+  respuesta, y la comparación deja de depender de espacios, mayúsculas o de cómo
+  esté escrita la fórmula.
+- Si la `respuesta_correcta` no coincide con ninguna opción, la semilla **falla
+  y se detiene**. Un banco así clasificaría mal a todos los alumnos sin dar
+  ningún síntoma visible.
+- Las preguntas que dejen de estar en el fichero se **desactivan**, no se
+  borran: eliminarlas se llevaría por delante, en cascada, las respuestas de los
+  alumnos que ya las contestaron.
+
+Además, `npm run qa:diagnostico` contrasta cada respuesta declarada contra el
+**mismo motor determinista que califica las prácticas** (`src/preLight.js`). Las
+cinco del banco oficial están verificadas por esa vía; si el motor no cubriera
+un enunciado, la batería lo declara «sin verificar» en lugar de darlo por bueno.

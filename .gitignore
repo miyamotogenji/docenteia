@@ -1,9 +1,26 @@
 node_modules/
-.env
 *.log
 npm-debug.log*
 .DS_Store
 dist/
+
+# Variables de entorno — NINGUNA se sube al repositorio.
+# Se usa `.env` como fichero único de desarrollo local: lo leen a la vez Next.js,
+# la CLI de Prisma (migraciones y semilla) y los scripts de qa/. `.env.local`
+# queda igualmente ignorado por si se prefiere separar secretos.
+.env
+.env.local
+.env.*.local
+
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# Prisma
+/prisma/*.db
+/prisma/*.db-journal
 
 # Artefactos de entrega (build)
 math-ia-codigo-fuente.zip

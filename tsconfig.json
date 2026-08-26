@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "checkJs": false,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    // La semilla y la suite de qa/ se ejecutan con Node directamente (no pasan
+    // por el empaquetador de Next), y el ESM de Node exige la extensión
+    // explícita en los imports relativos. Es seguro porque no se emite nada:
+    // "noEmit" está activo y Next compila su propio código.
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "plugins": [{ "name": "next" }],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    "src/**/*.d.ts"
+  ],
+  "exclude": ["node_modules", "qa", "server.js", "public/app.js", "public/pseLight.js", "public/tts.js", "public/avatar.js"]
+}

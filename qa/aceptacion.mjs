@@ -5,11 +5,11 @@
 //   (2) es matemáticamente CORRECTA para el ejercicio planteado;
 //   (3) la PIZARRA coincide con la VOZ (ninguna expresión con dos valores distintos);
 //   (4) la práctica NO es idéntica al ejemplo ya resuelto (no revela la respuesta).
-// Uso:  node qa/aceptacion.mjs        (usa https://math-ia.onrender.com)
-//       MATHIA_URL=http://localhost:3000 node qa/aceptacion.mjs
+// Uso:  node qa/aceptacion.mjs        (usa http://localhost:3000)
+//       BASE_URL=http://localhost:3000 node qa/aceptacion.mjs
 import { flattenLSG } from "../public/pseLight.js";
 
-const BASE = process.env.MATHIA_URL || "https://math-ia.onrender.com";
+import { BASE_URL as BASE } from "./base-url.mjs";
 
 // ---------- utilidades matemáticas INDEPENDIENTES (no usan src/) ----------
 const sup = (s) => String(s).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => "^" + "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c));
