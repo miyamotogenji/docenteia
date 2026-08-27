@@ -2,41 +2,56 @@
   {
     "id": "diag_01",
     "tema": "aritmetica",
-    "pregunta": "Calcula el resultado de: 15 - 3 * (4 + 2) / 6",
-    "opciones": ["12", "13", "10", "14"],
-    "respuesta_correcta": "12",
+    "pregunta": "Calcula el resultado de: $15 - 3 \\times (4 + 2) / 6$",
+    "opciones": ["$12$", "$13$", "$10$", "$14$"],
+    "respuesta_correcta": "$12$",
     "tipo": "opcion_multiple"
   },
   {
     "id": "diag_02",
     "tema": "fracciones",
-    "pregunta": "Resuelve y simplifica: 2/3 + 5/6",
-    "opciones": ["7/9", "3/2", "7/6", "4/3"],
-    "respuesta_correcta": "3/2",
+    "pregunta": "Resuelve y simplifica: $\\frac{2}{3} + \\frac{5}{6}$",
+    "opciones": [
+      "$\\frac{7}{9}$",
+      "$\\frac{3}{2}$",
+      "$\\frac{7}{6}$",
+      "$\\frac{4}{3}$"
+    ],
+    "respuesta_correcta": "$\\frac{3}{2}$",
     "tipo": "opcion_multiple"
   },
   {
     "id": "diag_03",
     "tema": "ecuaciones_lineales",
-    "pregunta": "Encuentra el valor de x en: 3x - 7 = 2x + 5",
-    "opciones": ["12", "-2", "2", "-12"],
-    "respuesta_correcta": "12",
+    "pregunta": "Encuentra el valor de $x$ en: $3x - 7 = 2x + 5$",
+    "opciones": ["$12$", "$-2$", "$2$", "$-12$"],
+    "respuesta_correcta": "$12$",
     "tipo": "opcion_multiple"
   },
   {
     "id": "diag_04",
     "tema": "factorizacion",
-    "pregunta": "Factoriza la siguiente diferencia de cuadrados: x^2 - 49",
-    "opciones": ["(x - 7)(x - 7)", "(x + 7)(x - 7)", "(x + 49)(x - 1)", "(x - 49)(x + 1)"],
-    "respuesta_correcta": "(x + 7)(x - 7)",
+    "pregunta": "Factoriza la siguiente diferencia de cuadrados: $x^{2} - 49$",
+    "opciones": [
+      "$(x - 7)(x - 7)$",
+      "$(x + 7)(x - 7)$",
+      "$(x + 49)(x - 1)$",
+      "$(x - 49)(x + 1)$"
+    ],
+    "respuesta_correcta": "$(x + 7)(x - 7)$",
     "tipo": "opcion_multiple"
   },
   {
     "id": "diag_05",
     "tema": "derivadas",
-    "pregunta": "¿Cuál es la derivada de f(x) = 4x^3 - 5x + 7 respecto a x?",
-    "opciones": ["12x^2 - 5", "12x^3 - 5", "4x^2 - 5", "12x^2 + 7"],
-    "respuesta_correcta": "12x^2 - 5",
+    "pregunta": "¿Cuál es la derivada de $f(x) = 4x^{3} - 5x + 7$ respecto a $x$?",
+    "opciones": [
+      "$12x^{2} - 5$",
+      "$12x^{3} - 5$",
+      "$4x^{2} - 5$",
+      "$12x^{2} + 7$"
+    ],
+    "respuesta_correcta": "$12x^{2} - 5$",
     "tipo": "opcion_multiple"
   }
 ]

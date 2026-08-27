@@ -6,7 +6,7 @@ import { useSession } from "next-auth/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { AlertCircle, ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 
-import { Math } from "@/components/math";
+import { Math, TextoMatematico } from "@/components/math";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,7 +180,9 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
           <Card>
             <CardHeader>
               <CardTitle className="text-lg font-medium leading-relaxed">
-                {pregunta.enunciado}
+                {/* El enunciado es prosa con fórmulas intercaladas entre $…$:
+                    sólo la matemática se compone con KaTeX. */}
+                <TextoMatematico texto={pregunta.enunciado} />
               </CardTitle>
               {pregunta.expresion && (
                 <div className="pt-2">
@@ -206,7 +208,7 @@ export function FormularioDiagnostico({ preguntas }: { preguntas: Pregunta[] }) 
                       value={opcion.id}
                       id={`${pregunta.id}-${opcion.id}`}
                     />
-                    <Math expresion={opcion.texto} />
+                    <TextoMatematico texto={opcion.texto} />
                   </Label>
                 ))}
               </RadioGroup>

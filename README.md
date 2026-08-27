@@ -161,7 +161,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.673
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.746
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -317,7 +317,7 @@ manifiesta como una cascada de fallos de prueba, que es un síntoma engañoso.
 Resultado de la última ejecución completa sobre esta versión:
 
 ```
-Banco de preguntas    51 aprobadas · 0 fallidas
+Banco de preguntas   124 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -500,6 +500,27 @@ entregado por el cliente, **guardado con su formato original tal cual** (`id`,
 `respuesta_correcta`). No se ha reescrito a propósito: así, sustituirlo por una
 versión nueva es copiar y pegar el fichero y volver a ejecutar
 `npm run db:seed`, sin tocar código.
+
+### Cómo se escribe la matemática
+
+Dentro de los enunciados y de las opciones, la matemática va **entre `$…$`** y
+se escribe en LaTeX. Sólo eso se compone con KaTeX; el resto de la frase se
+muestra como prosa normal:
+
+```json
+"pregunta": "Resuelve y simplifica: $\\frac{2}{3} + \\frac{5}{6}$",
+"opciones": ["$\\frac{7}{9}$", "$\\frac{3}{2}$", "$\\frac{7}{6}$", "$\\frac{4}{3}$"]
+```
+
+Así `2/3 + 5/6` aparece como una fracción real apilada y no como texto corrido.
+Para una fórmula en bloque, centrada en su propia línea, se usa `$$…$$`. Un `$`
+suelto y sin pareja no abre fórmula, de modo que escribir un precio sigue
+funcionando.
+
+El banco guarda **sólo** la versión en LaTeX. Cuando hay que verificar la
+matemática, `latexAPlano()` la traduce a notación plana para el motor
+determinista; guardar el enunciado dos veces —una para mostrar y otra para
+validar— habría acabado con las dos versiones desincronizadas.
 
 La adaptación al esquema ocurre en la semilla ([`prisma/seed.ts`](prisma/seed.ts)):
 
