@@ -134,11 +134,15 @@ export default async function PanelEstudiante() {
         <CardHeader>
           <CardTitle>Lecciones</CardTitle>
           <CardDescription>
-            El motor pedagógico y la pizarra interactiva llegan en el Paso 2. El
-            núcleo determinista ya está migrado y responde en{" "}
-            <code className="rounded bg-muted px-1 py-0.5 text-xs">/api/query</code>.
+            El tutor te explica el tema paso a paso en la pizarra, con voz, y
+            después practicas con corrección inmediata.
           </CardDescription>
         </CardHeader>
+        <CardContent>
+          <Button asChild size="lg">
+            <Link href="/estudiante/leccion">Empezar una lección</Link>
+          </Button>
+        </CardContent>
       </Card>
     </div>
   );

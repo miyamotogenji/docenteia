@@ -49,6 +49,40 @@ export interface PreguntaAdaptada {
   respuestaCorrecta: string;
 }
 
+/**
+ * Convierte una expresión escrita en LaTeX a la notación plana que entiende el
+ * motor determinista (`src/preLight.js`).
+ *
+ * Por qué hace falta: el banco muestra la matemática con KaTeX —de otro modo
+ * "2/3 + 5/6" se leería como texto corrido en lugar de como fracciones—, pero
+ * el motor que verifica esas respuestas espera notación plana. En vez de
+ * guardar el enunciado dos veces (una para mostrar y otra para validar, con el
+ * riesgo de que se desincronicen), se guarda sólo la versión LaTeX y aquí se
+ * traduce cuando hay que calcular.
+ */
+export function latexAPlano(texto: string): string {
+  return String(texto ?? "")
+    // Delimitadores de fórmula.
+    .replace(/\$\$?/g, " ")
+    // Fracciones: \frac{2}{3} → (2)/(3). Los paréntesis evitan que
+    // "\frac{a+b}{c}" se convierta en "a+b/c", que significa otra cosa.
+    .replace(/\\[dt]?frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, "($1)/($2)")
+    // Operadores.
+    .replace(/\\times|\\cdot/g, "*")
+    .replace(/\\div/g, "/")
+    // Paréntesis escalables.
+    .replace(/\\left\s*|\\right\s*/g, "")
+    // Exponentes: x^{2} → x^2.
+    .replace(/\^\s*\{\s*([^{}]*)\s*\}/g, "^$1")
+    // Espaciado tipográfico de LaTeX.
+    .replace(/\\[,;!:> ]/g, " ")
+    // Un paréntesis que sólo envuelve un número no aporta nada y estorba a los
+    // analizadores del motor: "(2)/(3)" → "2/3".
+    .replace(/\((\s*-?\d+(?:\.\d+)?\s*)\)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /** "ecuaciones_lineales" → "ECUACIONES_LINEALES", validando contra el enum. */
 export function temaAEnum(tema: string): TemaEnum {
   const valor = String(tema).trim().toUpperCase();

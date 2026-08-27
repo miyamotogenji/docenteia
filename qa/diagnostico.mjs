@@ -15,6 +15,8 @@
 
 import { readFileSync } from "node:fs";
 
+import katex from "katex";
+
 import {
   computeAnswer,
   solveLinearFromText,
@@ -24,7 +26,8 @@ import {
 } from "../src/preLight.js";
 // Se importa la transformación REAL que usa la semilla, no una copia: validar
 // una copia podría dar por bueno un banco que la semilla carga de otra manera.
-import { adaptarBanco } from "../lib/diagnostico/banco.ts";
+import { adaptarBanco, latexAPlano } from "../lib/diagnostico/banco.ts";
+import { separarFormulas } from "../lib/matematicas.ts";
 
 const RUTA = new URL("../prisma/seed-data/preguntas-diagnostico.json", import.meta.url);
 const banco = JSON.parse(readFileSync(RUTA, "utf8"));
@@ -101,26 +104,29 @@ console.log("\n · Matemática (contrastada con src/preLight.js)");
 
 for (const p of banco) {
   const etiqueta = `[${p.id}] ${p.tema}`;
-  const esperado = p.respuesta_correcta;
+  // El banco guarda la matemática en LaTeX para poder mostrarla con KaTeX; el
+  // motor determinista trabaja en notación plana, así que se traduce antes.
+  const enunciado = latexAPlano(p.pregunta);
+  const esperado = latexAPlano(p.respuesta_correcta);
   let calculado = null;
   let comparar = (a, b) => norm(a) === norm(b);
 
   switch (p.tema) {
     case "aritmetica":
-      calculado = computeAnswer(p.pregunta);
+      calculado = computeAnswer(enunciado);
       break;
     case "fracciones":
-      calculado = solveFractionFromText(p.pregunta);
+      calculado = solveFractionFromText(enunciado);
       break;
     case "ecuaciones_lineales":
-      calculado = solveLinearFromText(p.pregunta);
+      calculado = solveLinearFromText(enunciado);
       break;
     case "factorizacion":
-      calculado = computeFactorization(p.pregunta);
+      calculado = computeFactorization(enunciado);
       comparar = mismaFactorizacion;
       break;
     case "derivadas":
-      calculado = computeDerivative(p.pregunta);
+      calculado = computeDerivative(enunciado);
       break;
   }
 
@@ -142,10 +148,131 @@ for (const p of banco) {
 console.log("\n · Distractores");
 for (const p of banco) {
   const otros = p.opciones.filter((o) => o !== p.respuesta_correcta);
+  // Se comparan ya traducidos a notación plana: así se detecta también que dos
+  // opciones escritas distinto en LaTeX signifiquen lo mismo.
+  const correcta = norm(latexAPlano(p.respuesta_correcta));
   check(
     `[${p.id}] ninguna otra opción equivale a la correcta`,
-    otros.every((o) => norm(o) !== norm(p.respuesta_correcta)),
+    otros.every((o) => norm(latexAPlano(o)) !== correcta),
   );
+}
+
+// ── 3.5. Separación de prosa y fórmula ───────────────────────────────────────
+// Es la pieza que decide qué parte de un enunciado se compone como matemática.
+// Equivocarse aquí se ve directamente en la pantalla del alumno.
+console.log("\n · Separación de prosa y fórmula");
+
+const casosSeparacion = [
+  {
+    nombre: "texto sin fórmulas se deja intacto",
+    entrada: "Resuelve el ejercicio",
+    esperado: [{ tipo: "texto", contenido: "Resuelve el ejercicio" }],
+  },
+  {
+    nombre: "prosa + fórmula en línea",
+    entrada: "Calcula: $2+2$",
+    esperado: [
+      { tipo: "texto", contenido: "Calcula: " },
+      { tipo: "linea", contenido: "2+2" },
+    ],
+  },
+  {
+    nombre: "fórmula intercalada en medio de la frase",
+    entrada: "El valor de $x$ en la ecuación",
+    esperado: [
+      { tipo: "texto", contenido: "El valor de " },
+      { tipo: "linea", contenido: "x" },
+      { tipo: "texto", contenido: " en la ecuación" },
+    ],
+  },
+  {
+    nombre: "dos fórmulas en la misma frase",
+    entrada: "De $a$ a $b$",
+    esperado: [
+      { tipo: "texto", contenido: "De " },
+      { tipo: "linea", contenido: "a" },
+      { tipo: "texto", contenido: " a " },
+      { tipo: "linea", contenido: "b" },
+    ],
+  },
+  {
+    nombre: "fórmula en bloque",
+    entrada: "Mira: $$x^2$$",
+    esperado: [
+      { tipo: "texto", contenido: "Mira: " },
+      { tipo: "bloque", contenido: "x^2" },
+    ],
+  },
+  {
+    nombre: "un $ suelto no abre fórmula",
+    entrada: "Cuesta 5$ en total",
+    esperado: [{ tipo: "texto", contenido: "Cuesta 5$ en total" }],
+  },
+];
+
+for (const caso of casosSeparacion) {
+  const obtenido = separarFormulas(caso.entrada);
+  check(
+    caso.nombre,
+    JSON.stringify(obtenido) === JSON.stringify(caso.esperado),
+    JSON.stringify(obtenido),
+  );
+}
+
+// Todo el contenido del banco debe poder reconstruirse sin perder nada: si la
+// separación se comiera un trozo del enunciado, el alumno leería una frase
+// incompleta y nada avisaría.
+for (const p of banco) {
+  for (const texto of [p.pregunta, ...p.opciones]) {
+    const reconstruido = separarFormulas(texto)
+      .map((x) => (x.tipo === "texto" ? x.contenido : `$${x.contenido}$`))
+      .join("");
+    check(
+      `[${p.id}] la separación no pierde contenido`,
+      reconstruido.replace(/\s+/g, "") === String(texto).replace(/\s+/g, ""),
+      `«${reconstruido}» vs «${texto}»`,
+    );
+  }
+}
+
+// ── 3.6. Formato matemático (KaTeX) ──────────────────────────────────────────
+// Requisito del cliente: enunciados y opciones deben mostrarse con notación
+// matemática tipográfica, no como texto corrido.
+console.log("\n · Formato matemático (KaTeX)");
+
+/** ¿El texto lleva al menos una fórmula delimitada por $…$? */
+const llevaFormula = (s) => /\$[^$\n]+\$/.test(String(s));
+
+/** Devuelve el mensaje de error de KaTeX, o null si la fórmula es válida. */
+function errorKatex(expresion) {
+  try {
+    katex.renderToString(expresion, { throwOnError: true, strict: false });
+    return null;
+  } catch (e) {
+    return e.message;
+  }
+}
+
+for (const p of banco) {
+  check(`[${p.id}] el enunciado marca su matemática con $…$`, llevaFormula(p.pregunta));
+  check(
+    `[${p.id}] los delimitadores $ están emparejados`,
+    (String(p.pregunta).match(/\$/g) || []).length % 2 === 0,
+  );
+  check(
+    `[${p.id}] todas las opciones marcan su matemática`,
+    p.opciones.every(llevaFormula),
+  );
+
+  // Cada fórmula debe compilar: una llave sin cerrar se vería en rojo en la
+  // pantalla del alumno, y eso no debe llegar nunca a producción.
+  for (const parte of [p.pregunta, ...p.opciones]) {
+    for (const formula of String(parte).match(/\$([^$\n]+)\$/g) || []) {
+      const expresion = formula.slice(1, -1);
+      const err = errorKatex(expresion);
+      check(`[${p.id}] KaTeX compila «${expresion}»`, err === null, err ?? "");
+    }
+  }
 }
 
 // ── 4. Adaptación al esquema (la que ejecuta la semilla) ─────────────────────

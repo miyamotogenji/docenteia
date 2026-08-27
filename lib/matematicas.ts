@@ -1,0 +1,128 @@
+/**
+ * Separación de prosa y fórmulas en un texto mixto.
+ *
+ * Vive en su propio módulo, y no dentro del componente que lo usa, para que la
+ * suite de QA pueda ejercitarlo sin montar React: es la pieza que decide qué
+ * parte de un enunciado se compone como matemática, y equivocarse ahí se ve
+ * directamente en la pantalla del alumno.
+ */
+
+// ── Notación plana → LaTeX ───────────────────────────────────────────────────
+// El motor pedagógico escribe la pizarra en notación plana ("12x³ - 4x",
+// "1/2 + 1/4"), que es la que entienden sus analizadores y su suite de pruebas.
+// La pizarra del alumno, en cambio, debe verse compuesta. Aquí se traduce lo
+// uno en lo otro, sin tocar el motor.
+
+const SUPERINDICES: Record<string, string> = {
+  "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+  "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+  "⁻": "-", "⁺": "+", "ⁿ": "n",
+};
+
+/** Nombres de función que no cuentan como prosa al decidir si una línea es matemática. */
+const FUNCIONES = new Set([
+  "sin", "sen", "cos", "tan", "cot", "sec", "csc",
+  "log", "ln", "exp", "lim", "max", "min", "sqrt", "raiz",
+]);
+
+/**
+ * ¿Esta línea es una expresión matemática o una frase en prosa?
+ *
+ * La pizarra recibe las dos cosas: las directivas `pizarra` traen la fórmula
+ * ("2x + 5 = 15") y las de `hablar` traen la explicación en castellano. Pasar
+ * una frase entera a KaTeX produciría un amasijo ilegible, así que hay que
+ * distinguirlas. El criterio es simple y suficiente: dos o más palabras reales
+ * (tres letras o más, sin contar nombres de función) delatan una frase.
+ */
+export function pareceMatematica(linea: string): boolean {
+  const texto = String(linea ?? "").trim();
+  if (!texto) return false;
+  const palabras = (texto.toLowerCase().match(/[a-záéíóúñ]{3,}/g) || []).filter(
+    (p) => !FUNCIONES.has(p),
+  );
+  return palabras.length < 2;
+}
+
+/**
+ * Traduce notación plana a LaTeX para componerla con KaTeX.
+ *
+ * Es la inversa de `latexAPlano()`: aquélla existe para que el motor pueda
+ * verificar, y ésta para que el alumno pueda leer.
+ */
+export function planoALatex(expresion: string): string {
+  let s = String(expresion ?? "");
+
+  // Signos menos tipográficos → el menos ASCII que entiende KaTeX.
+  s = s.replace(/[−–—]/g, "-");
+
+  // Superíndices Unicode en bloque: "x³" → "x^{3}", "xⁿ⁻¹" → "x^{n-1}".
+  s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺ⁿ]+/g, (m) => {
+    const exp = [...m].map((c) => SUPERINDICES[c] ?? "").join("");
+    return exp ? `^{${exp}}` : "";
+  });
+
+  // Operadores.
+  s = s
+    .replace(/·/g, " \\cdot ")
+    .replace(/×/g, " \\times ")
+    .replace(/÷/g, " \\div ")
+    .replace(/≠/g, " \\neq ")
+    .replace(/≤/g, " \\leq ")
+    .replace(/≥/g, " \\geq ")
+    .replace(/≈/g, " \\approx ")
+    .replace(/⇒|=>/g, " \\Rightarrow ")
+    .replace(/→/g, " \\to ");
+
+  // Fracciones NUMÉRICAS: "1/2" → "\frac{1}{2}". Sólo dígito/dígito, para no
+  // estropear "d/dx", que no es una fracción sino una notación de derivada.
+  s = s.replace(/(?<![\w}])(\d+)\s*\/\s*(\d+)(?![\w{])/g, "\\frac{$1}{$2}");
+
+  // Caracteres que LaTeX interpreta como órdenes y aquí son literales.
+  s = s.replace(/%/g, "\\%").replace(/(?<!\\)&/g, "\\&");
+
+  return s.replace(/\s+/g, " ").trim();
+}
+
+export type TipoParte = "texto" | "linea" | "bloque";
+
+export interface Parte {
+  tipo: TipoParte;
+  contenido: string;
+}
+
+/**
+ * Separa un texto en tramos de prosa y tramos de fórmula.
+ *
+ * Reconoce `$$…$$` (fórmula en bloque) y `$…$` (en línea). El bloque se busca
+ * primero para que no se confunda con dos fórmulas en línea vacías.
+ *
+ * Un `$` suelto y sin pareja NO abre fórmula: se queda como carácter normal,
+ * que es lo que espera quien escribe un precio. Y un texto sin ningún `$` se
+ * devuelve entero como prosa, así que los enunciados sin matemáticas siguen
+ * siendo válidos.
+ */
+export function separarFormulas(texto: string): Parte[] {
+  const entrada = String(texto ?? "");
+  const patron = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g;
+  const partes: Parte[] = [];
+  let ultimo = 0;
+  let m: RegExpExecArray | null;
+
+  while ((m = patron.exec(entrada)) !== null) {
+    if (m.index > ultimo) {
+      partes.push({ tipo: "texto", contenido: entrada.slice(ultimo, m.index) });
+    }
+    if (m[1] !== undefined) {
+      partes.push({ tipo: "bloque", contenido: m[1].trim() });
+    } else {
+      partes.push({ tipo: "linea", contenido: m[2].trim() });
+    }
+    ultimo = m.index + m[0].length;
+  }
+
+  if (ultimo < entrada.length) {
+    partes.push({ tipo: "texto", contenido: entrada.slice(ultimo) });
+  }
+
+  return partes.length > 0 ? partes : [{ tipo: "texto", contenido: entrada }];
+}
