@@ -1,7 +1,7 @@
 // QA — control de calidad de Math IA (correr ANTES de entregar al cliente).
 //
 //   npm run qa                 → prueba lógica + pruebas reales en producción
-//   QA_URL=http://localhost:3137 npm run qa   → contra otra URL
+//   BASE_URL=http://localhost:3137 npm run qa   → contra otra URL
 //
 // Verifica: (1) la lógica (clasificador, solver, saneo, una sola pregunta), y
 // (2) lecciones REALES generadas por Gemini para las 4 intenciones, comprobando
@@ -15,7 +15,7 @@ import { generateLSG } from "../src/geminiClient.js";
 import { checkAnswer, flattenLSG, PSELight, buildHint } from "../public/pseLight.js";
 import { normalizeForSpeech, chunkForSpeech } from "../public/tts.js";
 
-const BASE = process.env.QA_URL || "https://math-ia.onrender.com";
+import { BASE_URL as BASE } from "./base-url.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 let pass = 0;

@@ -1,35 +1,66 @@
 {
-  "name": "math-ia",
-  "version": "0.1.0",
-  "description": "Math IA — prototipo web funcional de IA educativa (Fase 1: núcleo funcional). Consultas matemáticas por texto/voz, clasificador de intención, IA generativa con salida estructurada (LSG) y PRE Light.",
+  "name": "docenteia",
+  "version": "1.0.0",
+  "private": true,
+  "description": "MentorIA Math — PMV 1. Migración del prototipo Node/Express a Next.js (App Router) + TypeScript + PostgreSQL/Prisma. Paso 1: fundación, arquitectura y diagnóstico base.",
   "type": "module",
-  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
+    "dev": "next dev",
+    "build": "prisma generate && next build",
+    "start": "next start",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:studio": "prisma studio",
+    "db:seed": "node --experimental-strip-types prisma/seed.ts",
+    "test": "node qa/diagnostico.mjs && node qa/preflight.mjs && node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/barrido.mjs",
+    "qa:preflight": "node qa/preflight.mjs",
+    "qa:diagnostico": "node qa/diagnostico.mjs",
     "qa": "node qa/qa.mjs",
-    "qa:local": "node qa/qa.mjs",
     "qa:frontend": "node qa/frontend.mjs",
     "qa:sesiones": "node qa/sesiones.mjs",
     "qa:aceptacion": "node qa/aceptacion.mjs",
     "qa:barrido": "node qa/barrido.mjs",
-    "qa:todo": "node qa/qa.mjs && node qa/frontend.mjs && node qa/sesiones.mjs && node qa/aceptacion.mjs && node qa/barrido.mjs"
+    "qa:todo": "npm test",
+    "legacy:start": "node server.js"
   },
-  "engines": {
-    "node": ">=18"
-  },
-  "keywords": [
-    "education",
-    "math",
-    "ai",
-    "gemini",
-    "lsg",
-    "prototype"
-  ],
-  "author": "Joao",
-  "license": "MIT",
   "dependencies": {
+    "@prisma/client": "^6.2.1",
+    "@radix-ui/react-label": "^2.1.1",
+    "@radix-ui/react-progress": "^1.1.1",
+    "@radix-ui/react-radio-group": "^1.2.2",
+    "@radix-ui/react-slot": "^1.1.1",
+    "bcryptjs": "^2.4.3",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
     "dotenv": "^16.4.5",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "framer-motion": "^11.15.0",
+    "katex": "^0.16.19",
+    "lucide-react": "^0.469.0",
+    "next": "^15.1.4",
+    "next-auth": "^5.0.0-beta.25",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/katex": "^0.16.7",
+    "@types/node": "^22.10.5",
+    "@types/react": "^19.0.4",
+    "@types/react-dom": "^19.0.2",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "prisma": "^6.2.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3"
   }
 }

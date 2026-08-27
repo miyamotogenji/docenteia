@@ -1,0 +1,374 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// MentorIA Math — PMV 1 · Modelo de datos (Paso 1)
+//
+// Cubre los tres bloques de persistencia acordados:
+//   a) Usuarios y roles (RBAC: ESTUDIANTE, DOCENTE, ADMIN)
+//   b) Perfil académico del estudiante (ciclo/grado, materias, historial de
+//      nivel y metadatos de contexto que se inyectan en cada consulta a la IA)
+//   c) Tablas base del Knowledge Tree (sesiones, progreso, banco de ejercicios
+//      y registro de errores/debilidades frecuentes)
+//
+// Nota sobre sesiones de autenticación: se usa NextAuth con estrategia JWT y
+// proveedor Credentials, que NO requiere las tablas Account/Session/
+// VerificationToken del adaptador de base de datos. Por eso no aparecen aquí:
+// no son tablas muertas, sencillamente no se usan en este esquema de auth.
+// ─────────────────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+  // "native" cubre el desarrollo local. El segundo objetivo es el runtime de
+  // Vercel y de la mayoría de plataformas serverless (Amazon Linux 2023): sin
+  // declararlo, el despliegue compila pero revienta en la primera consulta con
+  // un "Query engine library for current platform could not be found", que es
+  // un error confuso de diagnosticar en producción.
+  binaryTargets = ["native", "rhel-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Supabase enruta la aplicación por el pooler (6543) y las migraciones por la
+  // conexión directa (5432). En PostgreSQL local ambas variables son iguales.
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Enumeraciones ────────────────────────────────────────────────────────────
+
+/// Los tres perfiles independientes del sistema (RBAC).
+enum Rol {
+  ESTUDIANTE
+  DOCENTE
+  ADMIN
+}
+
+/// Nivel académico asignado por el diagnóstico inicial.
+enum NivelAcademico {
+  BASICO
+  INTERMEDIO
+  AVANZADO
+}
+
+/// Los cinco temas garantizados por el motor determinista (PRE Light).
+/// Confirmado por el cliente: el PMV 1 se limita a estos cinco; cualquier otro
+/// tema se rechaza de forma controlada.
+enum Tema {
+  ECUACIONES_LINEALES
+  DERIVADAS
+  FACTORIZACION
+  FRACCIONES
+  ARITMETICA
+}
+
+/// Intenciones que distingue el clasificador heredado del prototipo.
+enum Intencion {
+  RESOLVER
+  APRENDER
+  EXPLICAR
+  PRACTICAR
+}
+
+/// Quién produjo la lección o el ejercicio: el motor determinista (matemática
+/// garantizada, coste cero) o la IA generativa (mejor esfuerzo).
+enum OrigenContenido {
+  DETERMINISTA
+  IA
+}
+
+/// Motivo por el que cambió el nivel de un estudiante.
+enum MotivoCambioNivel {
+  DIAGNOSTICO_INICIAL
+  AJUSTE_AUTOMATICO
+  AJUSTE_DOCENTE
+}
+
+// ── a) Usuarios y roles ──────────────────────────────────────────────────────
+
+model Usuario {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  nombre       String
+  rol          Rol      @default(ESTUDIANTE)
+  activo       Boolean  @default(true)
+  creadoEn     DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  perfilEstudiante PerfilEstudiante?
+  cambiosDeNivel   HistorialNivel[]  @relation("DocenteQueAjusta")
+
+  @@index([rol])
+  @@map("usuarios")
+}
+
+// ── b) Perfil académico del estudiante ───────────────────────────────────────
+
+model PerfilEstudiante {
+  id        String @id @default(cuid())
+  usuarioId String @unique
+  usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+
+  /// Ciclo académico (p. ej. "Secundaria", "Bachillerato", "Ciclo IV").
+  ciclo String?
+  /// Grado o curso dentro del ciclo (p. ej. "3º").
+  grado String?
+  institucion String?
+
+  /// Nivel vigente. Queda en null hasta que se completa el diagnóstico inicial.
+  nivelActual      NivelAcademico?
+  nivelAsignadoEn  DateTime?
+
+  /// Metadatos de contexto que se inyectan en cada consulta a la IA
+  /// (preferencias, notas del docente, ritmo, adaptaciones).
+  metadatos Json @default("{}")
+
+  creadoEn      DateTime @default(now())
+  actualizadoEn DateTime @updatedAt
+
+  materias        PerfilMateria[]
+  historialNivel  HistorialNivel[]
+  intentosDiagnostico IntentoDiagnostico[]
+  sesiones        SesionAprendizaje[]
+  progreso        RegistroProgreso[]
+  errores         RegistroError[]
+
+  @@index([nivelActual])
+  @@map("perfiles_estudiante")
+}
+
+model Materia {
+  id     String @id @default(cuid())
+  codigo String @unique
+  nombre String
+
+  perfiles PerfilMateria[]
+
+  @@map("materias")
+}
+
+/// Relación estudiante ↔ materia, con el nivel específico por materia.
+model PerfilMateria {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+  materiaId String
+  materia   Materia @relation(fields: [materiaId], references: [id], onDelete: Cascade)
+
+  nivel    NivelAcademico?
+  creadoEn DateTime @default(now())
+
+  @@unique([perfilId, materiaId])
+  @@map("perfil_materias")
+}
+
+/// Historial de nivel: cada cambio queda registrado con su motivo y su origen.
+model HistorialNivel {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  nivelAnterior NivelAcademico?
+  nivelNuevo    NivelAcademico
+  motivo        MotivoCambioNivel
+
+  /// Docente que forzó el ajuste, cuando el motivo es AJUSTE_DOCENTE.
+  ajustadoPorId String?
+  ajustadoPor   Usuario? @relation("DocenteQueAjusta", fields: [ajustadoPorId], references: [id], onDelete: SetNull)
+
+  detalle  String?
+  creadoEn DateTime @default(now())
+
+  @@index([perfilId, creadoEn])
+  @@map("historial_nivel")
+}
+
+// ── c) Knowledge Tree ────────────────────────────────────────────────────────
+
+/// Nodo del árbol de conocimiento. Es un árbol real: cada nodo puede tener un
+/// padre, de modo que un tema se descompone en subtemas y habilidades.
+model NodoConocimiento {
+  id     String @id @default(cuid())
+  clave  String @unique
+  tema   Tema
+  titulo String
+  descripcion String?
+  nivel  NivelAcademico?
+  orden  Int @default(0)
+
+  padreId String?
+  padre   NodoConocimiento?  @relation("ArbolConocimiento", fields: [padreId], references: [id], onDelete: SetNull)
+  hijos   NodoConocimiento[] @relation("ArbolConocimiento")
+
+  ejercicios Ejercicio[]
+  progreso   RegistroProgreso[]
+  errores    RegistroError[]
+
+  @@index([tema, nivel])
+  @@map("nodos_conocimiento")
+}
+
+/// Banco de ejercicios generados/validados con sus metadatos.
+model Ejercicio {
+  id     String @id @default(cuid())
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  tema  Tema
+  nivel NivelAcademico
+
+  enunciado         String
+  respuestaCorrecta String
+  /// Pasos de resolución tal como los produce el motor determinista.
+  pasos Json @default("[]")
+
+  origen   OrigenContenido @default(DETERMINISTA)
+  /// Sólo entra al banco lo que el PRE Light ha podido verificar.
+  validado Boolean @default(false)
+
+  metadatos Json @default("{}")
+  creadoEn  DateTime @default(now())
+
+  progreso RegistroProgreso[]
+
+  @@index([tema, nivel, validado])
+  @@map("ejercicios")
+}
+
+/// Sesión de aprendizaje: una unidad de trabajo del estudiante.
+model SesionAprendizaje {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  tema      Tema?
+  intencion Intencion?
+  nivelEnSesion NivelAcademico?
+
+  iniciadaEn   DateTime  @default(now())
+  finalizadaEn DateTime?
+  metadatos    Json      @default("{}")
+
+  progreso RegistroProgreso[]
+
+  @@index([perfilId, iniciadaEn])
+  @@map("sesiones_aprendizaje")
+}
+
+/// Registro de progreso: una fila por intento de respuesta calificado.
+model RegistroProgreso {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  sesionId String?
+  sesion   SesionAprendizaje? @relation(fields: [sesionId], references: [id], onDelete: SetNull)
+  nodoId   String?
+  nodo     NodoConocimiento?  @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+  ejercicioId String?
+  ejercicio   Ejercicio? @relation(fields: [ejercicioId], references: [id], onDelete: SetNull)
+
+  tema             Tema
+  acierto          Boolean
+  intentos         Int @default(1)
+  tiempoRespuestaMs Int?
+  respuestaDada    String?
+
+  creadoEn DateTime @default(now())
+
+  @@index([perfilId, tema, creadoEn])
+  @@map("registros_progreso")
+}
+
+/// Catálogo de errores y debilidades frecuentes. Se acumula por perfil y tipo,
+/// de modo que "cuántas veces falla el alumno en esto" es una consulta directa.
+model RegistroError {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  nodoId String?
+  nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+
+  tema      Tema
+  /// Clave estable del tipo de error (p. ej. "signo_al_despejar").
+  tipoError String
+  detalle   String?
+
+  ocurrencias Int      @default(1)
+  primeraVez  DateTime @default(now())
+  ultimaVez   DateTime @updatedAt
+
+  @@unique([perfilId, tema, tipoError])
+  @@index([perfilId, ocurrencias])
+  @@map("registros_error")
+}
+
+// ── Diagnóstico inicial ──────────────────────────────────────────────────────
+
+/// Banco de preguntas del diagnóstico. El banco oficial trae una pregunta por
+/// cada tema de PRE Light, pero ni `tema` ni `orden` son únicos a propósito:
+/// si lo fueran, sustituir una pregunta obligaría a BORRAR la anterior, y con
+/// ella se irían en cascada las respuestas históricas de los alumnos que ya la
+/// contestaron. Al no serlo, la pregunta vieja se desactiva y su historial se
+/// conserva. Lo que está vigente lo marca `activa`, no el esquema.
+model PreguntaDiagnostico {
+  id     String @id @default(cuid())
+  clave  String @unique
+  orden  Int
+  tema   Tema
+
+  enunciado String
+  /// Opciones en formato [{ id, texto }]. El diagnóstico es de respuesta
+  /// directa: se compara contra respuestaCorrecta, sin intervención de la IA.
+  opciones Json
+  /// Identificador de la opción correcta (no su texto), para que la corrección
+  /// no dependa de espacios ni de cómo esté escrita la fórmula.
+  respuestaCorrecta String
+  /// Expresión matemática asociada, para renderizar con KaTeX en la SmartBoard.
+  expresion String?
+
+  activa   Boolean  @default(true)
+  creadoEn DateTime @default(now())
+
+  respuestas RespuestaDiagnostico[]
+
+  @@index([activa, orden])
+  @@index([tema])
+  @@map("preguntas_diagnostico")
+}
+
+/// Un intento de diagnóstico. El nivel resultante se calcula con la regla de
+/// corte acordada: 0–2 aciertos BASICO · 3–4 INTERMEDIO · 5 AVANZADO.
+model IntentoDiagnostico {
+  id       String @id @default(cuid())
+  perfilId String
+  perfil   PerfilEstudiante @relation(fields: [perfilId], references: [id], onDelete: Cascade)
+
+  aciertos         Int             @default(0)
+  totalPreguntas   Int             @default(5)
+  nivelResultante  NivelAcademico?
+  completado       Boolean         @default(false)
+
+  iniciadoEn   DateTime  @default(now())
+  finalizadoEn DateTime?
+
+  respuestas RespuestaDiagnostico[]
+
+  @@index([perfilId, iniciadoEn])
+  @@map("intentos_diagnostico")
+}
+
+model RespuestaDiagnostico {
+  id        String @id @default(cuid())
+  intentoId String
+  intento   IntentoDiagnostico @relation(fields: [intentoId], references: [id], onDelete: Cascade)
+  preguntaId String
+  pregunta   PreguntaDiagnostico @relation(fields: [preguntaId], references: [id], onDelete: Cascade)
+
+  respuestaDada String
+  correcta      Boolean
+  tiempoMs      Int?
+  creadoEn      DateTime @default(now())
+
+  @@unique([intentoId, preguntaId])
+  @@map("respuestas_diagnostico")
+}

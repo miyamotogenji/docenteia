@@ -5,12 +5,12 @@
 // conversaciones realistas y se exigen INVARIANTES que deben cumplirse en cualquier camino.
 // Si una se rompe, el barrido imprime la conversación exacta que la rompió, lista para reproducir.
 //
-//   node qa/barrido.mjs                                 (contra producción)
-//   MATHIA_URL=http://localhost:3000 node qa/barrido.mjs
+//   node qa/barrido.mjs                                 (contra local)
+//   BASE_URL=http://localhost:3000 node qa/barrido.mjs
 //   BARRIDO_TURNOS=10 BARRIDO_SEC=20 node qa/barrido.mjs
 import { readFileSync } from "node:fs";
 
-const BASE = process.env.MATHIA_URL || "https://math-ia.onrender.com";
+import { BASE_URL as BASE } from "./base-url.mjs";
 const TURNOS = Number(process.env.BARRIDO_TURNOS || 8);
 const SECUENCIAS = Number(process.env.BARRIDO_SEC || 14);
 

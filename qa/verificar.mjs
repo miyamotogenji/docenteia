@@ -2,14 +2,14 @@
 // Comprueba: las 4 intenciones, continuidad conversacional, respuestas matemáticas correctas,
 // ramificación (ejemplo alternativo) y que el CÓDIGO DESPLEGADO coincide con el entregado.
 //
-//   node qa/verificar.mjs                    # contra https://math-ia.onrender.com
-//   QA_URL=http://localhost:3000 node qa/verificar.mjs
+//   node qa/verificar.mjs                    # contra http://localhost:3000
+//   BASE_URL=http://localhost:3000 node qa/verificar.mjs
 //
 // Sale con código 1 si algo falla (útil para CI / evidencia).
 
 import { computeAnswer, corregirIgualdades } from "../src/preLight.js";
 
-const BASE = process.env.QA_URL || "https://math-ia.onrender.com";
+import { BASE_URL as BASE } from "./base-url.mjs";
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const line = (ok, msg, extra) => { ok ? pass++ : fail++; console.log(`  ${ok ? "✓" : "✗"} ${msg}${extra ? "  — " + extra : ""}`); };

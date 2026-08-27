@@ -6,13 +6,13 @@
 // cuando ya hay un tema activo, y el bucle de escenarios solo aparece en la 4.ª o 5.ª petición.
 // Aquí se reproducen CONVERSACIONES completas, con el mismo estado que mantiene el navegador.
 //
-//   node qa/sesiones.mjs                              (contra producción)
-//   MATHIA_URL=http://localhost:3000 node qa/sesiones.mjs
+//   node qa/sesiones.mjs                              (contra local)
+//   BASE_URL=http://localhost:3000 node qa/sesiones.mjs
 //
 // La comprobación matemática es INDEPENDIENTE: no usa las funciones del producto.
 import { readFileSync } from "node:fs";
 
-const BASE = process.env.MATHIA_URL || "https://math-ia.onrender.com";
+import { BASE_URL as BASE } from "./base-url.mjs";
 
 // ── Se cargan las funciones REALES del frontend (public/app.js) para decidir el `seguimiento`
 //    exactamente como lo haría el navegador. Si se copiaran a mano, se probaría la copia.
