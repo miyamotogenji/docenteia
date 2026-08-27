@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.894
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.960
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -321,7 +321,7 @@ Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
-Lección (Paso 2)     148 aprobadas · 0 fallidas
+Lección (Paso 2)     214 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -410,7 +410,7 @@ auth.ts / auth.config.ts / middleware.ts    Autenticación y RBAC
 
 ## Modelo de datos
 
-13 tablas en tres bloques (ver [`prisma/schema.prisma`](prisma/schema.prisma)):
+14 tablas en cuatro bloques (ver [`prisma/schema.prisma`](prisma/schema.prisma)):
 
 **Usuarios y roles**
 `usuarios` con RBAC de tres perfiles: `ESTUDIANTE`, `DOCENTE`, `ADMIN`.
@@ -424,6 +424,11 @@ se inyectan en cada consulta a la IA), `materias`, `perfil_materias` e
 `nodos_conocimiento` (árbol real, con padre e hijos), `ejercicios` (banco con
 metadatos y marca de validado), `sesiones_aprendizaje`, `registros_progreso` y
 `registros_error` (catálogo de debilidades frecuentes, acumulado por tipo).
+
+**Currículo**
+`reglas_matematicas`: el catálogo formal de reglas y propiedades de cada tema,
+con su enunciado en LaTeX y una marca de si el motor puede calificar ejercicios
+de ese tipo.
 
 **Diagnóstico**
 `preguntas_diagnostico`, `intentos_diagnostico` y `respuestas_diagnostico`.
@@ -493,6 +498,21 @@ La lección interactiva vive en `/estudiante/leccion`.
   práctica. Para los cinco temas soportados la lección la produce el motor
   determinista, así que es reproducible y no consume cuota de IA; fuera de esos
   temas interviene Gemini.
+
+  La fase **Reglas y propiedades** despliega el **catálogo formal** del tema
+  compuesto en KaTeX (en derivadas: constante, potencia, múltiplo, suma y
+  resta, producto, cociente y cadena), y en la fase de **ejemplos** cada paso
+  lleva la etiqueta de **qué regla se está aplicando**.
+
+  El catálogo vive en la tabla `reglas_matematicas`, sembrada desde
+  [`prisma/seed-data/reglas-matematicas.json`](prisma/seed-data/reglas-matematicas.json):
+  ampliar el temario es cargar contenido, no tocar la aplicación.
+
+  > Cada regla indica si el motor determinista sabe **calificar** ejercicios de
+  > ese tipo. Conviene enseñar la regla del producto o la de la cadena, pero hoy
+  > el motor cubre la potencia sobre polinomios y no ésas; las que quedan fuera
+  > se muestran marcadas como *sólo referencia*. Prometer una práctica que
+  > después habría que corregir con la IA sería justo lo que el PRE Light evita.
 - **Módulo 5 — Validador determinista.** Sirve desde las rutas de API de
   Next.js, compartiendo núcleo con el prototipo (ver *Paridad*).
 - **Módulo 7 — Avatar + SmartBoard.** Avatar 2D con los cuatro estados

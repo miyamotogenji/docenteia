@@ -1,0 +1,259 @@
+[
+  {
+    "clave": "arit-jerarquia",
+    "tema": "aritmetica",
+    "orden": 1,
+    "nombre": "Jerarquía de operaciones",
+    "enunciado": "(\\;)\\;\\rightarrow\\;x^{n}\\;\\rightarrow\\;\\times,\\div\\;\\rightarrow\\;+,-",
+    "descripcion": "Primero lo que hay entre paréntesis, después las potencias, luego las multiplicaciones y divisiones de izquierda a derecha, y por último las sumas y restas.",
+    "ejemplo": "15 - 3 \\times 2 = 15 - 6 = 9",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "arit-conmutativa",
+    "tema": "aritmetica",
+    "orden": 2,
+    "nombre": "Propiedad conmutativa",
+    "enunciado": "a + b = b + a \\qquad a \\times b = b \\times a",
+    "descripcion": "El orden de los sumandos, o de los factores, no altera el resultado. No vale para la resta ni para la división.",
+    "ejemplo": "7 + 4 = 4 + 7 = 11",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "arit-asociativa",
+    "tema": "aritmetica",
+    "orden": 3,
+    "nombre": "Propiedad asociativa",
+    "enunciado": "(a + b) + c = a + (b + c)",
+    "descripcion": "Al sumar o multiplicar tres o más números, se pueden agrupar como convenga.",
+    "ejemplo": "(2 + 3) + 5 = 2 + (3 + 5) = 10",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "arit-distributiva",
+    "tema": "aritmetica",
+    "orden": 4,
+    "nombre": "Propiedad distributiva",
+    "enunciado": "a \\times (b + c) = a \\times b + a \\times c",
+    "descripcion": "Multiplicar por una suma equivale a multiplicar por cada sumando y sumar después.",
+    "ejemplo": "3 \\times (4 + 2) = 12 + 6 = 18",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+
+  {
+    "clave": "frac-equivalentes",
+    "tema": "fracciones",
+    "orden": 1,
+    "nombre": "Fracciones equivalentes",
+    "enunciado": "\\frac{a}{b} = \\frac{a \\times k}{b \\times k}, \\quad k \\neq 0",
+    "descripcion": "Multiplicar numerador y denominador por el mismo número no cambia el valor de la fracción. Es lo que permite buscar un denominador común.",
+    "ejemplo": "\\frac{1}{2} = \\frac{2}{4} = \\frac{3}{6}",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "frac-suma-igual",
+    "tema": "fracciones",
+    "orden": 2,
+    "nombre": "Suma y resta con igual denominador",
+    "enunciado": "\\frac{a}{c} \\pm \\frac{b}{c} = \\frac{a \\pm b}{c}",
+    "descripcion": "Con el mismo denominador, se suman o restan los numeradores y el denominador se mantiene.",
+    "ejemplo": "\\frac{2}{5} + \\frac{1}{5} = \\frac{3}{5}",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "frac-suma-distinto",
+    "tema": "fracciones",
+    "orden": 3,
+    "nombre": "Suma y resta con distinto denominador",
+    "enunciado": "\\frac{a}{b} \\pm \\frac{c}{d} = \\frac{a\\,d \\pm c\\,b}{b\\,d}",
+    "descripcion": "Se lleva todo a un denominador común y después se suman o restan los numeradores. El resultado se simplifica.",
+    "ejemplo": "\\frac{2}{3} + \\frac{5}{6} = \\frac{12 + 15}{18} = \\frac{3}{2}",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+  {
+    "clave": "frac-producto",
+    "tema": "fracciones",
+    "orden": 4,
+    "nombre": "Producto de fracciones",
+    "enunciado": "\\frac{a}{b} \\times \\frac{c}{d} = \\frac{a\\,c}{b\\,d}",
+    "descripcion": "Se multiplican los numeradores entre sí y los denominadores entre sí.",
+    "ejemplo": "\\frac{2}{3} \\times \\frac{3}{4} = \\frac{6}{12} = \\frac{1}{2}",
+    "nivel": "INTERMEDIO",
+    "practicable": false
+  },
+  {
+    "clave": "frac-cociente",
+    "tema": "fracciones",
+    "orden": 5,
+    "nombre": "Cociente de fracciones",
+    "enunciado": "\\frac{a}{b} \\div \\frac{c}{d} = \\frac{a\\,d}{b\\,c}",
+    "descripcion": "Dividir por una fracción es multiplicar por su inversa.",
+    "ejemplo": "\\frac{1}{2} \\div \\frac{3}{4} = \\frac{4}{6} = \\frac{2}{3}",
+    "nivel": "AVANZADO",
+    "practicable": false
+  },
+
+  {
+    "clave": "lin-uniforme-suma",
+    "tema": "ecuaciones_lineales",
+    "orden": 1,
+    "nombre": "Propiedad uniforme de la suma",
+    "enunciado": "a = b \\;\\Longrightarrow\\; a + c = b + c",
+    "descripcion": "Lo que se suma o se resta a un lado de la igualdad hay que sumarlo o restarlo al otro. Es lo que permite pasar un término al otro miembro.",
+    "ejemplo": "2x + 5 = 15 \\;\\Longrightarrow\\; 2x = 10",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "lin-uniforme-producto",
+    "tema": "ecuaciones_lineales",
+    "orden": 2,
+    "nombre": "Propiedad uniforme del producto",
+    "enunciado": "a = b \\;\\Longrightarrow\\; a \\times c = b \\times c, \\quad c \\neq 0",
+    "descripcion": "Se pueden multiplicar o dividir los dos lados por el mismo número distinto de cero. Es lo que permite despejar el coeficiente de la incógnita.",
+    "ejemplo": "2x = 10 \\;\\Longrightarrow\\; x = 5",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "lin-distributiva",
+    "tema": "ecuaciones_lineales",
+    "orden": 3,
+    "nombre": "Reparto del paréntesis",
+    "enunciado": "a(b + c) = a\\,b + a\\,c",
+    "descripcion": "Antes de despejar conviene deshacer los paréntesis multiplicando el factor por cada término de dentro.",
+    "ejemplo": "2(x + 3) = 10 \\;\\Longrightarrow\\; 2x + 6 = 10",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+  {
+    "clave": "lin-semejantes",
+    "tema": "ecuaciones_lineales",
+    "orden": 4,
+    "nombre": "Reducción de términos semejantes",
+    "enunciado": "a\\,x + b\\,x = (a + b)\\,x",
+    "descripcion": "Los términos que llevan la misma incógnita se agrupan sumando sus coeficientes.",
+    "ejemplo": "3x - 2x = x",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+
+  {
+    "clave": "fact-comun",
+    "tema": "factorizacion",
+    "orden": 1,
+    "nombre": "Factor común",
+    "enunciado": "a\\,b + a\\,c = a\\,(b + c)",
+    "descripcion": "Si todos los términos comparten un factor, se saca fuera del paréntesis. Es siempre el primer paso al factorizar.",
+    "ejemplo": "2x^{2} - 8 = 2(x^{2} - 4)",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "fact-diferencia-cuadrados",
+    "tema": "factorizacion",
+    "orden": 2,
+    "nombre": "Diferencia de cuadrados",
+    "enunciado": "a^{2} - b^{2} = (a - b)(a + b)",
+    "descripcion": "Una resta de dos cuadrados perfectos se factoriza como el producto de la suma por la diferencia de sus raíces. Ojo: la SUMA de cuadrados no se factoriza con números reales.",
+    "ejemplo": "x^{2} - 9 = (x - 3)(x + 3)",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+  {
+    "clave": "fact-trinomio-cuadrado",
+    "tema": "factorizacion",
+    "orden": 3,
+    "nombre": "Trinomio cuadrado perfecto",
+    "enunciado": "a^{2} \\pm 2ab + b^{2} = (a \\pm b)^{2}",
+    "descripcion": "Cuando el término central es el doble del producto de las raíces de los extremos, el trinomio es el cuadrado de un binomio.",
+    "ejemplo": "x^{2} + 6x + 9 = (x + 3)^{2}",
+    "nivel": "AVANZADO",
+    "practicable": false
+  },
+
+  {
+    "clave": "der-constante",
+    "tema": "derivadas",
+    "orden": 1,
+    "nombre": "Regla de la constante",
+    "enunciado": "\\frac{d}{dx}\\left[c\\right] = 0",
+    "descripcion": "La derivada de un número es cero: una constante no cambia, así que su razón de cambio es nula.",
+    "ejemplo": "\\frac{d}{dx}\\left[7\\right] = 0",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "der-potencia",
+    "tema": "derivadas",
+    "orden": 2,
+    "nombre": "Regla de la potencia",
+    "enunciado": "\\frac{d}{dx}\\left[x^{n}\\right] = n\\,x^{n-1}",
+    "descripcion": "Se baja el exponente multiplicando delante y al exponente se le resta uno.",
+    "ejemplo": "\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2}",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "der-multiplo",
+    "tema": "derivadas",
+    "orden": 3,
+    "nombre": "Múltiplo constante",
+    "enunciado": "\\frac{d}{dx}\\left[c \\cdot f(x)\\right] = c \\cdot f'(x)",
+    "descripcion": "Un número que multiplica se queda tal cual y sólo se deriva la función.",
+    "ejemplo": "\\frac{d}{dx}\\left[5x^{2}\\right] = 5 \\cdot 2x = 10x",
+    "nivel": "BASICO",
+    "practicable": true
+  },
+  {
+    "clave": "der-suma",
+    "tema": "derivadas",
+    "orden": 4,
+    "nombre": "Regla de la suma y la resta",
+    "enunciado": "\\frac{d}{dx}\\left[f(x) \\pm g(x)\\right] = f'(x) \\pm g'(x)",
+    "descripcion": "Un polinomio se deriva término a término, cada uno por su cuenta.",
+    "ejemplo": "\\frac{d}{dx}\\left[4x^{3} - 5x\\right] = 12x^{2} - 5",
+    "nivel": "INTERMEDIO",
+    "practicable": true
+  },
+  {
+    "clave": "der-producto",
+    "tema": "derivadas",
+    "orden": 5,
+    "nombre": "Regla del producto",
+    "enunciado": "\\frac{d}{dx}\\left[f \\cdot g\\right] = f' \\cdot g + f \\cdot g'",
+    "descripcion": "La derivada de un producto no es el producto de las derivadas: se deriva el primero por el segundo sin derivar, más el primero sin derivar por la derivada del segundo.",
+    "ejemplo": "\\frac{d}{dx}\\left[x^{2}(x+1)\\right] = 2x(x+1) + x^{2}",
+    "nivel": "AVANZADO",
+    "practicable": false
+  },
+  {
+    "clave": "der-cociente",
+    "tema": "derivadas",
+    "orden": 6,
+    "nombre": "Regla del cociente",
+    "enunciado": "\\frac{d}{dx}\\left[\\frac{f}{g}\\right] = \\frac{f' \\cdot g - f \\cdot g'}{g^{2}}",
+    "descripcion": "Derivada del numerador por el denominador, menos el numerador por la derivada del denominador, todo dividido entre el denominador al cuadrado.",
+    "ejemplo": "\\frac{d}{dx}\\left[\\frac{x}{x+1}\\right] = \\frac{1}{(x+1)^{2}}",
+    "nivel": "AVANZADO",
+    "practicable": false
+  },
+  {
+    "clave": "der-cadena",
+    "tema": "derivadas",
+    "orden": 7,
+    "nombre": "Regla de la cadena",
+    "enunciado": "\\frac{d}{dx}\\left[f(g(x))\\right] = f'(g(x)) \\cdot g'(x)",
+    "descripcion": "Para derivar una función compuesta se deriva la de fuera dejando la de dentro intacta, y se multiplica por la derivada de la de dentro.",
+    "ejemplo": "\\frac{d}{dx}\\left[(2x+1)^{3}\\right] = 3(2x+1)^{2} \\cdot 2",
+    "nivel": "AVANZADO",
+    "practicable": false
+  }
+]

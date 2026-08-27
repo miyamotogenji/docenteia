@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -18,7 +18,12 @@ import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
-import { Pizarra, tituloDeFase, type Escena } from "@/components/leccion/pizarra";
+import {
+  Pizarra,
+  tituloDeFase,
+  type Escena,
+  type ReglaPizarra,
+} from "@/components/leccion/pizarra";
 import { TextoMatematico } from "@/components/math";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -67,7 +72,13 @@ interface Veredicto {
   pista?: string;
 }
 
-export function Aula() {
+/** Una regla del catálogo, tal como llega desde la base de datos. */
+export interface ReglaVista extends ReglaPizarra {
+  tema: string;
+  nivel: string | null;
+}
+
+export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
   // ── Instancias del motor (sólo en el navegador) ────────────────────────────
   const pseRef = useRef<PSELight | null>(null);
   const ttsRef = useRef<TTS | null>(null);
@@ -321,6 +332,13 @@ export function Aula() {
   const progreso =
     controles.total > 0 ? (controles.index / controles.total) * 100 : 0;
 
+  // Las reglas del tema en curso. El catálogo llega entero desde el servidor
+  // porque son pocas decenas y así no hace falta un viaje por cada cambio.
+  const reglasDelTema = useMemo(
+    () => (tema ? reglas.filter((r) => r.tema === tema.tema) : []),
+    [reglas, tema],
+  );
+
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {
     return (
@@ -438,7 +456,7 @@ export function Aula() {
         <div className="space-y-4">
           <Progress value={progreso} />
 
-          <Pizarra escenas={escenas} resaltado={resaltado} />
+          <Pizarra escenas={escenas} resaltado={resaltado} reglas={reglasDelTema} />
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
               fórmulas se componen igual que las de la pizarra. */}
