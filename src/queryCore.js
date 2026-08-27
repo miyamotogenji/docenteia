@@ -57,6 +57,20 @@ const cacheKey = (q, intent, modo) =>
 //   2. Tope de llamadas a la IA por IP, mucho más estricto.
 //   3. Tope GLOBAL diario de llamadas a la IA: pase lo que pase, la cuota no se puede vaciar en un día.
 // Al superarse se responde 429 con un mensaje claro en español, no con un error crudo.
+//
+// ⚠️ LIMITACIÓN EN SERVERLESS (Vercel, Render con autoescalado)
+// Estos contadores viven en la memoria del proceso. El prototipo corría en UNA
+// instancia, así que eran exactos. En serverless cada lambda tiene su propia
+// memoria y se recicla sola, de modo que:
+//   · los topes por IP se aplican por instancia, no de forma global, y
+//   · el tope "global" diario deja de serlo: con N instancias, el gasto máximo
+//     real es N veces el configurado.
+// La caché de lecciones se degrada sin más (menos aciertos, nada se rompe),
+// pero el límite de cuota SÍ pierde su garantía. Para producción hay que
+// respaldar estos contadores en almacenamiento compartido (una tabla en
+// PostgreSQL o Redis). Queda anotado para el Paso 4 (despliegue productivo);
+// en un preview de revisión el riesgo es asumible porque el tráfico es de una
+// sola persona.
 const LIMITES = {
   generalPorMinuto: Number(process.env.LIMITE_GENERAL_MIN || 3000),
   iaPorMinuto: Number(process.env.LIMITE_IA_MIN || 15),

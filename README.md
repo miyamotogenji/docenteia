@@ -17,13 +17,14 @@ arquitectura del PMV 1: **Next.js (App Router) + TypeScript + PostgreSQL**.
 
 1. [Requisitos](#requisitos)
 2. [Puesta en marcha paso a paso](#puesta-en-marcha-paso-a-paso)
-3. [Variables de entorno](#variables-de-entorno)
-4. [Comandos disponibles](#comandos-disponibles)
-5. [Suite de validación (QA)](#suite-de-validación-qa)
-6. [Arquitectura](#arquitectura)
-7. [Modelo de datos](#modelo-de-datos)
-8. [El diagnóstico inicial](#el-diagnóstico-inicial)
-9. [Qué entra en el Paso 1 y qué no](#qué-entra-en-el-paso-1-y-qué-no)
+3. [Despliegue en Vercel](#despliegue-en-vercel)
+4. [Variables de entorno](#variables-de-entorno)
+5. [Comandos disponibles](#comandos-disponibles)
+6. [Suite de validación (QA)](#suite-de-validación-qa)
+7. [Arquitectura](#arquitectura)
+8. [Modelo de datos](#modelo-de-datos)
+9. [El diagnóstico inicial](#el-diagnóstico-inicial)
+10. [Qué entra en el Paso 1 y qué no](#qué-entra-en-el-paso-1-y-qué-no)
 
 ---
 
@@ -163,6 +164,72 @@ npm test
 Debe terminar sin fallos. La última ejecución sobre esta versión da 1.673
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
+
+---
+
+## Despliegue en Vercel
+
+La aplicación está lista para desplegarse sin configuración adicional: Next.js
+se detecta solo y el `build` ya ejecuta `prisma generate`.
+
+### 1. Base de datos
+
+Crea un proyecto en [Supabase](https://supabase.com) (el plan gratuito basta
+para un preview) y copia las dos cadenas de conexión desde
+*Project Settings → Database → Connection string*.
+
+### 2. Importar el repositorio
+
+En Vercel: **Add New → Project → Import Git Repository**, elige el repositorio y
+la rama que quieras previsualizar. No hace falta tocar los ajustes de build.
+
+### 3. Variables de entorno
+
+En *Settings → Environment Variables*, añade las tres obligatorias:
+
+| Variable       | Valor                                                            |
+| -------------- | ---------------------------------------------------------------- |
+| `DATABASE_URL` | Cadena del **pooler** de Supabase, puerto `6543`, con `?pgbouncer=true&connection_limit=1` |
+| `DIRECT_URL`   | Cadena **directa** de Supabase, puerto `5432`                    |
+| `AUTH_SECRET`  | `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"` |
+
+`GEMINI_API_KEY` es opcional: sin ella la aplicación arranca en modo
+demostración, que es suficiente para revisar todo el Paso 1 (el diagnóstico es
+determinista y no usa IA).
+
+> El uso del **pooler** en `DATABASE_URL` no es opcional en serverless: cada
+> función abre su propia conexión y una conexión directa agota el límite de
+> PostgreSQL en cuanto hay algo de concurrencia.
+
+### 4. Crear las tablas y sembrar
+
+Las migraciones **no** se ejecutan solas al desplegar. Desde tu máquina, con las
+mismas cadenas en `.env`:
+
+```bash
+npx prisma migrate deploy
+npm run db:seed
+```
+
+Se hace una sola vez, y ya apunta a la base de datos que usará el despliegue.
+
+### 5. Comprobar
+
+Abre `https://<tu-despliegue>.vercel.app/api/health`. Debe responder
+`"base_datos": "ok"`. Si dice `"error"`, las cadenas de conexión no son
+correctas o falta ejecutar las migraciones.
+
+### Limitación conocida en serverless
+
+Los contadores del limitador de peticiones y la caché de lecciones viven en la
+memoria del proceso. En serverless cada instancia tiene la suya, así que los
+topes se aplican **por instancia** y el tope diario global de llamadas a la IA
+deja de ser global: con N instancias, el gasto máximo real es N veces el
+configurado.
+
+Para un preview de revisión es irrelevante. Para producción hay que respaldar
+esos contadores en almacenamiento compartido (una tabla en PostgreSQL o Redis),
+y así está anotado para el Paso 4.
 
 ---
 
