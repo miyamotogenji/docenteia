@@ -122,6 +122,36 @@ export function identificarRegla<T extends { nombre: string }>(
   return mejor;
 }
 
+/**
+ * Determina qué regla está explicando el tutor AHORA MISMO.
+ *
+ * POR QUÉ EXISTE
+ * La fase de Reglas mostraba de golpe todas las tarjetas del catálogo, sin
+ * vincularlas al paso que se estaba narrando: la voz explicaba la regla de la
+ * potencia mientras en pantalla aparecían también la del cociente y la de la
+ * cadena. La pizarra y el audio contaban cosas distintas.
+ *
+ * Se recorren las líneas ya reveladas de ATRÁS HACIA ADELANTE y se devuelve la
+ * primera regla nombrada: la más reciente es la que el tutor acaba de
+ * introducir. Como las líneas aparecen una por directiva, la tarjeta cambia al
+ * ritmo del diálogo.
+ *
+ * Devuelve null mientras el tutor no haya nombrado ninguna. Es lo correcto:
+ * enseñar una tarjeta antes de que se hable de ella volvería a desincronizar la
+ * pizarra, sólo que en la otra dirección.
+ */
+export function reglaActiva<T extends { nombre: string }>(
+  lineas: readonly string[],
+  reglas: readonly T[],
+): T | null {
+  if (!reglas.length) return null;
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    const encontrada = identificarRegla(lineas[i], reglas);
+    if (encontrada) return encontrada;
+  }
+  return null;
+}
+
 export function adaptarCatalogo(oficial: ReglaOficial[]): ReglaAdaptada[] {
   if (!Array.isArray(oficial) || oficial.length === 0) {
     throw new Error("El catálogo de reglas está vacío o no es una lista.");

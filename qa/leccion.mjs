@@ -28,7 +28,7 @@ import {
   separarProsaYMatematicas,
 } from "../lib/matematicas.ts";
 import { esFaseConocida, tituloDeFase } from "../lib/leccion/fases.ts";
-import { adaptarCatalogo, identificarRegla } from "../lib/leccion/reglas.ts";
+import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
@@ -191,6 +191,49 @@ if (catalogo) {
     "ante nombres solapados se elige el más específico",
     identificarRegla("Aplicamos la regla de la suma y la resta", conAmbiguedad)?.nombre ===
       "Regla de la suma y la resta",
+  );
+
+  // ── Sincronía entre la pizarra y el audio ─────────────────────────────────
+  // La fase de Reglas debe componer ÚNICAMENTE la tarjeta de la regla que el
+  // tutor está explicando. Mostrar el catálogo entero hacía que la voz hablara
+  // de la potencia mientras en pantalla aparecían el cociente y la cadena.
+  console.log("\n · Regla activa (sincronía pizarra ↔ audio)");
+
+  check(
+    "sin líneas todavía, no se muestra ninguna tarjeta",
+    reglaActiva([], derivadas) === null,
+  );
+  check(
+    "una línea que no nombra regla no activa ninguna",
+    reglaActiva(["Vamos a ver cómo se derivan las potencias."], derivadas) === null,
+  );
+
+  // El texto REAL con el que el motor abre la fase de reglas en derivadas.
+  const lineasReglaReal = [
+    "Para derivar una potencia usamos la REGLA DE LA POTENCIA: se baja el exponente multiplicando delante y se le resta 1. Por ejemplo, la derivada de x³ es 3x², y la de x⁵ es 5x⁴. Veámoslo con calma.",
+    "Regla de la potencia: la derivada de xⁿ es n·xⁿ⁻¹",
+  ];
+  const activa = reglaActiva(lineasReglaReal, derivadas);
+  check(
+    "con el texto real del motor, la regla activa es la de la potencia",
+    activa?.nombre === "Regla de la potencia",
+    `obtenido: ${activa?.nombre ?? "null"}`,
+  );
+
+  // Lo esencial del defecto: NO deben aparecer las demás.
+  for (const ausente of ["Regla del cociente", "Regla de la cadena", "Regla del producto"]) {
+    check(`no se activa «${ausente}» mientras se explica la potencia`, activa?.nombre !== ausente);
+  }
+
+  // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
+  const trasAvanzar = reglaActiva(
+    [...lineasReglaReal, "Ahora la regla de la suma y la resta: se deriva término a término."],
+    derivadas,
+  );
+  check(
+    "al avanzar el diálogo, la tarjeta pasa a la regla nueva",
+    trasAvanzar?.nombre === "Regla de la suma y la resta",
+    `obtenido: ${trasAvanzar?.nombre ?? "null"}`,
   );
 }
 
