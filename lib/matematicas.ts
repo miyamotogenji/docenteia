@@ -26,13 +26,19 @@ const FUNCIONES = new Set([
 ]);
 
 /**
- * ¿Esta línea es una expresión matemática o una frase en prosa?
+ * ¿Esta línea es una expresión matemática PURA, que se pueda componer entera?
  *
  * La pizarra recibe las dos cosas: las directivas `pizarra` traen la fórmula
- * ("2x + 5 = 15") y las de `hablar` traen la explicación en castellano. Pasar
- * una frase entera a KaTeX produciría un amasijo ilegible, así que hay que
- * distinguirlas. El criterio es simple y suficiente: dos o más palabras reales
- * (tres letras o más, sin contar nombres de función) delatan una frase.
+ * ("2x + 5 = 15") y las de `hablar` traen la explicación en castellano. Pero
+ * también llegan líneas MIXTAS —"derivada de x² = 2x", "unidades: 4 + 7 = 11"—
+ * con una etiqueta en castellano delante de la fórmula.
+ *
+ * El criterio es que NO haya ninguna palabra real. Antes se toleraba una, y
+ * bastaba para que esas líneas mixtas se compusieran enteras con KaTeX: al
+ * pasarlas por el motor matemático, "derivada" y "unidades" se tipografían como
+ * un producto de variables sueltas —d·e·r·i·v·a·d·a— y en pantalla las letras
+ * aparecen pegadas y en cursiva. Una línea con palabras se trata como prosa con
+ * fórmulas dentro, que es lo que es.
  */
 export function pareceMatematica(linea: string): boolean {
   const texto = String(linea ?? "").trim();
@@ -40,7 +46,48 @@ export function pareceMatematica(linea: string): boolean {
   const palabras = (texto.toLowerCase().match(/[a-záéíóúñ]{3,}/g) || []).filter(
     (p) => !FUNCIONES.has(p),
   );
-  return palabras.length < 2;
+  return palabras.length === 0;
+}
+
+/**
+ * Reescribe en NOTACIÓN FORMAL las líneas que el motor escribe en castellano.
+ *
+ * El motor rotula la derivada con palabras —"derivada de x² = 2x"—, que es
+ * legible pero no es notación matemática. En la pizarra corresponde el operador
+ * formal:
+ *
+ *   derivada de x² = 2x   →   d/dx(x²) = 2x   compuesto con \frac{d}{dx}
+ *
+ * Devuelve LaTeX ya listo, o null si la línea no encaja en ningún patrón
+ * conocido. Sólo se aplica a lo que se ESCRIBE en la pizarra: en la explicación
+ * hablada, "la derivada de x³ es 3x²" es una frase, y convertir el "es" en un
+ * "=" cambiaría lo que el tutor está diciendo.
+ */
+export function notacionFormal(linea: string): string | null {
+  const texto = String(linea ?? "").trim();
+  if (!texto) return null;
+
+  // "derivada de <función> = <resultado>"
+  const conResultado = texto.match(/^derivada\s+de\s+(.+?)\s*=\s*(.+)$/i);
+  if (conResultado) {
+    return `\\frac{d}{dx}\\left(${planoALatex(conResultado[1])}\\right) = ${planoALatex(conResultado[2])}`;
+  }
+
+  // "derivada de <función>"
+  const soloFuncion = texto.match(/^derivada\s+de\s+(.+)$/i);
+  if (soloFuncion) {
+    return `\\frac{d}{dx}\\left(${planoALatex(soloFuncion[1])}\\right)`;
+  }
+
+  // "<etiqueta>: <fórmula>" — "unidades: 4 + 7 = 11". La etiqueta se compone
+  // como TEXTO dentro de la fórmula, de modo que la línea sigue siendo una sola
+  // expresión centrada pero la palabra se lee como palabra.
+  const conEtiqueta = texto.match(/^([A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]{3,20}):\s*(.+)$/);
+  if (conEtiqueta && pareceMatematica(conEtiqueta[2])) {
+    return `\\text{${conEtiqueta[1].trim()}:}\\;\\; ${planoALatex(conEtiqueta[2])}`;
+  }
+
+  return null;
 }
 
 /**
