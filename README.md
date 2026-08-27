@@ -201,23 +201,40 @@ determinista y no usa IA).
 > función abre su propia conexión y una conexión directa agota el límite de
 > PostgreSQL en cuanto hay algo de concurrencia.
 
-### 4. Crear las tablas y sembrar
+### 4. Las tablas se crean solas
 
-Las migraciones **no** se ejecutan solas al desplegar. Desde tu máquina, con las
-mismas cadenas en `.env`:
+No hay que ejecutar nada a mano. El `package.json` define un script
+`vercel-build`, que Vercel usa de forma automática cuando existe:
 
-```bash
-npx prisma migrate deploy
-npm run db:seed
+```
+prisma generate && prisma migrate deploy && seed && next build
 ```
 
-Se hace una sola vez, y ya apunta a la base de datos que usará el despliegue.
+Es decir: cada despliegue aplica las migraciones pendientes y siembra los datos
+base antes de compilar. La semilla es idempotente, así que repetirla en cada
+despliegue no duplica nada.
+
+> Por eso **`DIRECT_URL` es obligatoria**, no opcional: `prisma migrate deploy`
+> no puede migrar a través del pooler y usa la conexión directa. Si falta, el
+> despliegue falla con `Environment variable not found: DIRECT_URL`.
+
+El script `build` normal (`prisma generate && next build`) se deja intacto para
+el desarrollo local, donde no se quiere que compilar toque la base de datos.
 
 ### 5. Comprobar
 
-Abre `https://<tu-despliegue>.vercel.app/api/health`. Debe responder
-`"base_datos": "ok"`. Si dice `"error"`, las cadenas de conexión no son
-correctas o falta ejecutar las migraciones.
+Abre `https://<tu-despliegue>.vercel.app/api/health`. Responde con un
+diagnóstico preciso en lugar de un simple ok/error:
+
+| `base_datos`     | Qué significa                                      |
+| ---------------- | -------------------------------------------------- |
+| `ok`             | Todo listo, con el banco de preguntas cargado.     |
+| `sin_configurar` | Faltan las variables de entorno.                   |
+| `sin_migrar`     | La base responde pero no tiene las tablas.         |
+| `sin_sembrar`    | Hay tablas, pero el banco de preguntas está vacío. |
+| `error`          | La base no es alcanzable o las credenciales fallan.|
+
+El campo `detalle` dice exactamente qué comando falta.
 
 ### Limitación conocida en serverless
 
