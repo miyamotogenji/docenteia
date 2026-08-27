@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.967
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.969
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -321,7 +321,7 @@ Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
-Lección (Paso 2)     221 aprobadas · 0 fallidas
+Lección (Paso 2)     223 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -504,8 +504,7 @@ La lección interactiva vive en `/estudiante/leccion`.
   narradas: la tarjeta aparece cuando se la nombra y cambia al ritmo del
   diálogo. Mostrar el catálogo entero de golpe desincronizaba la pizarra del
   audio —la voz explicaba la potencia mientras en pantalla aparecían también el
-  cociente y la cadena—. El catálogo completo queda a mano, plegado, **fuera**
-  del hilo de la clase.
+  cociente y la cadena—. El catálogo completo del tema NO se pinta en la pizarra en ningún momento.
 
   En la fase de **ejemplos**, cada paso lleva la etiqueta de **qué regla se está
   aplicando**.

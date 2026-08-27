@@ -19,7 +19,6 @@ import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/ps
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
 import {
-  CatalogoReglas,
   Pizarra,
   tituloDeFase,
   type Escena,
@@ -458,10 +457,6 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
           <Progress value={progreso} />
 
           <Pizarra escenas={escenas} resaltado={resaltado} reglas={reglasDelTema} />
-
-          {/* El catálogo completo, como material de consulta y fuera del hilo
-              de la clase: la pizarra sólo enseña la regla en curso. */}
-          <CatalogoReglas reglas={reglasDelTema} />
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
               fórmulas se componen igual que las de la pizarra. */}
