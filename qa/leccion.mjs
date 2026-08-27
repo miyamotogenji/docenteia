@@ -14,6 +14,8 @@
 //
 // Necesita la aplicación levantada:  npm run dev  (en otra terminal)
 
+import { readFileSync } from "node:fs";
+
 import katex from "katex";
 
 import { computeAnswer } from "../src/preLight.js";
@@ -26,6 +28,7 @@ import {
   separarProsaYMatematicas,
 } from "../lib/matematicas.ts";
 import { esFaseConocida, tituloDeFase } from "../lib/leccion/fases.ts";
+import { adaptarCatalogo, identificarRegla } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
@@ -94,6 +97,100 @@ for (const c of casosProsa) {
   check(
     `«${c.entrada}» ${c.math ? "es fórmula" : "es prosa"}`,
     pareceMatematica(c.entrada) === c.math,
+  );
+}
+
+// ── Módulo 4 · catálogo formal de reglas ─────────────────────────────────────
+// La fase "Reglas y propiedades" debe presentar el catálogo completo del tema,
+// no una sola regla. El catálogo vive como dato, no en el código.
+console.log("\n · Catálogo formal de reglas (Módulo 4)");
+
+const catalogoCrudo = JSON.parse(
+  readFileSync(new URL("../prisma/seed-data/reglas-matematicas.json", import.meta.url), "utf8"),
+);
+
+let catalogo = null;
+try {
+  catalogo = adaptarCatalogo(catalogoCrudo);
+  check("el catálogo se adapta sin errores", true);
+} catch (e) {
+  check("el catálogo se adapta sin errores", false, e.message);
+}
+
+if (catalogo) {
+  // Cada tema tiene que tener reglas: uno sin ellas dejaría su fase vacía.
+  for (const tema of TEMAS_LECCION) {
+    const delTema = catalogo.filter((r) => r.tema === tema.tema);
+    check(`[${tema.clave}] tiene reglas en el catálogo`, delTema.length > 0, `${delTema.length}`);
+  }
+
+  // Las reglas que el cliente pidió explícitamente para derivadas.
+  const derivadas = catalogo.filter((r) => r.tema === "DERIVADAS");
+  for (const exigida of ["constante", "potencia", "suma", "producto", "cadena"]) {
+    check(
+      `derivadas incluye la regla de la ${exigida}`,
+      derivadas.some((r) => new RegExp(exigida, "i").test(r.nombre)),
+      `hay: ${derivadas.map((r) => r.nombre).join(", ")}`,
+    );
+  }
+
+  // El catálogo se escribe directamente en LaTeX: si una fórmula no compila,
+  // el alumno vería el error en rojo en mitad de la lección.
+  for (const regla of catalogo) {
+    for (const [campo, valor] of [
+      ["enunciado", regla.enunciado],
+      ["ejemplo", regla.ejemplo],
+    ]) {
+      if (!valor) continue;
+      let err = null;
+      try {
+        katex.renderToString(valor, { throwOnError: true, strict: false });
+      } catch (e) {
+        err = e.message;
+      }
+      check(`[${regla.clave}] el ${campo} compila en KaTeX`, err === null, err ?? "");
+    }
+  }
+
+  // Un catálogo con una regla sin práctica calificable es correcto y esperado
+  // —el motor no cubre la del producto ni la de la cadena—, pero al menos una
+  // por tema tiene que serlo, o la fase de práctica se quedaría sin contenido.
+  for (const tema of TEMAS_LECCION) {
+    const practicables = catalogo.filter((r) => r.tema === tema.tema && r.practicable);
+    check(
+      `[${tema.clave}] al menos una regla admite práctica calificada`,
+      practicables.length > 0,
+    );
+  }
+
+  console.log("\n · Identificación de la regla aplicada");
+  const casosRegla = [
+    {
+      texto: "Regla de la potencia: multiplicamos el coeficiente por el exponente, y al exponente le restamos 1.",
+      esperada: "Regla de la potencia",
+    },
+    { texto: "Vamos a derivar x².", esperada: null },
+    { texto: "Una derivada mide la RAPIDEZ con la que cambia una función.", esperada: null },
+  ];
+  for (const caso of casosRegla) {
+    const encontrada = identificarRegla(caso.texto, derivadas);
+    check(
+      caso.esperada
+        ? `«${caso.texto.slice(0, 32)}…» se etiqueta «${caso.esperada}»`
+        : `«${caso.texto.slice(0, 32)}…» no se etiqueta`,
+      (encontrada?.nombre ?? null) === caso.esperada,
+      `obtenido: ${encontrada?.nombre ?? "null"}`,
+    );
+  }
+
+  // Con nombres que se contienen unos a otros gana el MÁS LARGO: "regla de la
+  // suma y la resta" contiene "regla de la suma", y quedarse con el primero
+  // etiquetaría mal el paso.
+  const conAmbiguedad = [{ nombre: "Regla de la suma" }, { nombre: "Regla de la suma y la resta" }];
+  check(
+    "ante nombres solapados se elige el más específico",
+    identificarRegla("Aplicamos la regla de la suma y la resta", conAmbiguedad)?.nombre ===
+      "Regla de la suma y la resta",
   );
 }
 

@@ -302,6 +302,45 @@ model RegistroError {
   @@map("registros_error")
 }
 
+// ── Catálogo formal de reglas ────────────────────────────────────────────────
+
+/// Reglas y propiedades de cada tema, tal como se presentan en la fase
+/// "Reglas y propiedades" de la lección.
+///
+/// Vive en la base de datos, y no en el código, para que ampliar el temario sea
+/// cargar contenido y no tocar la aplicación: el motor pedagógico decide CÓMO
+/// se enseña, pero QUÉ reglas existen es currículo.
+model ReglaMatematica {
+  id    String @id @default(cuid())
+  clave String @unique
+  tema  Tema
+  orden Int
+
+  nombre String
+  /// Enunciado formal en LaTeX, para componerlo con KaTeX.
+  enunciado String
+  /// Explicación en castellano, en prosa.
+  descripcion String
+  /// Ejemplo breve de aplicación, también en LaTeX.
+  ejemplo String?
+
+  nivel NivelAcademico?
+
+  /// ¿El motor determinista sabe CALIFICAR ejercicios de esta regla?
+  ///
+  /// No todas las reglas que conviene ENSEÑAR se pueden corregir hoy con
+  /// garantía: el motor cubre la regla de la potencia sobre polinomios, pero no
+  /// la del producto ni la de la cadena. Marcarlo aquí permite mostrar el
+  /// catálogo completo sin prometer una práctica que después no se podría
+  /// calificar sin recurrir a la IA, que es justo lo que el PRE Light evita.
+  practicable Boolean @default(false)
+
+  creadoEn DateTime @default(now())
+
+  @@index([tema, orden])
+  @@map("reglas_matematicas")
+}
+
 // ── Diagnóstico inicial ──────────────────────────────────────────────────────
 
 /// Banco de preguntas del diagnóstico. El banco oficial trae una pregunta por

@@ -22,6 +22,7 @@ import {
   type PreguntaOficial,
   type TemaEnum,
 } from "../lib/diagnostico/banco.ts";
+import { adaptarCatalogo, type ReglaOficial } from "../lib/leccion/reglas.ts";
 
 const prisma = new PrismaClient();
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -193,6 +194,41 @@ async function main() {
   if (retiradas.count > 0) {
     console.log(`    (${retiradas.count} pregunta(s) anterior(es) desactivada(s), historial intacto)`);
   }
+
+  // 3.5. Catálogo formal de reglas y propiedades
+  const rutaReglas = join(aqui, "seed-data", "reglas-matematicas.json");
+  const reglas = adaptarCatalogo(
+    JSON.parse(readFileSync(rutaReglas, "utf8")) as ReglaOficial[],
+  );
+
+  for (const r of reglas) {
+    await prisma.reglaMatematica.upsert({
+      where: { clave: r.clave },
+      update: {
+        tema: r.tema,
+        orden: r.orden,
+        nombre: r.nombre,
+        enunciado: r.enunciado,
+        descripcion: r.descripcion,
+        ejemplo: r.ejemplo,
+        nivel: r.nivel,
+        practicable: r.practicable,
+      },
+      create: {
+        clave: r.clave,
+        tema: r.tema,
+        orden: r.orden,
+        nombre: r.nombre,
+        enunciado: r.enunciado,
+        descripcion: r.descripcion,
+        ejemplo: r.ejemplo,
+        nivel: r.nivel,
+        practicable: r.practicable,
+      },
+    });
+  }
+  const temasConReglas = new Set(reglas.map((r) => r.tema)).size;
+  console.log(`  ✓ Reglas y propiedades: ${reglas.length} en ${temasConReglas} temas`);
 
   // 4. Usuarios que el registro público no crea
   for (const [rol, datosUsuario] of [
