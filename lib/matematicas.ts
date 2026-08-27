@@ -7,6 +7,82 @@
  * directamente en la pantalla del alumno.
  */
 
+// ── Notación plana → LaTeX ───────────────────────────────────────────────────
+// El motor pedagógico escribe la pizarra en notación plana ("12x³ - 4x",
+// "1/2 + 1/4"), que es la que entienden sus analizadores y su suite de pruebas.
+// La pizarra del alumno, en cambio, debe verse compuesta. Aquí se traduce lo
+// uno en lo otro, sin tocar el motor.
+
+const SUPERINDICES: Record<string, string> = {
+  "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4",
+  "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9",
+  "⁻": "-", "⁺": "+", "ⁿ": "n",
+};
+
+/** Nombres de función que no cuentan como prosa al decidir si una línea es matemática. */
+const FUNCIONES = new Set([
+  "sin", "sen", "cos", "tan", "cot", "sec", "csc",
+  "log", "ln", "exp", "lim", "max", "min", "sqrt", "raiz",
+]);
+
+/**
+ * ¿Esta línea es una expresión matemática o una frase en prosa?
+ *
+ * La pizarra recibe las dos cosas: las directivas `pizarra` traen la fórmula
+ * ("2x + 5 = 15") y las de `hablar` traen la explicación en castellano. Pasar
+ * una frase entera a KaTeX produciría un amasijo ilegible, así que hay que
+ * distinguirlas. El criterio es simple y suficiente: dos o más palabras reales
+ * (tres letras o más, sin contar nombres de función) delatan una frase.
+ */
+export function pareceMatematica(linea: string): boolean {
+  const texto = String(linea ?? "").trim();
+  if (!texto) return false;
+  const palabras = (texto.toLowerCase().match(/[a-záéíóúñ]{3,}/g) || []).filter(
+    (p) => !FUNCIONES.has(p),
+  );
+  return palabras.length < 2;
+}
+
+/**
+ * Traduce notación plana a LaTeX para componerla con KaTeX.
+ *
+ * Es la inversa de `latexAPlano()`: aquélla existe para que el motor pueda
+ * verificar, y ésta para que el alumno pueda leer.
+ */
+export function planoALatex(expresion: string): string {
+  let s = String(expresion ?? "");
+
+  // Signos menos tipográficos → el menos ASCII que entiende KaTeX.
+  s = s.replace(/[−–—]/g, "-");
+
+  // Superíndices Unicode en bloque: "x³" → "x^{3}", "xⁿ⁻¹" → "x^{n-1}".
+  s = s.replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺ⁿ]+/g, (m) => {
+    const exp = [...m].map((c) => SUPERINDICES[c] ?? "").join("");
+    return exp ? `^{${exp}}` : "";
+  });
+
+  // Operadores.
+  s = s
+    .replace(/·/g, " \\cdot ")
+    .replace(/×/g, " \\times ")
+    .replace(/÷/g, " \\div ")
+    .replace(/≠/g, " \\neq ")
+    .replace(/≤/g, " \\leq ")
+    .replace(/≥/g, " \\geq ")
+    .replace(/≈/g, " \\approx ")
+    .replace(/⇒|=>/g, " \\Rightarrow ")
+    .replace(/→/g, " \\to ");
+
+  // Fracciones NUMÉRICAS: "1/2" → "\frac{1}{2}". Sólo dígito/dígito, para no
+  // estropear "d/dx", que no es una fracción sino una notación de derivada.
+  s = s.replace(/(?<![\w}])(\d+)\s*\/\s*(\d+)(?![\w{])/g, "\\frac{$1}{$2}");
+
+  // Caracteres que LaTeX interpreta como órdenes y aquí son literales.
+  s = s.replace(/%/g, "\\%").replace(/(?<!\\)&/g, "\\&");
+
+  return s.replace(/\s+/g, " ").trim();
+}
+
 export type TipoParte = "texto" | "linea" | "bloque";
 
 export interface Parte {

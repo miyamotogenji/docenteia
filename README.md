@@ -7,9 +7,11 @@ matemática) y adapta cada lección al nivel real del estudiante.
 Este repositorio contiene la migración del prototipo Node.js/Express a la
 arquitectura del PMV 1: **Next.js (App Router) + TypeScript + PostgreSQL**.
 
-> **Estado: Paso 1 completado** — fundación, arquitectura, persistencia,
-> autenticación con roles y diagnóstico inicial. Los pasos 2, 3 y 4 (motor
-> pedagógico LSG, capa multimodal y panel docente) están descritos al final.
+> **Estado: pasos 1 y 2 completados.** El Paso 1 entregó la fundación,
+> la persistencia, el control de roles y el diagnóstico inicial. El Paso 2
+> añade la lección interactiva: motor pedagógico LSG en cuatro fases, avatar 2D,
+> pizarra con KaTeX, voz en español y corrección determinista en servidor.
+> Queda el Paso 4 (panel docente y despliegue productivo), descrito al final.
 
 ---
 
@@ -161,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.746
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.850
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -308,6 +310,7 @@ manifiesta como una cascada de fallos de prueba, que es un síntoma engañoso.
 | Batería               | Qué comprueba                                                       |
 | --------------------- | ------------------------------------------------------------------- |
 | `qa/diagnostico.mjs`  | El banco oficial de preguntas, contra el motor determinista.         |
+| `qa/leccion.mjs`      | La lección multimodal: 4 fases, KaTeX, botones y corrección.         |
 | `qa/qa.mjs`           | Lógica (clasificador, solver, saneo) y lecciones reales end-to-end.  |
 | `qa/frontend.mjs`     | Funciones de decisión del frontend, sin servidor.                    |
 | `qa/sesiones.mjs`     | Continuidad de tema a lo largo de una conversación.                  |
@@ -318,6 +321,7 @@ Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
+Lección (Paso 2)     104 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -480,15 +484,42 @@ y la regla, en un único sitio:
   esquemas LSG operativos desde la aplicación Next.
 - Suite de QA ejecutable en local, sin dependencia de Render.
 
+### Entregado en el Paso 2
+
+La lección interactiva vive en `/estudiante/leccion`.
+
+- **Módulo 4 — Generador dinámico de lecciones.** El LSG llega estructurado en
+  las cuatro fases obligatorias: concepto → reglas → ejemplos resueltos →
+  práctica. Para los cinco temas soportados la lección la produce el motor
+  determinista, así que es reproducible y no consume cuota de IA; fuera de esos
+  temas interviene Gemini.
+- **Módulo 5 — Validador determinista.** Sirve desde las rutas de API de
+  Next.js, compartiendo núcleo con el prototipo (ver *Paridad*).
+- **Módulo 7 — Avatar + SmartBoard.** Avatar 2D con los cuatro estados
+  (*esperando*, *hablando*, *pensando*, *corrigiendo*) sincronizados con la voz,
+  y pizarra con renderizado en KaTeX y revelación progresiva al ritmo de la
+  explicación, narrada en español con la Web Speech API.
+- **Módulo 8 — Entorno de resolución.** Caja de respuesta y botones de apoyo:
+  *No entendí este paso*, *Dame otro ejemplo*, *Explicar regla*, más ajuste de
+  dificultad. Ninguno cambia de tema.
+- **Módulo 9 — Corrección automática.** La respuesta se evalúa contra la
+  solución que **recalcula el servidor**, no contra un valor enviado por el
+  navegador. Cada intento queda registrado en `registros_progreso`, y los
+  fallos alimentan el catálogo de debilidades.
+
+Dos decisiones que conviene conocer:
+
+- **La pizarra se traduce, el motor no se toca.** El motor escribe en notación
+  plana (`12x³ - 4x`), que es la que entienden sus analizadores y su suite.
+  `planoALatex()` la compone para el alumno sin alterar una línea de la lógica
+  validada.
+- **Lo que no se puede calcular, no se califica.** Si el motor no cubre un
+  enunciado, la corrección lo dice en lugar de emitir un veredicto. Dar por
+  buena una respuesta que no se ha podido verificar es exactamente la
+  alucinación que este módulo existe para evitar.
+
 ### Pasos siguientes
 
-- **Paso 2** — Motor pedagógico LSG con las 4 fases obligatorias, validador
-  ampliado y ramificación de errores con pistas.
-- **Paso 3** — SmartBoard con renderizado progresivo, TTS sincronizado en
-  español y avatar 2D reactivo. El avatar reutiliza el SVG existente
-  (`public/avatar.js`) remapeando estados: *esperando* → `neutral`,
-  *hablando* → `hablando`, *pensando* → `pensando`, *corrigiendo* →
-  `preguntando`.
 - **Paso 4** — Panel docente con métricas y mapa de calor, y despliegue
   productivo en Vercel + Supabase.
 

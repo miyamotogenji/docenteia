@@ -1,0 +1,283 @@
+// Validación del PASO 2 — lección interactiva multimodal.
+//
+// Cubre lo que se entrega en este paso y que no verificaba ninguna batería:
+//
+//   Módulo 4 — la lección llega estructurada en las 4 fases pedagógicas
+//              obligatorias (concepto → reglas → ejemplos → práctica).
+//   Módulo 5 — la lección de los cinco temas sale del motor determinista, no
+//              de la IA, y su aritmética es correcta.
+//   Módulo 7 — todo lo que se escribe en la pizarra se puede componer con
+//              KaTeX sin errores.
+//   Módulo 8 — los botones de apoyo mantienen el tema en lugar de cambiarlo.
+//   Módulo 9 — la corrección determinista acierta y, sobre todo, se niega a
+//              calificar lo que no ha podido calcular.
+//
+// Necesita la aplicación levantada:  npm run dev  (en otra terminal)
+
+import katex from "katex";
+
+import { computeAnswer } from "../src/preLight.js";
+import { checkAnswer, flattenLSG } from "../public/pseLight.js";
+// Se prueba el MISMO resolutor que usa la ruta de corrección, no una copia.
+import { resolverEjercicio } from "../lib/leccion/correccion.ts";
+import { pareceMatematica, planoALatex } from "../lib/matematicas.ts";
+import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
+import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
+import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
+
+let ok = 0;
+const fallos = [];
+
+function check(nombre, cond, detalle = "") {
+  if (cond) {
+    ok++;
+    console.log(`   ✓ ${nombre}`);
+  } else {
+    fallos.push(nombre + (detalle ? ` — ${detalle}` : ""));
+    console.log(`   ✗ ${nombre}${detalle ? `  (${detalle})` : ""}`);
+  }
+}
+
+async function consultar(cuerpo) {
+  const r = await fetch(`${BASE}/api/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(cuerpo),
+  });
+  return r.json();
+}
+
+console.log("\n═══════════════════════════════════════════════════════════");
+console.log(" PASO 2 — lección interactiva multimodal");
+console.log("═══════════════════════════════════════════════════════════\n");
+
+await exigirServidor();
+
+// ── Módulo 7 · notación plana → LaTeX ────────────────────────────────────────
+console.log(" · Traducción a LaTeX para la pizarra (Módulo 7)");
+
+const casosLatex = [
+  { entrada: "12x³ - 4x", esperado: "12x^{3} - 4x" },
+  { entrada: "x² - 9", esperado: "x^{2} - 9" },
+  { entrada: "1/2 + 1/4", esperado: "\\frac{1}{2} + \\frac{1}{4}" },
+  { entrada: "3 · 4", esperado: "3 \\cdot 4" },
+  { entrada: "12 ÷ 6", esperado: "12 \\div 6" },
+  { entrada: "2x + 5 = 15", esperado: "2x + 5 = 15" },
+  { entrada: "xⁿ⁻¹", esperado: "x^{n-1}" },
+];
+for (const c of casosLatex) {
+  const obtenido = planoALatex(c.entrada);
+  check(`«${c.entrada}» → «${c.esperado}»`, obtenido === c.esperado, `obtenido: «${obtenido}»`);
+}
+
+// "d/dx" es notación de derivada, no una fracción: convertirla la rompería.
+check(
+  "d/dx no se convierte en fracción",
+  !planoALatex("d/dx[x³]").includes("\\frac"),
+  planoALatex("d/dx[x³]"),
+);
+
+console.log("\n · Distinción entre fórmula y prosa");
+const casosProsa = [
+  { entrada: "2x + 5 = 15", math: true },
+  { entrada: "x² - 9", math: true },
+  { entrada: "d/dx[xⁿ] = n·xⁿ⁻¹", math: true },
+  { entrada: "Escribe tu ejercicio y lo resuelvo paso a paso", math: false },
+  { entrada: "Regla de la potencia", math: false },
+];
+for (const c of casosProsa) {
+  check(
+    `«${c.entrada}» ${c.math ? "es fórmula" : "es prosa"}`,
+    pareceMatematica(c.entrada) === c.math,
+  );
+}
+
+// ── Módulos 4, 5 y 7 · la lección de cada tema ───────────────────────────────
+console.log("\n · Lección de cada tema (Módulos 4, 5 y 7)");
+
+/** Fases pedagógicas obligatorias, en orden. */
+const FASES = [
+  { nombre: "concepto", patron: /concepto/i },
+  { nombre: "reglas", patron: /regla|propiedad/i },
+  { nombre: "ejemplo", patron: /ejemplo/i },
+  { nombre: "practica", patron: /practica|práctica/i },
+];
+
+const estadoPorTema = new Map();
+
+for (const tema of TEMAS_LECCION) {
+  const estado = estadoInicial();
+  estado.claveTema = tema.clave;
+  const cuerpo = construirPeticion(tema.consulta, estado);
+  const datos = await consultar(cuerpo);
+
+  const etiqueta = `[${tema.clave}]`;
+
+  // Módulo 5: los cinco temas los resuelve el motor determinista, no la IA.
+  check(
+    `${etiqueta} la lección es determinista (no consume IA)`,
+    datos.fuente_ia === "local",
+    `fuente_ia=${datos.fuente_ia}`,
+  );
+
+  // Módulo 4: las cuatro fases pedagógicas obligatorias.
+  const modulos = Array.isArray(datos.lsg?.modulos)
+    ? datos.lsg.modulos.map((m) => String(m.id))
+    : [];
+  check(`${etiqueta} la lección viene en módulos`, modulos.length > 0, `módulos: ${modulos.length}`);
+  for (const fase of FASES) {
+    check(
+      `${etiqueta} incluye la fase «${fase.nombre}»`,
+      modulos.some((id) => fase.patron.test(id)),
+      `módulos: ${modulos.join(", ")}`,
+    );
+  }
+
+  // Módulo 7: todo lo que va a la pizarra debe poder componerse.
+  const pasos = flattenLSG(datos.lsg || {});
+  const pizarras = pasos.filter((p) => p.tipo === "pizarra").map((p) => p.contenido);
+  check(`${etiqueta} escribe en la pizarra`, pizarras.length > 0);
+
+  let fallosKatex = 0;
+  for (const linea of pizarras) {
+    if (!pareceMatematica(linea)) continue; // los avisos en prosa no se componen
+    try {
+      katex.renderToString(planoALatex(linea), { throwOnError: true, strict: false });
+    } catch (e) {
+      fallosKatex++;
+      console.log(`      · no compila: «${linea}» → ${e.message.slice(0, 80)}`);
+    }
+  }
+  check(`${etiqueta} toda la pizarra se compone con KaTeX`, fallosKatex === 0, `${fallosKatex} fallo(s)`);
+
+  // Se guarda el estado para probar después los botones de apoyo.
+  estado.temaActivo = tema.consulta;
+  if (datos.cursores) estado.cursores = datos.cursores;
+  estado.previo = pasos
+    .filter((p) => p.tipo === "hablar")
+    .slice(0, 3)
+    .map((p) => p.texto)
+    .join(" ")
+    .slice(0, 600);
+  estado.ejercicio = pizarras[pizarras.length - 1] ?? "";
+  estadoPorTema.set(tema.clave, estado);
+}
+
+// ── Módulo 8 · los botones de apoyo mantienen el tema ────────────────────────
+console.log("\n · Botones de apoyo (Módulo 8)");
+
+const BOTONES = [
+  { etiqueta: "No entendí este paso", consulta: "No entendí, explícalo mejor", seguimiento: "reexplicar", parte: "resolucion" },
+  { etiqueta: "Dame otro ejemplo", consulta: "Dame otro ejemplo", seguimiento: "continuacion" },
+  { etiqueta: "Explicar regla", consulta: "Explícame la regla que se aplica", seguimiento: "reexplicar", parte: "concepto" },
+];
+
+for (const tema of TEMAS_LECCION) {
+  const estado = estadoPorTema.get(tema.clave);
+  for (const boton of BOTONES) {
+    const cuerpo = construirPeticion(boton.consulta, estado, {
+      seguimiento: boton.seguimiento,
+      parte: boton.parte,
+    });
+    const datos = await consultar(cuerpo);
+    const pasos = flattenLSG(datos.lsg || {});
+
+    check(
+      `[${tema.clave}] «${boton.etiqueta}» responde sin error`,
+      Boolean(datos.lsg) && pasos.length > 0 && !datos.error,
+      datos.error ?? `pasos: ${pasos.length}`,
+    );
+    // Un botón de apoyo NO debe cambiar de asunto: se sigue en el mismo tema.
+    check(
+      `[${tema.clave}] «${boton.etiqueta}» no cambia de tema`,
+      datos.reexplicacion === true,
+      `reexplicacion=${datos.reexplicacion}`,
+    );
+  }
+}
+
+// ── Módulo 9 · corrección determinista ───────────────────────────────────────
+console.log("\n · Motor de corrección (Módulo 9)");
+
+// Los ejercicios se pasan tal como aparecen en la pizarra, SIN la palabra que
+// dice qué hacer con ellos: eso lo aporta el tema activo. Es exactamente lo que
+// recibe la ruta de corrección cuando el alumno responde.
+const casosCorreccion = [
+  { ejercicio: "2x + 5 = 15", tema: "lineales", buena: "5", mala: "10" },
+  { ejercicio: "1/2 + 1/4", tema: "fracciones", buena: "3/4", mala: "2/6" },
+  { ejercicio: "47 + 38", tema: "aritmetica", buena: "85", mala: "75" },
+  { ejercicio: "3x²", tema: "derivadas", buena: "6x", mala: "3x" },
+  { ejercicio: "x² - 9", tema: "factorizacion", buena: "(x-3)(x+3)", mala: "(x-9)(x+9)" },
+];
+
+for (const caso of casosCorreccion) {
+  const esperada = resolverEjercicio(caso.ejercicio, caso.tema);
+  check(
+    `[${caso.tema}] el servidor calcula la solución de «${caso.ejercicio}»`,
+    esperada != null,
+    `esperada=${esperada}`,
+  );
+  if (esperada == null) continue;
+  check(
+    `[${caso.tema}] acepta la respuesta correcta «${caso.buena}»`,
+    checkAnswer(caso.buena, esperada).correct === true,
+    `esperada=${esperada}`,
+  );
+  check(
+    `[${caso.tema}] rechaza la respuesta incorrecta «${caso.mala}»`,
+    checkAnswer(caso.mala, esperada).correct === false,
+    `esperada=${esperada}`,
+  );
+}
+
+// El TEMA decide cómo leer una expresión ambigua. "x² - 9" se puede derivar o
+// factorizar: en una sesión de factorización hay que factorizarla. Sin esta
+// exclusividad, el alumno recibiría la corrección de una operación que no era
+// la que se le pidió.
+const comoDerivada = resolverEjercicio("x² - 9", "derivadas");
+const comoFactor = resolverEjercicio("x² - 9", "factorizacion");
+check("«x² - 9» en derivadas se deriva", comoDerivada === "2x", `obtenido: ${comoDerivada}`);
+check(
+  "«x² - 9» en factorización se factoriza",
+  String(comoFactor).includes("("),
+  `obtenido: ${comoFactor}`,
+);
+check("la misma expresión da resultados distintos según el tema", comoDerivada !== comoFactor);
+
+// Lo que el motor NO sabe calcular no se califica: dar por buena —o por mala—
+// una respuesta que no se ha podido verificar es justo la alucinación que el
+// validador determinista existe para evitar.
+check(
+  "no calcula lo que está fuera de su alcance (integral)",
+  resolverEjercicio("integral de sen(x)") == null,
+  `obtenido: ${resolverEjercicio("integral de sen(x)")}`,
+);
+check(
+  "no calcula lo que está fuera de su alcance (sistema de dos variables)",
+  resolverEjercicio("x + y = 3", "lineales") == null,
+  `obtenido: ${resolverEjercicio("x + y = 3", "lineales")}`,
+);
+
+// La corrección exige autenticación: es la que registra el progreso del alumno.
+const sinSesion = await fetch(`${BASE}/api/practica/corregir`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ ejercicio: "2x + 5 = 15", respuesta: "5" }),
+});
+check(
+  "la corrección rechaza peticiones sin sesión",
+  sinSesion.status === 401,
+  `status=${sinSesion.status}`,
+);
+
+// ── Veredicto ────────────────────────────────────────────────────────────────
+console.log("\n═══════════════════════════════════════════════════════════");
+console.log(` Aprobadas: ${ok} · Fallidas: ${fallos.length}`);
+
+if (fallos.length) {
+  console.log("\n ❌ PASO 2 RECHAZADO. Fallos:");
+  for (const f of fallos) console.log(`   · ${f}`);
+  process.exit(1);
+}
+
+console.log("\n ✅ PASO 2 APROBADO — lección multimodal completa y verificada.\n");
