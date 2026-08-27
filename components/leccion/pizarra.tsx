@@ -221,44 +221,15 @@ function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
   );
 }
 
-/**
- * Catálogo completo del tema, fuera de la pizarra y plegado por defecto.
- *
- * La pizarra sigue el hilo de la clase y sólo enseña la regla en curso. Pero el
- * resto del temario tiene que estar a mano para consultarlo, así que vive aquí,
- * como material de referencia y no como parte de la narración.
- */
-export function CatalogoReglas({ reglas }: { reglas: ReglaPizarra[] }) {
-  if (reglas.length === 0) return null;
-
-  return (
-    <details className="rounded-lg border bg-card">
-      <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium">
-        Todas las reglas del tema ({reglas.length})
-      </summary>
-      <div className="space-y-3 border-t p-4">
-        {reglas.map((regla) => (
-          <div key={regla.clave} className="rounded-md border bg-muted/30 p-3">
-            <div className="mb-1.5 flex flex-wrap items-center gap-2">
-              <h3 className="text-sm font-semibold">{regla.nombre}</h3>
-              {!regla.practicable && (
-                <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  sólo referencia
-                </span>
-              )}
-            </div>
-            <div className="overflow-x-auto py-1">
-              <Formula latex={regla.enunciado} display />
-            </div>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              {regla.descripcion}
-            </p>
-          </div>
-        ))}
-      </div>
-    </details>
-  );
-}
+// NO se renderiza el catálogo completo en ningún punto de este fichero.
+//
+// Hubo aquí un componente que recorría todas las reglas del tema y las pintaba
+// juntas. Aunque estaba plegado y fuera de la pizarra, seguía siendo un bloque
+// con todas las tarjetas a la vez —cociente, cadena, producto— compitiendo con
+// lo que el tutor estaba explicando. La regla es simple y no admite matices: la
+// pizarra muestra ÚNICAMENTE la tarjeta de la regla activa, elegida por
+// `reglaActiva()`. Si en el futuro hace falta una vista de consulta del
+// temario, no es este componente ni esta pantalla.
 
 /** Compone una expresión que YA viene en LaTeX (el catálogo se escribe así). */
 function Formula({ latex, display = false }: { latex: string; display?: boolean }) {

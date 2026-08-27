@@ -225,6 +225,26 @@ if (catalogo) {
     check(`no se activa «${ausente}» mientras se explica la potencia`, activa?.nombre !== ausente);
   }
 
+  // Guarda sobre el propio fichero. El defecto no estaba en la lógica sino en
+  // la plantilla: un `reglas.map(...)` pintaba todas las tarjetas a la vez. Una
+  // prueba de comportamiento no lo habría detectado, porque `reglaActiva()`
+  // devolvía lo correcto mientras la pantalla mostraba de más. Se comprueba,
+  // por tanto, que en pizarra.tsx no quede ningún recorrido del catálogo.
+  const fuentePizarra = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const recorridos = fuentePizarra.match(/reglas\s*\.\s*map\s*\(/g) || [];
+  check(
+    "pizarra.tsx no recorre el catálogo completo",
+    recorridos.length === 0,
+    `encontrados: ${recorridos.length}`,
+  );
+  check(
+    "pizarra.tsx compone la tarjeta de la regla activa",
+    /reglaActiva\s*\(/.test(fuentePizarra) && /TarjetaRegla/.test(fuentePizarra),
+  );
+
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
   const trasAvanzar = reglaActiva(
     [...lineasReglaReal, "Ahora la regla de la suma y la resta: se deriva término a término."],
