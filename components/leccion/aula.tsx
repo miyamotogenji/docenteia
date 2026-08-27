@@ -18,7 +18,8 @@ import { TTS } from "@/public/tts.js";
 import type { EstadoAvatar, EstadoControles, LSG, UIPSELight } from "@/public/pseLight";
 
 import { Avatar2D } from "@/components/leccion/avatar-2d";
-import { Pizarra, type LineaPizarra } from "@/components/leccion/pizarra";
+import { Pizarra, tituloDeFase, type Escena } from "@/components/leccion/pizarra";
+import { TextoMatematico } from "@/components/math";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,8 +80,7 @@ export function Aula() {
   const [tema, setTema] = useState<TemaLeccion | null>(null);
   const [estadoAvatar, setEstadoAvatar] = useState<EstadoAvatar>("neutral");
   const [hablando, setHablando] = useState(false);
-  const [lineas, setLineas] = useState<LineaPizarra[]>([]);
-  const [modulo, setModulo] = useState<string>("");
+  const [escenas, setEscenas] = useState<Escena[]>([]);
   const [resaltado, setResaltado] = useState<string | null>(null);
   const [subtitulo, setSubtitulo] = useState("");
   const [controles, setControles] = useState<EstadoControles>({
@@ -100,14 +100,44 @@ export function Aula() {
   const [vozActiva, setVozActiva] = useState(true);
   const [estadoVoz, setEstadoVoz] = useState("");
 
+  /**
+   * Escribe una línea en la escena en curso.
+   *
+   * Si todavía no hay ninguna —lecciones sin módulos, como la resolución de un
+   * ejercicio suelto— se abre una genérica, para que el contenido no se pierda.
+   */
   const anadirLinea = useCallback(
-    (texto: string, clase: LineaPizarra["clase"]) => {
+    (texto: string, clase: "formula" | "explicacion") => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
-      setLineas((prev) => [...prev, { id: idLinea.current++, texto: limpio, clase }]);
+      const linea = { id: idLinea.current++, texto: limpio, clase };
+      setEscenas((prev) => {
+        if (prev.length === 0) {
+          return [{ id: "escena-0", titulo: "Lección", lineas: [linea] }];
+        }
+        const ultima = prev[prev.length - 1];
+        return [...prev.slice(0, -1), { ...ultima, lineas: [...ultima.lineas, linea] }];
+      });
     },
     [],
   );
+
+  /**
+   * Abre una escena nueva. Cada fase pedagógica es una vista propia: la pizarra
+   * se sustituye con una transición limpia en lugar de seguir apilando
+   * párrafos hacia abajo.
+   */
+  const abrirEscena = useCallback((id: string) => {
+    const clave = String(id ?? "").trim();
+    if (!clave) return;
+    setEscenas((prev) => {
+      // El reproductor reconstruye la pizarra al retroceder o reanudar, y en esa
+      // reconstrucción vuelve a anunciar los módulos ya vistos. Sin esta guarda
+      // se duplicarían las escenas.
+      if (prev.length > 0 && prev[prev.length - 1].id === clave) return prev;
+      return [...prev, { id: clave, titulo: tituloDeFase(clave), lineas: [] }];
+    });
+  }, []);
 
   // ── Montaje del reproductor ────────────────────────────────────────────────
   useEffect(() => {
@@ -123,12 +153,12 @@ export function Aula() {
     };
 
     const ui: UIPSELight = {
-      setModule: (etiqueta) => setModulo(String(etiqueta ?? "")),
+      setModule: (etiqueta) => abrirEscena(String(etiqueta ?? "")),
       writeBoard: (texto) => anadirLinea(texto, "formula"),
       writeBoardExplain: (texto) => anadirLinea(texto, "explicacion"),
       highlightBoard: (objetivo) => setResaltado(objetivo ?? null),
       clearBoard: () => {
-        setLineas([]);
+        setEscenas([]);
         setResaltado(null);
       },
       setCaption: (texto) => setSubtitulo(String(texto ?? "")),
@@ -165,7 +195,7 @@ export function Aula() {
       pseRef.current?.stop();
       tts.cancel();
     };
-  }, [anadirLinea]);
+  }, [anadirLinea, abrirEscena]);
 
   // ── Petición de lección al servidor ────────────────────────────────────────
   const pedirLeccion = useCallback(
@@ -257,7 +287,10 @@ export function Aula() {
             respuesta,
             tema: estado.claveTema,
             intento,
-            pizarra: lineas.map((l) => l.texto).join("\n").slice(0, 2000),
+            pizarra: escenas
+              .flatMap((e) => e.lineas.map((l) => l.texto))
+              .join("\n")
+              .slice(0, 2000),
           }),
         });
         if (r.ok) setVeredicto(await r.json());
@@ -273,7 +306,7 @@ export function Aula() {
     setPregunta(null);
     setBorrador("");
     resolver?.(respuesta);
-  }, [borrador, intento, lineas]);
+  }, [borrador, intento, escenas]);
 
   // ── Controles de reproducción ──────────────────────────────────────────────
   const alternarVoz = useCallback(() => {
@@ -326,11 +359,8 @@ export function Aula() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">{tema.titulo}</h1>
-          {modulo && (
-            <p className="text-sm text-muted-foreground">
-              Fase: <span className="font-medium">{etiquetaModulo(modulo)}</span>
-            </p>
-          )}
+          {/* La fase en curso ya la indica el paso a paso sobre la pizarra: no
+              hace falta repetirla aquí. */}
         </div>
         <Button
           variant="ghost"
@@ -338,7 +368,7 @@ export function Aula() {
           onClick={() => {
             pseRef.current?.stop();
             setTema(null);
-            setLineas([]);
+            setEscenas([]);
             setSubtitulo("");
             setFeedback(null);
             setVeredicto(null);
@@ -408,12 +438,13 @@ export function Aula() {
         <div className="space-y-4">
           <Progress value={progreso} />
 
-          <Pizarra lineas={lineas} resaltado={resaltado} />
+          <Pizarra escenas={escenas} resaltado={resaltado} />
 
-          {/* Subtítulo: lo que el tutor está diciendo en este momento. */}
+          {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
+              fórmulas se componen igual que las de la pizarra. */}
           {subtitulo && (
             <p className="rounded-md bg-muted/60 px-4 py-3 text-sm leading-relaxed">
-              {subtitulo}
+              <TextoMatematico texto={subtitulo} />
             </p>
           )}
 
@@ -428,7 +459,9 @@ export function Aula() {
           {pregunta && (
             <Card className="border-primary/50">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base font-medium">{pregunta}</CardTitle>
+                <CardTitle className="text-base font-medium">
+                  <TextoMatematico texto={pregunta} />
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <form
@@ -536,12 +569,3 @@ export function Aula() {
   );
 }
 
-/** Nombre legible de cada fase pedagógica del LSG. */
-function etiquetaModulo(id: string): string {
-  const n = id.toLowerCase();
-  if (n.includes("concepto")) return "Concepto";
-  if (n.includes("regla") || n.includes("propiedad")) return "Reglas y propiedades";
-  if (n.includes("ejemplo")) return "Ejemplo resuelto";
-  if (n.includes("practica") || n.includes("práctica")) return "Práctica";
-  return id;
-}
