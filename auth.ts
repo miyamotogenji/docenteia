@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { authConfig } from "@/auth.config";
 import { prisma } from "@/lib/prisma";
+import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 
 /** Esquema de las credenciales. Se valida antes de tocar la base de datos. */
 const credencialesSchema = z.object({
@@ -26,14 +27,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
 
-        const usuario = await prisma.usuario.findUnique({
-          where: { email },
-          include: {
-            perfilEstudiante: {
-              select: { id: true, nivelActual: true },
+        // Un fallo de infraestructura aquí acabaría mostrándose al usuario como
+        // "correo o contraseña incorrectos", que es justo la pista equivocada.
+        // No se puede cambiar lo que ve el usuario sin revelar si la cuenta
+        // existe, pero sí se deja constancia inequívoca en el log del servidor.
+        let usuario;
+        try {
+          usuario = await prisma.usuario.findUnique({
+            where: { email },
+            include: {
+              perfilEstudiante: {
+                select: { id: true, nivelActual: true },
+              },
             },
-          },
-        });
+          });
+        } catch (e) {
+          const infra = explicarFalloDeBaseDeDatos(e);
+          console.error(
+            `[auth] el inicio de sesión falló por la base de datos (${infra?.registro ?? "desconocido"}): ${infra?.mensaje ?? String(e)}`,
+          );
+          throw e;
+        }
 
         // Se compara siempre contra un hash, exista el usuario o no, para que
         // el tiempo de respuesta no revele qué correos están registrados.

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
+import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 
 export const runtime = "nodejs";
 
@@ -82,6 +83,16 @@ export async function POST(req: Request) {
         { status: 409 },
       );
     }
+
+    // Un fallo de infraestructura (tablas sin crear, base inalcanzable) NO es
+    // un "inténtalo de nuevo": reintentar no lo arregla y deja a quien
+    // despliega sin saber qué mirar. Se distingue y se dice qué falta.
+    const infra = explicarFalloDeBaseDeDatos(e);
+    if (infra) {
+      console.error("[registro] problema de base de datos:", infra.registro, e);
+      return NextResponse.json({ error: infra.mensaje }, { status: infra.status });
+    }
+
     console.error("[registro] fallo al crear el usuario:", e);
     return NextResponse.json(
       { error: "No se pudo completar el registro. Inténtalo de nuevo." },
