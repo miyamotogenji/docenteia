@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
-import { identificarRegla } from "@/lib/leccion/reglas";
+import { identificarRegla, reglaActiva } from "@/lib/leccion/reglas";
 import { pareceMatematica, planoALatex } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +66,16 @@ export function Pizarra({
   const actual = escenas[escenas.length - 1] ?? null;
   const finRef = useRef<HTMLDivElement>(null);
 
+  // La regla que el tutor está explicando ahora mismo, deducida de las líneas
+  // ya reveladas. Cambia al ritmo del diálogo, no de golpe al entrar en la fase.
+  const reglaEnCurso = useMemo(() => {
+    if (!actual || !esFaseDeReglas(actual.id)) return null;
+    return reglaActiva(
+      actual.lineas.map((l) => l.texto),
+      reglas,
+    );
+  }, [actual, reglas]);
+
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [actual?.lineas.length, actual?.id]);
@@ -102,10 +112,11 @@ export function Pizarra({
               </div>
 
               <div className="max-h-[26rem] space-y-3 overflow-y-auto p-5">
-                {/* En la fase de Reglas, la pizarra despliega el catálogo
-                    formal del tema antes de lo que dicte el motor. */}
-                {esFaseDeReglas(actual.id) && reglas.length > 0 && (
-                  <CatalogoReglas reglas={reglas} />
+                {/* En la fase de Reglas se compone ÚNICAMENTE la tarjeta de la
+                    regla que el tutor está explicando en este momento. Mostrar
+                    el catálogo entero desincronizaba la pizarra del audio. */}
+                {esFaseDeReglas(actual.id) && reglaEnCurso && (
+                  <TarjetaRegla key={reglaEnCurso.clave} regla={reglaEnCurso} />
                 )}
 
                 <AnimatePresence initial={false}>
@@ -169,49 +180,83 @@ const esFaseDeReglas = (id: string) => /regla|propiedad/i.test(id);
 const esFaseDeEjemplo = (id: string) => /ejemplo/i.test(id);
 
 /**
- * Catálogo formal de reglas del tema, compuesto en KaTeX.
+ * Tarjeta de UNA regla, compuesta en KaTeX.
  *
- * Se marca cuáles admiten práctica calificada. El motor determinista cubre unas
+ * Se marca si admite práctica calificada. El motor determinista cubre unas
  * reglas y otras no —la del producto o la de la cadena, por ejemplo, quedan
  * fuera—, y conviene enseñarlas igualmente: lo que no se puede es ofrecer una
  * práctica que después no se podría corregir con garantía.
  */
-function CatalogoReglas({ reglas }: { reglas: ReglaPizarra[] }) {
+function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
   return (
-    <div className="space-y-3">
-      {reglas.map((regla, i) => (
-        <motion.div
-          key={regla.clave}
-          initial={{ opacity: 0, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.2, delay: i * 0.05 }}
-          className="rounded-md border bg-muted/30 p-3"
-        >
-          <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <h3 className="text-sm font-semibold">{regla.nombre}</h3>
-            {!regla.practicable && (
-              <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                sólo referencia
-              </span>
-            )}
-          </div>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.28 }}
+      className="rounded-md border-2 border-primary/40 bg-primary/5 p-4"
+    >
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-semibold">{regla.nombre}</h3>
+        {!regla.practicable && (
+          <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            sólo referencia
+          </span>
+        )}
+      </div>
 
-          <div className="overflow-x-auto py-1">
-            <Formula latex={regla.enunciado} display />
-          </div>
+      <div className="overflow-x-auto py-1">
+        <Formula latex={regla.enunciado} display />
+      </div>
 
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            {regla.descripcion}
-          </p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        {regla.descripcion}
+      </p>
 
-          {regla.ejemplo && (
-            <div className="mt-2 overflow-x-auto border-t pt-2">
-              <Formula latex={regla.ejemplo} />
+      {regla.ejemplo && (
+        <div className="mt-2 overflow-x-auto border-t pt-2">
+          <Formula latex={regla.ejemplo} />
+        </div>
+      )}
+    </motion.div>
+  );
+}
+
+/**
+ * Catálogo completo del tema, fuera de la pizarra y plegado por defecto.
+ *
+ * La pizarra sigue el hilo de la clase y sólo enseña la regla en curso. Pero el
+ * resto del temario tiene que estar a mano para consultarlo, así que vive aquí,
+ * como material de referencia y no como parte de la narración.
+ */
+export function CatalogoReglas({ reglas }: { reglas: ReglaPizarra[] }) {
+  if (reglas.length === 0) return null;
+
+  return (
+    <details className="rounded-lg border bg-card">
+      <summary className="cursor-pointer select-none px-4 py-2.5 text-sm font-medium">
+        Todas las reglas del tema ({reglas.length})
+      </summary>
+      <div className="space-y-3 border-t p-4">
+        {reglas.map((regla) => (
+          <div key={regla.clave} className="rounded-md border bg-muted/30 p-3">
+            <div className="mb-1.5 flex flex-wrap items-center gap-2">
+              <h3 className="text-sm font-semibold">{regla.nombre}</h3>
+              {!regla.practicable && (
+                <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  sólo referencia
+                </span>
+              )}
             </div>
-          )}
-        </motion.div>
-      ))}
-    </div>
+            <div className="overflow-x-auto py-1">
+              <Formula latex={regla.enunciado} display />
+            </div>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+              {regla.descripcion}
+            </p>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
