@@ -20,7 +20,12 @@ import { computeAnswer } from "../src/preLight.js";
 import { checkAnswer, flattenLSG } from "../public/pseLight.js";
 // Se prueba el MISMO resolutor que usa la ruta de corrección, no una copia.
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
-import { pareceMatematica, planoALatex } from "../lib/matematicas.ts";
+import {
+  pareceMatematica,
+  planoALatex,
+  separarProsaYMatematicas,
+} from "../lib/matematicas.ts";
+import { esFaseConocida, tituloDeFase } from "../lib/leccion/fases.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
@@ -92,6 +97,71 @@ for (const c of casosProsa) {
   );
 }
 
+// ── Módulo 7 · matemáticas dentro de la prosa ────────────────────────────────
+// El motor incrusta las fórmulas en la frase, sin marcarlas ("la derivada de x³
+// es 3x²"). Si no se detectan, la explicación se lee como texto plano, que es
+// justo lo que el cliente reportó.
+console.log("\n · Fórmulas dentro de la explicación (Módulo 7)");
+
+const casosProsaMat = [
+  {
+    texto: "Por ejemplo, la derivada de x³ es 3x², y la de x⁵ es 5x⁴.",
+    esperadas: ["x³", "3x²", "x⁵", "5x⁴"],
+  },
+  { texto: "Así, la derivada de x² es 2x. Ahora te toca a ti.", esperadas: ["x²", "2x"] },
+  { texto: "Regla de la potencia: la derivada de xⁿ es n·xⁿ⁻¹", esperadas: ["xⁿ", "n·xⁿ⁻¹"] },
+  { texto: "¿Cuál es la derivada de 5x²?", esperadas: ["5x²"] },
+  { texto: "derivada de x² = 2x", esperadas: ["x² = 2x"] },
+  { texto: "Aquí el coeficiente es 1 y el exponente 2: 1 × 2 = 2, y el nuevo exponente es 1.", esperadas: ["1 × 2 = 2"] },
+  // Prosa pura: no debe marcarse NADA. Convertir una palabra en fórmula se ve
+  // roto; dejar una fórmula en texto plano sólo se ve soso.
+  {
+    texto:
+      "Una derivada mide la RAPIDEZ con la que cambia una función: en cada punto indica cuánto crece o decrece, es decir, la pendiente de su gráfica.",
+    esperadas: [],
+  },
+  { texto: "Derivada: razón de cambio (la pendiente) de una función", esperadas: [] },
+  { texto: "Vamos a derivar x².", esperadas: ["x²"] },
+];
+
+for (const caso of casosProsaMat) {
+  const partes = separarProsaYMatematicas(caso.texto);
+  const formulas = partes.filter((p) => p.tipo === "linea").map((p) => p.contenido);
+  check(
+    `detecta ${caso.esperadas.length} fórmula(s) en «${caso.texto.slice(0, 42)}…»`,
+    JSON.stringify(formulas) === JSON.stringify(caso.esperadas),
+    `obtenido: ${JSON.stringify(formulas)}`,
+  );
+  // Reconstruir el texto debe devolver el original: si la separación se comiera
+  // un trozo, el alumno leería una frase incompleta y nada avisaría.
+  check(
+    `no pierde contenido en «${caso.texto.slice(0, 30)}…»`,
+    partes.map((p) => p.contenido).join("") === caso.texto,
+  );
+  // Y cada fórmula detectada tiene que poder componerse.
+  for (const f of formulas) {
+    let err = null;
+    try {
+      katex.renderToString(planoALatex(f), { throwOnError: true, strict: false });
+    } catch (e) {
+      err = e.message;
+    }
+    check(`KaTeX compila «${f}»`, err === null, err ?? "");
+  }
+}
+
+// ── Estructura de escenas ────────────────────────────────────────────────────
+console.log("\n · Rótulos de las fases");
+const rotulos = [
+  ["concepto", "Concepto"],
+  ["regla", "Reglas y propiedades"],
+  ["ejemplo_guiado", "Ejemplo paso a paso"],
+  ["practica", "Práctica"],
+];
+for (const [clave, titulo] of rotulos) {
+  check(`«${clave}» se rotula «${titulo}»`, tituloDeFase(clave) === titulo, tituloDeFase(clave));
+}
+
 // ── Módulos 4, 5 y 7 · la lección de cada tema ───────────────────────────────
 console.log("\n · Lección de cada tema (Módulos 4, 5 y 7)");
 
@@ -133,8 +203,31 @@ for (const tema of TEMAS_LECCION) {
     );
   }
 
+  // Cada módulo se presenta como una ESCENA con su rótulo. Un módulo que no
+  // caiga en una fase conocida se le mostraría al alumno con su clave interna.
+  check(
+    `${etiqueta} todos los módulos tienen rótulo de fase`,
+    modulos.every((id) => esFaseConocida(id)),
+    `sin rótulo: ${modulos.filter((id) => !esFaseConocida(id)).join(", ")}`,
+  );
+
   // Módulo 7: todo lo que va a la pizarra debe poder componerse.
   const pasos = flattenLSG(datos.lsg || {});
+
+  // Y también las fórmulas incrustadas en las explicaciones habladas.
+  let fallosProsa = 0;
+  for (const paso of pasos.filter((p) => p.tipo === "hablar")) {
+    for (const parte of separarProsaYMatematicas(paso.texto ?? "")) {
+      if (parte.tipo !== "linea") continue;
+      try {
+        katex.renderToString(planoALatex(parte.contenido), { throwOnError: true, strict: false });
+      } catch (e) {
+        fallosProsa++;
+        console.log(`      · no compila en la explicación: «${parte.contenido}» → ${e.message.slice(0, 70)}`);
+      }
+    }
+  }
+  check(`${etiqueta} las fórmulas de la explicación se componen`, fallosProsa === 0, `${fallosProsa} fallo(s)`);
   const pizarras = pasos.filter((p) => p.tipo === "pizarra").map((p) => p.contenido);
   check(`${etiqueta} escribe en la pizarra`, pizarras.length > 0);
 

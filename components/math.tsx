@@ -3,7 +3,11 @@
 import katex from "katex";
 import { Fragment, useMemo } from "react";
 
-import { separarFormulas } from "@/lib/matematicas";
+import {
+  planoALatex,
+  separarFormulas,
+  separarProsaYMatematicas,
+} from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,18 +58,20 @@ function escaparHtml(s: string): string {
 }
 
 /**
- * Renderiza un texto MIXTO: prosa normal con fórmulas intercaladas entre
- * delimitadores `$…$` (en línea) o `$$…$$` (en bloque).
+ * Renderiza un texto MIXTO: prosa con fórmulas intercaladas.
  *
- * Por qué hace falta, además de <Math>: los enunciados del banco son frases
- * completas que llevan la fórmula dentro —"Resuelve y simplifica: $\frac{2}{3}
- * + \frac{5}{6}$"—. Pasar la frase entera a KaTeX produciría un galimatías, y
- * dejarla como texto plano es justamente lo que se quería evitar. Aquí se
- * separa una cosa de la otra: sólo lo que va entre `$` se compone como
- * matemática, y la prosa se queda como prosa.
+ * Funciona de dos maneras, según de dónde venga el texto:
  *
- * Un texto sin ningún `$` se muestra tal cual, así que sigue siendo válido
- * escribir enunciados sin fórmulas.
+ *  · **Con delimitadores.** Si el texto trae `$…$` (o `$$…$$` para bloque), se
+ *    respetan: es el caso del banco de preguntas, donde el contenido se escribe
+ *    a mano y conviene decir explícitamente qué es fórmula.
+ *
+ *  · **Sin delimitadores.** Si no los trae, las fórmulas se detectan. Es el
+ *    caso de las explicaciones del tutor, que el motor pedagógico produce con
+ *    la matemática incrustada en la frase ("la derivada de x³ es 3x²") y sin
+ *    marcarla, porque su suite de pruebas trabaja sobre ese texto plano.
+ *
+ * En ambos casos sólo se compone la matemática: la prosa se queda como prosa.
  */
 export function TextoMatematico({
   texto,
@@ -74,7 +80,15 @@ export function TextoMatematico({
   texto: string;
   className?: string;
 }) {
-  const partes = useMemo(() => separarFormulas(texto), [texto]);
+  const partes = useMemo(() => {
+    const conDelimitadores = /\$[^$\n]+\$/.test(String(texto ?? ""));
+    if (conDelimitadores) return separarFormulas(texto);
+    // La detección automática entrega la fórmula en notación plana ("3x²"),
+    // así que hay que traducirla antes de componerla.
+    return separarProsaYMatematicas(texto).map((p) =>
+      p.tipo === "texto" ? p : { ...p, contenido: planoALatex(p.contenido) },
+    );
+  }, [texto]);
 
   return (
     <span className={className}>

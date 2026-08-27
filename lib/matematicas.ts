@@ -83,6 +83,76 @@ export function planoALatex(expresion: string): string {
   return s.replace(/\s+/g, " ").trim();
 }
 
+// ── Matemáticas dentro de la prosa ───────────────────────────────────────────
+// Las explicaciones del tutor llevan las fórmulas incrustadas en la frase: "la
+// derivada de x³ es 3x², y la de x⁵ es 5x⁴". El motor las escribe así, sin
+// delimitadores, porque su suite de pruebas trabaja sobre ese texto. Para
+// componerlas hay que reconocerlas dentro de la frase.
+//
+// El criterio es deliberadamente ESTRICTO. Marcar de más es peor que marcar de
+// menos: una palabra convertida en fórmula se ve rota, mientras que una fórmula
+// que se queda en texto plano sólo se ve sosa. Por eso una letra suelta ("a",
+// "y", "n") no basta para abrir una expresión: hace falta un exponente, un
+// operador entre operandos, o un coeficiente pegado a la variable ("2x").
+
+const SUPERINDICE = "[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁻⁺]";
+/** Una variable es UNA letra suelta, no la inicial de una palabra. */
+const VARIABLE = "(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])[a-z](?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])";
+// El orden de las alternativas importa: "coeficiente + variable" va PRIMERO
+// porque la alternancia es perezosa por la izquierda. Con el número delante,
+// "3x²" se partía en un "3" suelto —que luego se descartaba por no ser
+// expresión— y un "x²" huérfano, de modo que el coeficiente desaparecía de la
+// fórmula compuesta.
+const ATOMO = `(?:\\d*${VARIABLE}${SUPERINDICE}*|\\d+(?:[.,]\\d+)?${SUPERINDICE}*)`;
+const OPERADOR = "\\s*[-+*/=·×÷≈≠≤≥]\\s*";
+
+const EXPRESION = new RegExp(`${ATOMO}(?:${OPERADOR}${ATOMO})*`, "gu");
+
+/** ¿El fragmento capturado es de verdad una expresión, o sólo un número suelto? */
+function mereceComposicion(fragmento: string): boolean {
+  const tieneExponente = new RegExp(SUPERINDICE).test(fragmento);
+  const tieneOperador = /[-+*/=·×÷≈≠≤≥]/.test(fragmento);
+  const coeficientePegado = /\d[a-z]/.test(fragmento);
+  return tieneExponente || tieneOperador || coeficientePegado;
+}
+
+/**
+ * Separa una frase en tramos de prosa y tramos de fórmula, detectando las
+ * fórmulas automáticamente (sin delimitadores).
+ *
+ * Se usa para las explicaciones del tutor y para las líneas de pizarra que son
+ * frases; cuando el texto ya trae `$…$`, se usa `separarFormulas`, que es
+ * explícita y no necesita adivinar nada.
+ */
+export function separarProsaYMatematicas(texto: string): Parte[] {
+  const entrada = String(texto ?? "");
+  const partes: Parte[] = [];
+  let ultimo = 0;
+
+  for (const m of entrada.matchAll(EXPRESION)) {
+    const fragmento = m[0];
+    const indice = m.index ?? 0;
+    if (!fragmento.trim() || !mereceComposicion(fragmento)) continue;
+
+    // Los espacios de los extremos pertenecen a la frase, no a la fórmula.
+    const inicio = indice + (fragmento.length - fragmento.trimStart().length);
+    const limpio = fragmento.trim();
+    if (!limpio) continue;
+
+    if (inicio > ultimo) {
+      partes.push({ tipo: "texto", contenido: entrada.slice(ultimo, inicio) });
+    }
+    partes.push({ tipo: "linea", contenido: limpio });
+    ultimo = inicio + limpio.length;
+  }
+
+  if (ultimo < entrada.length) {
+    partes.push({ tipo: "texto", contenido: entrada.slice(ultimo) });
+  }
+
+  return partes.length > 0 ? partes : [{ tipo: "texto", contenido: entrada }];
+}
+
 export type TipoParte = "texto" | "linea" | "bloque";
 
 export interface Parte {

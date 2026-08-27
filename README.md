@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.850
+Debe terminar sin fallos. La última ejecución sobre esta versión da 1.894
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -321,7 +321,7 @@ Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
-Lección (Paso 2)     104 aprobadas · 0 fallidas
+Lección (Paso 2)     148 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -497,8 +497,20 @@ La lección interactiva vive en `/estudiante/leccion`.
   Next.js, compartiendo núcleo con el prototipo (ver *Paridad*).
 - **Módulo 7 — Avatar + SmartBoard.** Avatar 2D con los cuatro estados
   (*esperando*, *hablando*, *pensando*, *corrigiendo*) sincronizados con la voz,
-  y pizarra con renderizado en KaTeX y revelación progresiva al ritmo de la
-  explicación, narrada en español con la Web Speech API.
+  narrada en español con la Web Speech API.
+
+  La pizarra está organizada por **escenas**: cada fase pedagógica es una vista
+  propia y, al pasar de una a otra, el contenido se sustituye con una
+  transición limpia en lugar de apilar párrafos hacia abajo. Sobre la pizarra,
+  un indicador muestra en qué fase va el alumno y cuáles ha completado.
+
+  El renderizado en KaTeX alcanza **todo** el contenido, no sólo las fórmulas
+  destacadas: las explicaciones del tutor llevan la matemática incrustada en la
+  frase ("la derivada de x³ es 3x²") y sin marcar, porque el motor las produce
+  así, de modo que las fórmulas se detectan dentro del texto y se componen. El
+  criterio de detección es deliberadamente estricto: marcar de más deja una
+  palabra rota en pantalla, mientras que marcar de menos sólo deja una fórmula
+  sosa.
 - **Módulo 8 — Entorno de resolución.** Caja de respuesta y botones de apoyo:
   *No entendí este paso*, *Dame otro ejemplo*, *Explicar regla*, más ajuste de
   dificultad. Ninguno cambia de tema.
