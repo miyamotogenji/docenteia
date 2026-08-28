@@ -7,7 +7,13 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { esFaseDeConcepto, esFaseDeEjemplo, esFaseDeReglas } from "@/lib/leccion/fases";
+import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
+import {
+  esFaseDeConcepto,
+  esFaseDeEjemplo,
+  esFaseDePractica,
+  esFaseDeReglas,
+} from "@/lib/leccion/fases";
 import { identificarRegla, reglaActiva } from "@/lib/leccion/reglas";
 import { notacionFormal, pareceMatematica, planoALatex } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
@@ -26,6 +32,22 @@ export interface LineaPizarra {
    * que pedir ayuda tres veces no deje tres muros de texto en la pizarra.
    */
   aclaracion?: boolean;
+}
+
+/**
+ * Lo que se compone en la pizarra en un momento dado.
+ *
+ * El tipo va declarado a mano, y no inferido: con las tres ramas del cálculo
+ * devolviendo formas distintas, TypeScript construía una unión que hacía
+ * explotar la comprobación de tipos durante la compilación.
+ */
+interface ContenidoPizarra {
+  /** Ejercicio activo, anclado arriba. Null en Concepto y Reglas. */
+  enunciado: LineaPizarra | null;
+  /** Pasos del procedimiento, debajo del enunciado. */
+  desarrollo: LineaPizarra[];
+  /** Paso suelto de las fases que no plantean ejercicio. */
+  pasoSuelto: LineaPizarra | null;
 }
 
 /** Una fase de la lección, con su propia vista de pizarra. */
@@ -106,18 +128,43 @@ export function Pizarra({
   }, [actual, reglas, reglaDetectada]);
 
   /**
-   * SÓLO EL PASO ACTIVO.
+   * ENUNCIADO FIJO + DESARROLLO DEBAJO.
    *
-   * La pizarra mostraba todas las líneas de la fase y el contenido se apilaba
-   * hasta convertirse en un scroll continuo. Ahora se compone únicamente el
-   * paso en curso —la última expresión escrita—, como un docente que borra y
-   * vuelve a escribir. El hilo de la explicación va en el subtítulo, y las
-   * expresiones anteriores siguen en el estado por si hiciera falta
-   * reconstruirlas.
+   * En las fases con ejercicio, el motor escribe primero el enunciado y después
+   * los pasos: "x²" y luego "derivada de x² = 2x"; "2x + 5 = 15", "2x = 10",
+   * "x = 5". Mostrando sólo la última línea, el enunciado desaparecía en cuanto
+   * empezaba el desarrollo y el alumno se quedaba con el resultado suelto, sin
+   * poder contrastarlo con el planteamiento.
+   *
+   * Ahora el enunciado queda anclado arriba y los pasos se acumulan debajo,
+   * dentro de la fase. Al cambiar de fase la pizarra se limpia, así que el
+   * desarrollo nunca crece más allá del ejercicio en curso.
    */
-  const pasoActivo = useMemo(() => {
+  const { enunciado, desarrollo, pasoSuelto } = useMemo((): ContenidoPizarra => {
     const lineas = actual?.lineas ?? [];
-    return lineas.length > 0 ? lineas[lineas.length - 1] : null;
+    const vacio: ContenidoPizarra = { enunciado: null, desarrollo: [], pasoSuelto: null };
+    if (!actual || lineas.length === 0) return vacio;
+
+    const conEjercicio = esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id);
+    if (!conEjercicio) {
+      // Concepto y Reglas no plantean un ejercicio: se compone el paso actual.
+      return { ...vacio, pasoSuelto: lineas[lineas.length - 1] };
+    }
+
+    const [primera, ...resto] = lineas;
+    const pasos = [...resto];
+
+    // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
+    // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
+    // hallar, que es justo lo que la ramificación pedagógica evita.
+    if (esFaseDeEjemplo(actual.id)) {
+      const intermedio = pasoIntermedioDerivada(primera.texto);
+      if (intermedio) {
+        pasos.unshift({ id: -primera.id - 1, texto: intermedio, clase: "formula" });
+      }
+    }
+
+    return { enunciado: primera, desarrollo: pasos, pasoSuelto: null };
   }, [actual]);
 
   useEffect(() => {
@@ -173,21 +220,60 @@ export function Pizarra({
                     tangente de una curva, las partes de un todo, la balanza. */}
                 {esFaseDeConcepto(actual.id) && tema && <DiagramaConcepto tema={tema} />}
 
-                {/* Únicamente el paso en curso: cada expresión sustituye a la
-                    anterior en lugar de acumularse. */}
+                {/* Fases con ejercicio: el enunciado anclado arriba y su
+                    desarrollo debajo, para que el alumno pueda contrastar el
+                    planteamiento con el procedimiento. */}
+                {enunciado && (
+                  <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-3">
+                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Ejercicio
+                    </p>
+                    <LineaRenderizada
+                      linea={enunciado}
+                      resaltada={resaltado != null && enunciado.texto.includes(resaltado)}
+                      reglas={[]}
+                    />
+                  </div>
+                )}
+
+                {desarrollo.length > 0 && (
+                  <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Desarrollo
+                    </p>
+                    <AnimatePresence initial={false}>
+                      {desarrollo.map((linea) => (
+                        <motion.div
+                          key={linea.id}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ duration: 0.22 }}
+                        >
+                          <LineaRenderizada
+                            linea={linea}
+                            resaltada={resaltado != null && linea.texto.includes(resaltado)}
+                            reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
+                          />
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+                  </div>
+                )}
+
+                {/* Concepto y Reglas: no hay ejercicio, se compone el paso en curso. */}
                 <AnimatePresence mode="wait">
-                  {pasoActivo && (
+                  {pasoSuelto && (
                     <motion.div
-                      key={pasoActivo.id}
+                      key={pasoSuelto.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.25 }}
                     >
                       <LineaRenderizada
-                        linea={pasoActivo}
-                        resaltada={resaltado != null && pasoActivo.texto.includes(resaltado)}
-                        reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
+                        linea={pasoSuelto}
+                        resaltada={resaltado != null && pasoSuelto.texto.includes(resaltado)}
+                        reglas={[]}
                       />
                     </motion.div>
                   )}
