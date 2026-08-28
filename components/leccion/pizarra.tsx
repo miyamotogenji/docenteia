@@ -7,7 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { identificarRegla, reglaActiva } from "@/lib/leccion/reglas";
-import { pareceMatematica, planoALatex } from "@/lib/matematicas";
+import { notacionFormal, pareceMatematica, planoALatex } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
 
 export { tituloDeFase } from "@/lib/leccion/fases";
@@ -268,9 +268,18 @@ function LineaRenderizada({
   // una frase —el motor también escribe rótulos y avisos en la pizarra— se
   // muestra como prosa, pero con SUS fórmulas compuestas igualmente.
   const formulaEntera = useMemo(() => {
-    if (linea.clase === "explicacion" || !pareceMatematica(linea.texto)) return null;
+    if (linea.clase === "explicacion") return null;
+
+    // El motor rotula algunas fórmulas en castellano ("derivada de x² = 2x").
+    // Se reescriben en notación formal; si no encajan en ningún patrón, sólo se
+    // componen enteras cuando NO llevan palabras, porque KaTeX tipografiaría
+    // cada letra como una variable y el texto saldría pegado y en cursiva.
+    const latex = notacionFormal(linea.texto)
+      ?? (pareceMatematica(linea.texto) ? planoALatex(linea.texto) : null);
+    if (!latex) return null;
+
     try {
-      return katex.renderToString(planoALatex(linea.texto), {
+      return katex.renderToString(latex, {
         displayMode: true,
         throwOnError: false,
         errorColor: "hsl(var(--destructive))",

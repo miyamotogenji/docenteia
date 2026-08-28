@@ -23,6 +23,7 @@ import { checkAnswer, flattenLSG } from "../public/pseLight.js";
 // Se prueba el MISMO resolutor que usa la ruta de corrección, no una copia.
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
+  notacionFormal,
   pareceMatematica,
   planoALatex,
   separarProsaYMatematicas,
@@ -98,6 +99,53 @@ for (const c of casosProsa) {
     `«${c.entrada}» ${c.math ? "es fórmula" : "es prosa"}`,
     pareceMatematica(c.entrada) === c.math,
   );
+}
+
+// ── Notación formal y letras pegadas ─────────────────────────────────────────
+// El motor rotula algunas fórmulas en castellano ("derivada de x² = 2x"). Si esa
+// línea se compone entera con KaTeX, cada letra se tipografía como una variable
+// y en pantalla se lee "derivadadex2=2x": las letras aparecen pegadas y en
+// cursiva. Aquí se comprueba que eso no ocurra y que la notación sea la formal.
+console.log("\n · Notación formal en la pizarra");
+
+const casosFormales = [
+  {
+    entrada: "derivada de x² = 2x",
+    latex: "\\frac{d}{dx}\\left(x^{2}\\right) = 2x",
+  },
+  {
+    entrada: "derivada de 3x⁴ - 2x² = 12x³ - 4x",
+    latex: "\\frac{d}{dx}\\left(3x^{4} - 2x^{2}\\right) = 12x^{3} - 4x",
+  },
+  { entrada: "unidades: 4 + 7 = 11", latex: "\\text{unidades:}\\;\\; 4 + 7 = 11" },
+  { entrada: "decenas: 2 + 1 + 1 = 4", latex: "\\text{decenas:}\\;\\; 2 + 1 + 1 = 4" },
+];
+
+for (const caso of casosFormales) {
+  const obtenido = notacionFormal(caso.entrada);
+  check(
+    `«${caso.entrada}» se reescribe en notación formal`,
+    obtenido === caso.latex,
+    `obtenido: ${obtenido}`,
+  );
+  if (!obtenido) continue;
+  let err = null;
+  try {
+    katex.renderToString(obtenido, { throwOnError: true, strict: false });
+  } catch (e) {
+    err = e.message;
+  }
+  check(`«${caso.entrada}» compila en KaTeX`, err === null, err ?? "");
+}
+
+// Una fórmula pura no debe tocarse: no hay nada que formalizar.
+for (const pura of ["x²", "2x + 5 = 15", "5x²"]) {
+  check(`«${pura}» no necesita reescritura`, notacionFormal(pura) === null);
+}
+
+// Y una línea con palabras NUNCA debe considerarse fórmula pura.
+for (const mixta of ["derivada de x² = 2x", "unidades: 4 + 7 = 11"]) {
+  check(`«${mixta}» no se compone como fórmula pura`, pareceMatematica(mixta) === false);
 }
 
 // ── Módulo 4 · catálogo formal de reglas ─────────────────────────────────────
@@ -402,6 +450,22 @@ for (const tema of TEMAS_LECCION) {
     }
   }
   check(`${etiqueta} toda la pizarra se compone con KaTeX`, fallosKatex === 0, `${fallosKatex} fallo(s)`);
+
+  // Barrido de LETRAS PEGADAS. Ninguna línea con palabras puede acabar
+  // compuesta como fórmula pura: KaTeX tipografiaría cada letra como una
+  // variable suelta y el rótulo se leería como un amasijo en cursiva. Es la
+  // comprobación que faltaba cuando esto llegó al cliente.
+  const pegadas = pizarras.filter(
+    (linea) =>
+      /[a-záéíóúñ]{3,}/i.test(linea) && // lleva alguna palabra
+      notacionFormal(linea) === null && // no se reescribe en notación formal
+      pareceMatematica(linea), // y aun así se compondría entera
+  );
+  check(
+    `${etiqueta} ninguna línea con palabras se compone como fórmula`,
+    pegadas.length === 0,
+    pegadas.map((l) => `«${l}»`).join(" · "),
+  );
 
   // Se guarda el estado para probar después los botones de apoyo.
   estado.temaActivo = tema.consulta;
