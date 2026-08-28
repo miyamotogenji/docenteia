@@ -37,6 +37,7 @@ import {
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
 import { reglaActiva } from "@/lib/leccion/reglas";
+import { presentacionDe, recortarParaSeguimiento } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza } from "@/lib/matematicas";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -316,9 +317,6 @@ export function Aula({
       setVeredicto(null);
       setPregunta(null);
 
-      // Toda petición con seguimiento es una ayuda sobre la clase en curso: no
-      // debe reiniciarla ni sacar al alumno de su fase.
-      esAyuda.current = Boolean(opciones.seguimiento);
       esAclaracion.current = Boolean(opciones.soloExplicacion);
 
       // Una aclaración nueva RETIRA la anterior. Si se acumularan, pedir ayuda
@@ -361,8 +359,40 @@ export function Aula({
           return;
         }
 
-        const lsg = datos.lsg as LSG;
         const estado = conversacion.current;
+
+        // Cómo presentar la respuesta. Es la decisión que estaba mal: se
+        // trataba todo seguimiento igual, así que una lección NUEVA se apilaba
+        // dentro de la escena anterior y el enunciado de arriba se quedaba
+        // congelado en el ejercicio viejo mientras abajo aparecía el nuevo.
+        const presentacion = presentacionDe(datos.lsg, {
+          esSeguimiento: Boolean(opciones.seguimiento),
+          soloExplicacion: opciones.soloExplicacion,
+        });
+
+        // El reproductor sólo puede borrar la pizarra entera y reabrir fases
+        // cuando se REINICIA. Al anexar y al sustituir hay que conservar las
+        // escenas, porque son las que mantienen al alumno en su fase; en el
+        // segundo caso el vaciado se hace aquí abajo, escena a escena.
+        esAyuda.current = presentacion !== "reiniciar";
+
+        if (presentacion === "sustituir") {
+          // Mismo ejercicio no: otro. Se vacía la escena en curso conservando
+          // la fase, para que el alumno no retroceda a Concepto.
+          setEscenas((prev) => {
+            if (prev.length === 0) return prev;
+            const ultima = prev[prev.length - 1];
+            return [...prev.slice(0, -1), { ...ultima, lineas: [] }];
+          });
+        }
+
+        // Una lección de seguimiento repite concepto y reglas tal cual: se
+        // recorta para entrar directamente por el ejemplo.
+        const lsg = (
+          presentacion === "reiniciar" && opciones.seguimiento
+            ? recortarParaSeguimiento(datos.lsg)
+            : datos.lsg
+        ) as LSG;
 
         // El servidor no guarda sesión: el contexto se mantiene aquí y viaja en
         // cada petición. Los cursores de rotación tienen que dar la vuelta

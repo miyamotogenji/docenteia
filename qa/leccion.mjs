@@ -39,6 +39,7 @@ import {
 // podrían desincronizarse y la prueba daría por bueno un concepto vacío.
 import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
+import { presentacionDe, recortarParaSeguimiento } from "../lib/leccion/seguimiento-lsg.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
@@ -654,6 +655,92 @@ for (const caso of casosPaso) {
 // idea equivocada del método, así que no se inventa nada.
 for (const polinomio of ["4x⁵ - 3x³", "x² - 9", "2/6 + 3/6"]) {
   check(`«${polinomio}» no se desarrolla en un solo paso`, pasoIntermedioDerivada(polinomio) === null);
+}
+
+// ── Cómo se presenta cada seguimiento ────────────────────────────────────────
+// El servidor responde tres cosas distintas según lo que pulse el alumno, y
+// tratarlas igual dejaba la pizarra descuadrada: una lección NUEVA se apilaba
+// dentro de la escena anterior, así que arriba quedaba congelado el ejercicio
+// viejo y abajo aparecía el nuevo, como si fueran el mismo.
+console.log("\n · Presentación de cada tipo de seguimiento");
+
+{
+  const tema = "Enséñame derivadas";
+  const base = { contexto: tema, currentTopic: tema };
+
+  const apertura = await consultar({ query: tema });
+  check(
+    "abrir un tema se presenta reiniciando",
+    presentacionDe(apertura.lsg, { esSeguimiento: false }) === "reiniciar",
+  );
+
+  // "Más difícil" no trae módulos: es otro ejercicio dentro de la misma fase.
+  const masDificil = await consultar({
+    ...base,
+    query: "Proponme un problema más difícil",
+    seguimiento: "mas_dificil",
+  });
+  check(
+    "«más difícil» no trae módulos",
+    !Array.isArray(masDificil.lsg?.modulos) || masDificil.lsg.modulos.length === 0,
+  );
+  check(
+    "«más difícil» se presenta sustituyendo el ejercicio",
+    presentacionDe(masDificil.lsg, { esSeguimiento: true }) === "sustituir",
+  );
+
+  // "Dame otro ejemplo" trae la lección entera: hay que reiniciar la pizarra.
+  const otroEjemplo = await consultar({
+    ...base,
+    query: "Dame otro ejemplo",
+    seguimiento: "continuacion",
+  });
+  check(
+    "«dame otro ejemplo» trae la lección completa",
+    Array.isArray(otroEjemplo.lsg?.modulos) && otroEjemplo.lsg.modulos.length >= 3,
+    `módulos: ${(otroEjemplo.lsg?.modulos ?? []).length}`,
+  );
+  check(
+    "«dame otro ejemplo» se presenta reiniciando",
+    presentacionDe(otroEjemplo.lsg, { esSeguimiento: true }) === "reiniciar",
+  );
+
+  // Y al reiniciar por un seguimiento se entra por el ejemplo, no por el
+  // concepto: repetirlo devolvería al alumno al principio de la clase.
+  const recortada = recortarParaSeguimiento(otroEjemplo.lsg);
+  const fases = (recortada.modulos ?? []).map((m) => String(m.id));
+  check(
+    "la lección de seguimiento no repite el concepto",
+    !fases.some((f) => /concepto/i.test(f)),
+    `fases: ${fases.join(", ")}`,
+  );
+  check(
+    "la lección de seguimiento no repite las reglas",
+    !fases.some((f) => /regla/i.test(f)),
+    `fases: ${fases.join(", ")}`,
+  );
+  check("la lección de seguimiento conserva el ejemplo y la práctica", fases.length >= 2, fases.join(", "));
+
+  // Una aclaración se añade a lo que hay: el alumno sigue con su ejercicio.
+  const aclaracion = await consultar({
+    ...base,
+    query: "Explícame la regla que se aplica",
+    seguimiento: "reexplicar",
+    parte: "concepto",
+    explicacionDinamica: true,
+  });
+  check(
+    "una aclaración se presenta anexando",
+    presentacionDe(aclaracion.lsg, { esSeguimiento: true, soloExplicacion: true }) === "anexar",
+  );
+
+  // Si el recorte dejara la lección vacía, se devuelve entera: es preferible
+  // repetir una fase que dejar la pizarra sin nada.
+  const soloConcepto = { modulos: [{ id: "concepto", directivas: [] }] };
+  check(
+    "un recorte que vaciaría la lección la deja intacta",
+    recortarParaSeguimiento(soloConcepto).modulos.length === 1,
+  );
 }
 
 // ── Módulo 8 · los botones de apoyo mantienen el tema ────────────────────────
