@@ -29,7 +29,15 @@ import {
   planoALatex,
   separarProsaYMatematicas,
 } from "../lib/matematicas.ts";
-import { esFaseConocida, tituloDeFase } from "../lib/leccion/fases.ts";
+import {
+  esFaseConocida,
+  esFaseDeConcepto,
+  esFaseDeReglas,
+  tituloDeFase,
+} from "../lib/leccion/fases.ts";
+// La lista real que consulta el componente, no una copia: si se duplicara,
+// podrían desincronizarse y la prueba daría por bueno un concepto vacío.
+import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
@@ -334,6 +342,18 @@ if (catalogo) {
     "pizarra.tsx compone la tarjeta de la regla activa",
     /reglaActiva\s*\(/.test(fuentePizarra) && /TarjetaRegla/.test(fuentePizarra),
   );
+  // La comprobación de arriba mira los DATOS: que el catálogo tenga reglas para
+  // la fase. No basta, porque el componente podría dejar de usarlas y la fase
+  // volvería a quedarse en blanco sin que ninguna prueba se enterara —que es
+  // exactamente lo que pasó—. Aquí se fija el recurso al catálogo.
+  check(
+    "pizarra.tsx recurre al catálogo cuando no detecta la regla",
+    /porPizarra\s*\?\?\s*reglas\[0\]/.test(fuentePizarra),
+  );
+  check(
+    "pizarra.tsx dibuja el diagrama de la fase de Concepto",
+    /esFaseDeConcepto\s*\([^)]*\)\s*&&/.test(fuentePizarra) && /DiagramaConcepto/.test(fuentePizarra),
+  );
 
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
   const trasAvanzar = reglaActiva(
@@ -492,6 +512,31 @@ for (const tema of TEMAS_LECCION) {
     }
   }
   check(`${etiqueta} toda la pizarra se compone con KaTeX`, fallosKatex === 0, `${fallosKatex} fallo(s)`);
+
+  // NINGUNA FASE PUEDE QUEDAR EN BLANCO.
+  //
+  // Al dejar de volcar la locución al lienzo, las fases que sólo narran se
+  // quedaron sin nada que mostrar: en aritmética y en ecuaciones lineales, el
+  // motor no escribe nada en la pizarra durante "Reglas y propiedades". La
+  // tarjeta del catálogo cubre ese hueco, y esto lo comprueba.
+  const reglasDelTema = catalogo?.filter((r) => r.tema === tema.tema) ?? [];
+  for (const modulo of datos.lsg?.modulos ?? []) {
+    const id = String(modulo.id);
+    const escritas = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? ""))
+      .filter(esIdeaFuerza);
+
+    // Qué se verá en esa fase: lo escrito, o la tarjeta de la regla, o el
+    // diagrama del concepto.
+    const hayTarjeta = esFaseDeReglas(id) && reglasDelTema.length > 0;
+    const hayDiagrama = esFaseDeConcepto(id) && tieneDiagrama(tema.tema);
+    check(
+      `[${tema.clave}] la fase «${tituloDeFase(id)}» no queda en blanco`,
+      escritas.length > 0 || hayTarjeta || hayDiagrama,
+      `pizarra: ${escritas.length} · tarjeta: ${hayTarjeta} · diagrama: ${hayDiagrama}`,
+    );
+  }
 
   // Ninguna línea que el motor escribe en la pizarra puede ser un párrafo: la
   // explicación hablada es cosa del subtítulo.

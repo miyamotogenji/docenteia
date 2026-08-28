@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef } from "react";
 import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
+import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
+import { esFaseDeConcepto, esFaseDeEjemplo, esFaseDeReglas } from "@/lib/leccion/fases";
 import { identificarRegla, reglaActiva } from "@/lib/leccion/reglas";
 import { notacionFormal, pareceMatematica, planoALatex } from "@/lib/matematicas";
 import { cn } from "@/lib/utils";
@@ -60,13 +62,19 @@ export function Pizarra({
   escenas,
   resaltado,
   reglas = [],
+  reglaDetectada = null,
+  tema,
   className,
 }: {
   escenas: Escena[];
   /** Texto de la línea que el puntero está señalando, si hay alguno. */
   resaltado: string | null;
-  /** Catálogo formal del tema, que se despliega en la fase de Reglas. */
+  /** Catálogo formal del tema, del que sale la tarjeta de la fase de Reglas. */
   reglas?: ReglaPizarra[];
+  /** Regla que el aula ha detectado como activa a partir de lo narrado. */
+  reglaDetectada?: ReglaPizarra | null;
+  /** Tema en curso, para elegir el diagrama de la fase de Concepto. */
+  tema?: string;
   className?: string;
 }) {
   const actual = escenas[escenas.length - 1] ?? null;
@@ -74,13 +82,28 @@ export function Pizarra({
 
   // La regla que el tutor está explicando ahora mismo, deducida de las líneas
   // ya reveladas. Cambia al ritmo del diálogo, no de golpe al entrar en la fase.
+  /**
+   * Regla que se compone en la fase de Reglas.
+   *
+   * Se elige, en este orden: la que el aula ha detectado como activa (mira todo
+   * lo narrado), la que se deduzca de lo escrito en la pizarra, y si ninguna de
+   * las dos da resultado, la PRIMERA del tema.
+   *
+   * Ese último recurso no es un adorno. En aritmética y en ecuaciones lineales
+   * el motor no escribe nada en la pizarra durante esta fase —sólo narra—, así
+   * que al dejar de volcar la locución al lienzo la fase se quedaba
+   * COMPLETAMENTE en blanco. Una fase de "Reglas y propiedades" sin ninguna
+   * regla a la vista no es aceptable, y el catálogo siempre tiene una.
+   */
   const reglaEnCurso = useMemo(() => {
-    if (!actual || !esFaseDeReglas(actual.id)) return null;
-    return reglaActiva(
+    if (!actual || !esFaseDeReglas(actual.id) || reglas.length === 0) return null;
+    if (reglaDetectada) return reglaDetectada;
+    const porPizarra = reglaActiva(
       actual.lineas.map((l) => l.texto),
       reglas,
     );
-  }, [actual, reglas]);
+    return porPizarra ?? reglas[0];
+  }, [actual, reglas, reglaDetectada]);
 
   /**
    * SÓLO EL PASO ACTIVO.
@@ -146,6 +169,10 @@ export function Pizarra({
                   <TarjetaRegla key={reglaEnCurso.clave} regla={reglaEnCurso} />
                 )}
 
+                {/* En la fase de Concepto, un diagrama que enseñe la idea: la
+                    tangente de una curva, las partes de un todo, la balanza. */}
+                {esFaseDeConcepto(actual.id) && tema && <DiagramaConcepto tema={tema} />}
+
                 {/* Únicamente el paso en curso: cada expresión sustituye a la
                     anterior en lugar de acumularse. */}
                 <AnimatePresence mode="wait">
@@ -207,8 +234,6 @@ function Fases({ escenas }: { escenas: Escena[] }) {
   );
 }
 
-const esFaseDeReglas = (id: string) => /regla|propiedad/i.test(id);
-const esFaseDeEjemplo = (id: string) => /ejemplo/i.test(id);
 
 /**
  * Tarjeta de UNA regla, compuesta en KaTeX.

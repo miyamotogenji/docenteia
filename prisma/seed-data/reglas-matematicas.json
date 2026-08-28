@@ -197,7 +197,7 @@
     "nombre": "Regla de la potencia",
     "enunciado": "\\frac{d}{dx}\\left[x^{n}\\right] = n\\,x^{n-1}",
     "descripcion": "Se baja el exponente multiplicando delante y al exponente se le resta uno.",
-    "ejemplo": "\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2}",
+    "ejemplo": "\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2} \\qquad \\frac{d}{dx}\\left[x^{5}\\right] = 5x^{4}",
     "nivel": "BASICO",
     "practicable": true
   },
