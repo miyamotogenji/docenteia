@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 1.987
+Debe terminar sin fallos. La última ejecución sobre esta versión da 2.018
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -321,7 +321,7 @@ Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
-Lección (Paso 2)     241 aprobadas · 0 fallidas
+Lección (Paso 2)     272 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas
@@ -543,6 +543,30 @@ La lección interactiva vive en `/estudiante/leccion`.
   solución que **recalcula el servidor**, no contra un valor enviado por el
   navegador. Cada intento queda registrado en `registros_progreso`, y los
   fallos alimentan el catálogo de debilidades.
+
+- **Módulos 2, 6 y 11 — Persistencia del avance.** Cada lección abre una
+  `sesion_aprendizaje` y cada intento de práctica queda colgado de ella. Al
+  volver, el alumno ve en cada tema cuántas lecciones lleva, cuándo fue la
+  última y su proporción de aciertos, y puede **continuar** en lugar de repetir
+  el diálogo introductorio.
+
+### Progresión de dificultad
+
+La escalera tiene cuatro peldaños —`facil`, `normal`, `dificil`, `experto`— y
+*Más difícil* sube **uno cada vez** en lugar de saltar al último y quedarse ahí.
+Las listas de ejercicios de cada nivel son datos en `src/lsgPrompt.js`, así que
+ampliar la escalera es añadir contenido.
+
+### Explicaciones dinámicas
+
+Los botones que **aclaran** —*No entendí este paso*, *Explicar regla*— piden la
+explicación al modelo en vivo (bandera `explicacionDinamica`), en lugar de
+devolver el guion fijo del prototipo.
+
+> La bandera afecta **sólo a la prosa**. Los botones que traen ejercicio nuevo
+> —*Dame otro ejemplo*, *Más difícil*— siguen saliendo del motor determinista:
+> si la aritmética de una práctica la escribiera el modelo, se perdería la
+> garantía del PRE Light, que es la razón de ser de todo esto.
 
 Dos decisiones que conviene conocer:
 

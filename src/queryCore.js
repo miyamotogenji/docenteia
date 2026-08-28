@@ -195,6 +195,19 @@ export async function manejarConsulta(body, ip = "desconocida") {
   // Modo elegido por el usuario: "demo" (sin IA), "ia" (usa Gemini) o vacío (automático).
   const modo = body?.modo === "demo" || body?.modo === "ia" ? body.modo : "";
 
+  // EXPLICACIÓN DINÁMICA. Los botones de aclaración ("no entendí", "explícame la regla") caían en las
+  // ramas deterministas de abajo, que responden con un guion fijo —siempre las mismas frases, la misma
+  // analogía—. Con esta bandera se saltan esas ramas y la explicación la redacta el modelo en vivo,
+  // teniendo delante el tema, el ejercicio en pantalla y lo ya explicado.
+  //
+  // Sólo afecta a la PROSA. Los ejercicios calificables siguen saliendo del motor determinista: si la
+  // aritmética de una práctica la escribiera el modelo, se perdería la garantía que da el PRE Light,
+  // que es la razón de ser de todo esto. Por eso la interfaz activa la bandera en los botones que
+  // aclaran y NO en los que traen ejercicio nuevo.
+  //
+  // Va apagada por defecto, de modo que el comportamiento del prototipo —y su suite— no cambia.
+  const explicacionDinamica = body?.explicacionDinamica === true;
+
   if (!query) {
     return { status: 400, json: { error: "Falta la consulta ('query')." } };
   }
@@ -206,7 +219,7 @@ export async function manejarConsulta(body, ip = "desconocida") {
     // 0) DESGLOSE PASO A PASO del ejercicio actual (continuidad de artefacto). El alumno pidió
     //    "explícame los pasos anteriores / paso a paso": re-narramos la solución del ejercicio que
     //    YA está en pantalla, de forma DETERMINISTA (sin IA, sin coste).
-    if (seguimiento === "desglosar") {
+    if (seguimiento === "desglosar" && !explicacionDinamica) {
       // El TEMA ACTIVO viaja con el desglose: la lectura correcta la sabe la clase, no la expresión.
       const built = processStepByStep(ejercicio, respuestaEj, `${contexto} ${currentTopic}`);
       if (built) {
@@ -268,7 +281,7 @@ export async function manejarConsulta(body, ip = "desconocida") {
     //       la práctica le REVELARÍA la respuesta que debe hallar él. Si el alumno está viendo el
     //       CONCEPTO (no un problema), "no entendí" NO debe re-resolverle una ecuación.
     const parte = body?.parte === "concepto" ? "concepto" : "resolucion";
-    if (seguimiento === "reexplicar" && parte !== "concepto" && (ejercicio || contexto)) {
+    if (seguimiento === "reexplicar" && !explicacionDinamica && parte !== "concepto" && (ejercicio || contexto)) {
       // Una expresión SUELTA no dice qué hay que hacer con ella: "3x⁴ - 2x²" puede derivarse o
       // factorizarse. El TEMA ACTIVO decide la lectura, y esa lectura es EXCLUSIVA, no sólo
       // prioritaria: en una sesión de factorización nunca se acepta la lectura "derivada de …".
@@ -326,7 +339,9 @@ export async function manejarConsulta(body, ip = "desconocida") {
     //      fracciones). Cada botón presenta un EJEMPLO resuelto paso a paso + una PRÁCTICA distinta y
     //      calificable, con aritmética GARANTIZADA (0 coste de IA). Si la consulta no es de ninguno de
     //      los 4 botones, devuelve null y se sigue el flujo normal con Gemini.
-    const boton = leccionBotonLSG({ query, seguimiento, contexto, currentTopic, previo, historial, cursores });
+    const boton = explicacionDinamica
+      ? null
+      : leccionBotonLSG({ query, seguimiento, contexto, currentTopic, previo, historial, cursores });
     if (boton) {
       const { lsg, pasos, warnings } = processLSG(boton.lsg, boton.intencion, query);
       return {
@@ -410,7 +425,10 @@ export async function manejarConsulta(body, ip = "desconocida") {
       historial,
       previo,
       forceDemo: modo === "demo",
-      forceAI: modo === "ia",
+      // Una aclaración pide explícitamente al modelo: no vale caer al contenido
+      // de demostración, que es otro guion fijo y devolvería el problema al
+      // punto de partida.
+      forceAI: modo === "ia" || explicacionDinamica,
     });
     let { lsg: rawLsg, source, model } = gen;
     const { usage, cached } = gen;

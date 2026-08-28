@@ -513,6 +513,120 @@ for (const tema of TEMAS_LECCION) {
   }
 }
 
+// ── Progresión gradual de dificultad ─────────────────────────────────────────
+// "Más difícil" subía de golpe al último nivel y ahí se quedaba, así que
+// pulsarlo otra vez no cambiaba nada y el alumno oscilaba entre los mismos
+// ejercicios. Ahora es un peldaño cada vez, con un nivel más por encima.
+console.log("\n · Progresión gradual de dificultad");
+
+const ultimaPizarra = (datos) =>
+  flattenLSG(datos.lsg || {})
+    .filter((d) => d.tipo === "pizarra")
+    .map((d) => d.contenido)
+    .pop() ?? "";
+
+for (const tema of TEMAS_LECCION) {
+  let cursores = {};
+  const inicial = await consultar({ query: tema.consulta });
+  cursores = inicial.cursores || {};
+
+  const vistos = [ultimaPizarra(inicial)];
+  const niveles = [];
+
+  for (let paso = 0; paso < 3; paso++) {
+    const datos = await consultar({
+      query: "Proponme un problema más difícil",
+      contexto: tema.consulta,
+      seguimiento: "mas_dificil",
+      currentTopic: tema.consulta,
+      cursores,
+    });
+    cursores = datos.cursores || cursores;
+    vistos.push(ultimaPizarra(datos));
+    niveles.push(cursores["nivel:actual"]);
+  }
+
+  // El nivel tiene que SUBIR peldaño a peldaño, no saltar de una vez.
+  check(
+    `[${tema.clave}] "más difícil" sube de nivel de forma gradual`,
+    niveles[0] < niveles[1] && niveles[1] <= niveles[2],
+    `niveles: ${niveles.join(" → ")}`,
+  );
+  check(
+    `[${tema.clave}] alcanza el nivel más alto de la escalera`,
+    Math.max(...niveles) >= 3,
+    `máximo: ${Math.max(...niveles)}`,
+  );
+  // Y los ejercicios tienen que cambiar de verdad.
+  check(
+    `[${tema.clave}] cada peldaño propone un ejercicio distinto`,
+    new Set(vistos.filter(Boolean)).size >= 3,
+    vistos.join(" | "),
+  );
+
+  // Bajar también es un peldaño, no un salto al nivel más fácil.
+  const bajada = await consultar({
+    query: "Ahora uno más fácil",
+    contexto: tema.consulta,
+    seguimiento: "mas_facil",
+    currentTopic: tema.consulta,
+    cursores,
+  });
+  const nivelTrasBajar = (bajada.cursores || {})["nivel:actual"];
+  check(
+    `[${tema.clave}] "más fácil" baja un solo peldaño`,
+    nivelTrasBajar === Math.max(...niveles) - 1,
+    `de ${Math.max(...niveles)} a ${nivelTrasBajar}`,
+  );
+
+  // Los ejercicios del nivel más alto deben poder resolverse: un enunciado que
+  // el motor no sabe calificar dejaría al alumno sin corrección.
+  const dificil = vistos[vistos.length - 1];
+  if (dificil) {
+    check(
+      `[${tema.clave}] el ejercicio del nivel alto es calificable`,
+      resolverEjercicio(dificil.replace(/\s*=\s*\?$/, ""), tema.clave) != null,
+      `«${dificil}»`,
+    );
+  }
+}
+
+// ── Explicación dinámica (Módulo 4) ──────────────────────────────────────────
+// Los botones de aclaración devolvían guiones fijos del prototipo. Con la
+// bandera `explicacionDinamica` se saltan esas ramas y la explicación se pide
+// al modelo.
+console.log("\n · Explicación dinámica en los botones de aclaración");
+
+for (const tema of TEMAS_LECCION.slice(0, 2)) {
+  const base = { contexto: tema.consulta, currentTopic: tema.consulta, seguimiento: "reexplicar" };
+
+  const fija = await consultar({ query: "No entendí, explícalo mejor", ...base, parte: "resolucion" });
+  const dinamica = await consultar({
+    query: "No entendí, explícalo mejor",
+    ...base,
+    parte: "resolucion",
+    explicacionDinamica: true,
+  });
+
+  // Sin la bandera se responde con el guion determinista.
+  check(
+    `[${tema.clave}] sin la bandera responde el guion determinista`,
+    fija.fuente_ia === "local",
+    `fuente_ia=${fija.fuente_ia}`,
+  );
+  // Con la bandera NO se usa el guion: la respuesta sale del modelo, o del
+  // contenido de respaldo si la clave de Gemini no está operativa.
+  check(
+    `[${tema.clave}] con la bandera no se usa el guion determinista`,
+    dinamica.fuente_ia !== "local",
+    `fuente_ia=${dinamica.fuente_ia}`,
+  );
+  check(
+    `[${tema.clave}] la aclaración dinámica devuelve contenido`,
+    flattenLSG(dinamica.lsg || {}).length > 0,
+  );
+}
+
 // ── Módulo 9 · corrección determinista ───────────────────────────────────────
 console.log("\n · Motor de corrección (Módulo 9)");
 

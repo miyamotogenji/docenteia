@@ -45,12 +45,15 @@ const BOTONES_APOYO: Array<{
   consulta: string;
   seguimiento: Seguimiento;
   parte?: "concepto" | "resolucion";
+  /** Aclara lo que ya hay en pantalla; no trae ejercicio nuevo. */
+  soloExplicacion?: boolean;
 }> = [
   {
     etiqueta: "No entendí este paso",
     consulta: "No entendí, explícalo mejor",
     seguimiento: "reexplicar",
     parte: "resolucion",
+    soloExplicacion: true,
   },
   {
     etiqueta: "Dame otro ejemplo",
@@ -62,6 +65,7 @@ const BOTONES_APOYO: Array<{
     consulta: "Explícame la regla que se aplica",
     seguimiento: "reexplicar",
     parte: "concepto",
+    soloExplicacion: true,
   },
 ];
 
@@ -78,13 +82,39 @@ export interface ReglaVista extends ReglaPizarra {
   nivel: string | null;
 }
 
-export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
+/** Avance acumulado del alumno en un tema, leído de PostgreSQL. */
+export interface ProgresoTema {
+  tema: string;
+  sesiones: number;
+  ultima: string | null;
+  aciertos: number;
+  intentos: number;
+}
+
+export function Aula({
+  reglas = [],
+  progreso = [],
+}: {
+  reglas?: ReglaVista[];
+  progreso?: ProgresoTema[];
+}) {
   // ── Instancias del motor (sólo en el navegador) ────────────────────────────
   const pseRef = useRef<PSELight | null>(null);
   const ttsRef = useRef<TTS | null>(null);
   const resolverRespuesta = useRef<((valor: string | null) => void) | null>(null);
   const idLinea = useRef(0);
   const conversacion = useRef<EstadoConversacion>(estadoInicial());
+
+  // ¿La petición en curso es una AYUDA sobre la lección activa, en vez de un
+  // tema nuevo? Los callbacks del reproductor lo consultan para no reiniciar la
+  // clase: al cargar una lección, el motor limpia la pizarra y vuelve a anunciar
+  // sus módulos desde el primero, y eso devolvía al alumno a la fase Concepto
+  // borrándole el ejercicio que estaba resolviendo.
+  const esAyuda = useRef(false);
+
+  // Sesión de aprendizaje abierta en el servidor, a la que se cuelgan los
+  // intentos de práctica.
+  const sesionId = useRef<string | null>(null);
 
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
@@ -164,11 +194,17 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
     };
 
     const ui: UIPSELight = {
-      setModule: (etiqueta) => abrirEscena(String(etiqueta ?? "")),
+      // Durante una ayuda no se abre fase nueva ni se borra la pizarra: la
+      // respuesta se añade a la escena en la que está el alumno.
+      setModule: (etiqueta) => {
+        if (esAyuda.current) return;
+        abrirEscena(String(etiqueta ?? ""));
+      },
       writeBoard: (texto) => anadirLinea(texto, "formula"),
       writeBoardExplain: (texto) => anadirLinea(texto, "explicacion"),
       highlightBoard: (objetivo) => setResaltado(objetivo ?? null),
       clearBoard: () => {
+        if (esAyuda.current) return;
         setEscenas([]);
         setResaltado(null);
       },
@@ -181,6 +217,14 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
       onLessonEnd: () => {
         setPregunta(null);
         setEstadoAvatar("sonriendo");
+        // Se cierra la sesión para que quede su duración registrada.
+        if (sesionId.current) {
+          void fetch("/api/sesion", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ sesionId: sesionId.current }),
+          }).catch(() => {});
+        }
       },
       // Suspende la lección hasta que el alumno responde. La promesa se resuelve
       // desde el formulario de respuesta, o con null si se aborta la lección.
@@ -212,7 +256,16 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
   const pedirLeccion = useCallback(
     async (
       consulta: string,
-      opciones: { seguimiento?: Seguimiento | null; parte?: "concepto" | "resolucion" } = {},
+      opciones: {
+        seguimiento?: Seguimiento | null;
+        parte?: "concepto" | "resolucion";
+        /**
+         * El botón sólo pide una ACLARACIÓN sobre lo que ya está en pantalla,
+         * no un ejercicio nuevo. En ese caso la explicación la genera la IA en
+         * vivo y el ejercicio que el alumno está resolviendo no se toca.
+         */
+        soloExplicacion?: boolean;
+      } = {},
     ) => {
       setCargando(true);
       setError(null);
@@ -220,8 +273,13 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
       setVeredicto(null);
       setPregunta(null);
 
+      // Toda petición con seguimiento es una ayuda sobre la clase en curso: no
+      // debe reiniciarla ni sacar al alumno de su fase.
+      esAyuda.current = Boolean(opciones.seguimiento);
+
       try {
         const cuerpo = construirPeticion(consulta, conversacion.current, opciones);
+        if (opciones.soloExplicacion) cuerpo.explicacionDinamica = true;
         const r = await fetch("/api/query", {
           method: "POST",
           headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -252,12 +310,16 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
           .join(" ")
           .slice(0, 600);
 
-        // El ejercicio en pantalla es la última fórmula escrita: es lo que hay
-        // que re-explicar si el alumno dice que no entendió.
+        // El ejercicio en pantalla es la última fórmula escrita. Una aclaración
+        // NO lo cambia: el alumno sigue con el que estaba resolviendo, y
+        // sustituirlo haría que su respuesta se corrigiera contra otro
+        // enunciado. "Otro ejemplo" o un cambio de nivel sí lo renuevan.
         const pizarras = pasos
           .filter((p: { tipo: string }) => p.tipo === "pizarra")
           .map((p: { contenido: string }) => p.contenido);
-        estado.ejercicio = pizarras[pizarras.length - 1] ?? "";
+        if (!opciones.soloExplicacion && pizarras.length > 0) {
+          estado.ejercicio = pizarras[pizarras.length - 1];
+        }
 
         pseRef.current?.play(lsg);
       } catch {
@@ -269,12 +331,39 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
     [],
   );
 
+  /**
+   * Abre un tema.
+   *
+   * `continuar` retoma donde lo dejó el alumno en lugar de repetirle el mismo
+   * diálogo introductorio: se entra como seguimiento del tema, así que el motor
+   * arranca con material nuevo y respeta el nivel que ya tenía.
+   */
   const empezarTema = useCallback(
-    (elegido: TemaLeccion) => {
+    (elegido: TemaLeccion, continuar = false) => {
       setTema(elegido);
       conversacion.current = estadoInicial();
       conversacion.current.claveTema = elegido.clave;
-      void pedirLeccion(elegido.consulta);
+
+      // La sesión se abre en el servidor: es lo que hace que el avance quede
+      // registrado. Si falla, la clase sigue igualmente.
+      sesionId.current = null;
+      void fetch("/api/sesion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tema: elegido.clave }),
+      })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((d) => {
+          sesionId.current = d?.sesionId ?? null;
+        })
+        .catch(() => {});
+
+      if (continuar) {
+        conversacion.current.temaActivo = elegido.consulta;
+        void pedirLeccion("Dame otro ejemplo", { seguimiento: "continuacion" });
+      } else {
+        void pedirLeccion(elegido.consulta);
+      }
     },
     [pedirLeccion],
   );
@@ -297,6 +386,7 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
             ejercicio: estado.ejercicio,
             respuesta,
             tema: estado.claveTema,
+            sesionId: sesionId.current ?? undefined,
             intento,
             pizarra: escenas
               .flatMap((e) => e.lineas.map((l) => l.texto))
@@ -329,7 +419,9 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
     if (!activar) tts.cancel();
   }, [vozActiva]);
 
-  const progreso =
+  // Porcentaje de la lección reproducida. Se llama así, y no "progreso", para
+  // no confundirlo con el avance acumulado del alumno que llega por props.
+  const porcentajeReproducido =
     controles.total > 0 ? (controles.index / controles.total) * 100 : 0;
 
   // Las reglas del tema en curso. El catálogo llega entero desde el servidor
@@ -352,20 +444,56 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {TEMAS_LECCION.map((t) => (
-            <Card
-              key={t.clave}
-              className="cursor-pointer transition-colors hover:border-primary hover:bg-accent/40"
-              onClick={() => empezarTema(t)}
-            >
-              <CardHeader>
-                <CardTitle className="text-lg">{t.titulo}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">{t.descripcion}</p>
-              </CardContent>
-            </Card>
-          ))}
+          {TEMAS_LECCION.map((t) => {
+            const avance = progreso.find((p) => p.tema === t.tema);
+            const visitado = Boolean(avance && (avance.sesiones > 0 || avance.intentos > 0));
+            return (
+              <Card key={t.clave} className="flex flex-col">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-lg">{t.titulo}</CardTitle>
+                </CardHeader>
+                <CardContent className="flex flex-1 flex-col gap-3">
+                  <p className="text-sm text-muted-foreground">{t.descripcion}</p>
+
+                  {avance && (
+                    <p className="text-xs text-muted-foreground">
+                      {avance.sesiones > 0 && (
+                        <>
+                          {avance.sesiones} {avance.sesiones === 1 ? "lección" : "lecciones"}
+                          {avance.ultima && (
+                            <> · última el {new Date(avance.ultima).toLocaleDateString("es")}</>
+                          )}
+                        </>
+                      )}
+                      {avance.intentos > 0 && (
+                        <>
+                          {avance.sesiones > 0 && <br />}
+                          {avance.aciertos} de {avance.intentos} ejercicios acertados
+                        </>
+                      )}
+                    </p>
+                  )}
+
+                  <div className="mt-auto flex flex-wrap gap-2 pt-1">
+                    {visitado ? (
+                      <>
+                        <Button size="sm" onClick={() => empezarTema(t, true)}>
+                          Continuar
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => empezarTema(t)}>
+                          Desde el principio
+                        </Button>
+                      </>
+                    ) : (
+                      <Button size="sm" onClick={() => empezarTema(t)}>
+                        Empezar
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
       </div>
     );
@@ -454,7 +582,7 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
 
         {/* Pizarra y práctica */}
         <div className="space-y-4">
-          <Progress value={progreso} />
+          <Progress value={porcentajeReproducido} />
 
           <Pizarra escenas={escenas} resaltado={resaltado} reglas={reglasDelTema} />
 
@@ -552,6 +680,7 @@ export function Aula({ reglas = [] }: { reglas?: ReglaVista[] }) {
                   void pedirLeccion(b.consulta, {
                     seguimiento: b.seguimiento,
                     parte: b.parte,
+                    soloExplicacion: b.soloExplicacion,
                   })
                 }
               >

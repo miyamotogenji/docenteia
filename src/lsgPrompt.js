@@ -481,6 +481,7 @@ const FRACCIONES = {
   facil: [[1, 2, 4], [1, 3, 5], [2, 3, 6], [1, 5, 7], [1, 2, 8], [2, 3, 8]],
   normal: [[2, 3, 6], [1, 2, 4], [1, 3, 5], [2, 5, 8], [3, 4, 9], [1, 4, 7], [2, 3, 10], [1, 5, 11]],
   dificil: [[1, 2, 1, 3], [1, 4, 1, 6], [2, 3, 1, 4], [3, 5, 1, 2], [1, 3, 2, 5], [3, 4, 1, 6]],
+  experto: [[3, 4, 5, 6], [5, 6, 7, 8], [7, 8, 5, 12], [5, 12, 7, 18], [9, 10, 7, 15], [11, 12, 5, 18]],
 };
 const textoFrac = (e) => (e.length === 3 ? `${e[0]}/${e[2]} + ${e[1]}/${e[2]}` : `${e[0]}/${e[1]} + ${e[2]}/${e[3]}`);
 // Acepta un string (compatibilidad: `fraccionResueltaLSG(evitar)`) o { evitar, nivel }.
@@ -507,7 +508,10 @@ export function fraccionResueltaLSG(opts) {
   // se resuelve ESA como ejemplo (paridad con los otros 3 temas, que sí resuelven lo que el alumno escribe);
   // la PRÁCTICA sale de los presets del mismo tipo (mismo/distinto denominador), distinta del ejemplo.
   const inst = Array.isArray(o.instancia) && (o.instancia.length === 3 || o.instancia.length === 4) ? o.instancia : null;
-  const dificil = inst ? inst.length === 4 : nivel === "dificil";
+  // "Difícil" aquí significa DENOMINADORES DISTINTOS, que es lo que sube el listón en fracciones. Se
+  // cumple desde el nivel difícil hacia arriba: comparando sólo con "dificil", el nivel experto habría
+  // vuelto a denominadores iguales y el ejercicio habría resultado MÁS fácil que el anterior.
+  const dificil = inst ? inst.length === 4 : NIVELES.indexOf(nivel) >= NIVELES.indexOf("dificil");
   // Rota con el CURSOR (posición explícita por tema:nivel que viaja con la conversación); si no llega
   // cursor, se deduce del texto ya mostrado como respaldo. La práctica va a medio giro del ejemplo,
   // para que el ejercicio practicado no reaparezca como ejemplo en la lección siguiente.
@@ -814,7 +818,7 @@ function rotarBoton(lista, evitarRaw, cursores, clave, forma) {
 // NIVELES de dificultad. Cada tema tiene TRES listas reales (fácil / normal / difícil), no una sola:
 // al pedir "algo más difícil" el ejercicio debe ser DE VERDAD más difícil (antes se caía siempre en la
 // misma lista trivial —"2x = 6"— y pedir "más difícil" devolvía un ejercicio MÁS FÁCIL que el ejemplo).
-const NIVELES = ["facil", "normal", "dificil"];
+const NIVELES = ["facil", "normal", "dificil", "experto"];
 const listaNivel = (listas, nivel) => listas[NIVELES.includes(nivel) ? nivel : "normal"];
 
 // Elige ejemplo + práctica DENTRO del nivel pedido: en la PRIMERA pulsación (sin seguimiento) usa la
@@ -947,21 +951,25 @@ const SUMAS = {
   facil: ["3 + 4", "5 + 2", "6 + 3", "4 + 5", "7 + 2", "2 + 6", "8 + 1", "5 + 4"],
   normal: ["24 + 17", "36 + 28", "47 + 25", "58 + 36", "19 + 45", "27 + 38", "46 + 29", "53 + 19"],
   dificil: ["234 + 178", "356 + 267", "489 + 255", "678 + 145", "527 + 398", "349 + 276"],
+  experto: ["1234 + 2876", "3457 + 4698", "5689 + 3745", "2908 + 6197", "4736 + 5489", "7852 + 1969"],
 };
 const RESTAS = {
   facil: ["8 - 3", "9 - 5", "7 - 2", "6 - 4", "9 - 6", "8 - 5", "7 - 3", "9 - 4"],
   normal: ["52 - 27", "63 - 28", "71 - 35", "84 - 46", "45 - 19", "62 - 38", "90 - 47", "73 - 58"],
   dificil: ["503 - 278", "412 - 255", "600 - 347", "725 - 486", "834 - 567", "701 - 289"],
+  experto: ["4002 - 1875", "6130 - 2947", "5004 - 3268", "8121 - 4596", "7000 - 3489", "9203 - 5617"],
 };
 const MULTIS = {
   facil: ["6 × 7", "8 × 4", "7 × 3", "9 × 6", "5 × 8", "4 × 9", "7 × 8", "6 × 9"],
   normal: ["12 × 4", "13 × 6", "24 × 3", "15 × 7", "23 × 4", "18 × 5", "14 × 6", "27 × 3"],
   dificil: ["23 × 14", "34 × 12", "26 × 15", "45 × 13", "18 × 24", "32 × 16"],
+  experto: ["124 × 32", "215 × 24", "146 × 35", "328 × 17", "253 × 26", "417 × 23"],
 };
 const DIVIS = {
   facil: ["20 ÷ 4", "18 ÷ 3", "24 ÷ 6", "15 ÷ 5", "28 ÷ 7", "16 ÷ 4", "21 ÷ 3", "30 ÷ 5"],
   normal: ["84 ÷ 4", "96 ÷ 6", "72 ÷ 3", "91 ÷ 7", "85 ÷ 5", "78 ÷ 6", "98 ÷ 7", "96 ÷ 8"],
   dificil: ["144 ÷ 12", "156 ÷ 13", "288 ÷ 24", "192 ÷ 16", "225 ÷ 15", "132 ÷ 11"],
+  experto: ["1728 ÷ 24", "2184 ÷ 26", "3456 ÷ 32", "4275 ÷ 45", "2592 ÷ 18", "5184 ÷ 36"],
 };
 const parseAB = (s) => { const m = String(s).match(/(\d+)\s*[+\-×÷*/]\s*(\d+)/); return m ? [Number(m[1]), Number(m[2])] : [0, 0]; };
 // Nombre de cada columna (de derecha a izquierda). Escala a números grandes (8+ dígitos): antes el arreglo
@@ -1209,6 +1217,8 @@ const LINEALES = {
   // denominador. Todas con solución entera.
   dificil: ["2(x + 3) = 16", "5x - 7 = 2x + 5", "3(x - 2) + 4 = 19", "x/2 + 5 = 12",
             "2(x + 4) = 3x - 1", "x/3 + 7 = 12", "4x + 3x - 5 = 30", "6x + 5x - 8 = 25"],
+  experto: ["3(2x - 1) + 4 = 5x + 9", "2(3x + 5) = 4(x + 7)", "5x/2 - 3 = 2x + 6",
+            "4(x - 3) + 2x = 3(x + 5)", "7x - 2(x + 4) = 3x + 10", "x/4 + x/2 = 9"],
 };
 // Pool de ecuaciones con x en AMBOS lados. Si el EJEMPLO que trae el alumno es de dos lados ("5x - 7 = 2x + 5"),
 // la PRÁCTICA debe ser también de dos lados (MISMO tipo). El pool LINEALES es de un solo lado, así que un
@@ -1271,6 +1281,7 @@ const DERIVADAS = {
   facil: ["2x", "3x", "x²", "5x", "x³", "4x"],
   normal: ["x²", "2x³", "3x²", "x⁴", "5x²", "4x³", "2x⁴", "x³"],
   dificil: ["3x⁴ - 2x²", "2x³ + 5x", "4x³ - 3x² + 2x", "5x⁴ + 2x³", "x⁴ - 6x² + 9x", "3x⁵ - 4x²"],
+  experto: ["2x⁵ - 3x⁴ + x²", "6x⁴ - 5x³ + 2x", "x⁵ - 4x³ + 7x²", "4x⁶ - 2x⁴ + 3x", "5x⁵ + 3x³ - 8x", "7x⁴ - 6x² + 5x"],
 };
 function partesMonomio(m) {
   const s = canonExpr(m).replace(/\*/g, "");
@@ -1620,6 +1631,7 @@ const FACTORIZ = {
   facil: ["x² - 1", "x² - 4", "x² - 9", "x² - 16"],
   normal: ["x² - 9", "x² - 16", "x² - 25", "x² - 4", "x² - 36", "x² - 49", "x² - 1", "x² - 64"],
   dificil: ["4x² - 25", "9x² - 16", "2x² - 8", "3x² - 27", "16x² - 9", "5x² - 45"],
+  experto: ["25x² - 49", "36x² - 121", "8x² - 72", "12x² - 108", "49x² - 64", "18x² - 50"],
 };
 // Explicación CORRECTA de la identificación de a y b según el caso (con coeficiente, a NO es "x").
 // Antes se decía siempre "a = x y b = √N", falso para "4x² - 25" (a = 2x) y para "2x² - 8" (factor común).
@@ -2275,16 +2287,21 @@ export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", c
   const SEG_OTRO = new Set(["continuacion", "practicar", "resolver_otro"]);
   // "más fácil"/"más difícil" son seguimientos de NIVEL del tema activo: se mantiene el tema y se cambia
   // la lista de ejercicios a la del nivel pedido (antes caían a Gemini y devolvían algo trivial).
-  const SEG_NIVEL = { mas_facil: "facil", mas_dificil: "dificil" };
+  // PROGRESIÓN GRADUAL. Antes esto era un salto absoluto: "más difícil" ponía el nivel en "dificil" de
+  // una vez y ahí se quedaba, así que pulsarlo otra vez no subía nada y el alumno oscilaba entre los
+  // mismos ejercicios. Ahora es un PELDAÑO: se sube o se baja uno respecto del nivel en el que está,
+  // y hay un cuarto nivel por encima para que la escalera tenga a dónde seguir. El valor se resuelve
+  // más abajo, cuando ya se conoce el nivel actual.
+  const SEG_PASO = { mas_facil: -1, mas_dificil: +1 };
   // NIVEL también por TEXTO libre: "dame ejercicios MÁS COMPLEJOS", "algo más difícil", "números de 8
   // dígitos", "más avanzados" → nivel difícil; "más fácil/sencillo/básico" → fácil. (Queja del cliente:
   // pedía ejercicios "más complejos, como dividir números de 8 dígitos" y recibía uno trivial.)
   const nqNivel = normBoton(query);
-  const nivelPedido = SEG_NIVEL[seguimiento]
-    || (/\bmas\s+f[aá]cil|sencill|b[aá]sic|\bsimple/.test(nqNivel) ? "facil"
-      : /\bmas\s+(dif[ií]cil|complej|complicad|avanzad|dur)|\bcomplej|\bavanzad|\bdif[ií]cil|\d+\s*d[ií]gitos|numeros?\s+grandes|\bmas\s+grandes/.test(nqNivel) ? "dificil"
-      : null);
-  const esSeg = SEG_OTRO.has(seguimiento) || !!SEG_NIVEL[seguimiento];
+  const pasoPedido = SEG_PASO[seguimiento]
+    || (/\bmas\s+f[aá]cil|sencill|b[aá]sic|\bsimple/.test(nqNivel) ? -1
+      : /\bmas\s+(dif[ií]cil|complej|complicad|avanzad|dur)|\bcomplej|\bavanzad|\bdif[ií]cil|\d+\s*d[ií]gitos|numeros?\s+grandes|\bmas\s+grandes/.test(nqNivel) ? +1
+      : 0);
+  const esSeg = SEG_OTRO.has(seguimiento) || !!SEG_PASO[seguimiento];
   // EL NIVEL SE RECUERDA. Antes se deducía SOLO de la consulta actual, así que "dame ejercicios más
   // complejos" duraba UN turno: el siguiente "otro ejemplo" volvía a nivel normal sin avisar. En
   // derivadas eso se nota mucho, porque los polinomios están en el nivel difícil y los monomios en el
@@ -2296,11 +2313,15 @@ export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", c
   const CLAVE_NIVEL = "nivel:actual";
   const mNivel = cursorMapa(cursores);
   let nivel;
-  if (nivelPedido) {
-    nivel = nivelPedido;
-    if (mNivel) mNivel[CLAVE_NIVEL] = NIVELES.indexOf(nivel);
-  } else if ((esSeg || seguimiento) && mNivel && Number.isInteger(mNivel[CLAVE_NIVEL])) {
-    nivel = NIVELES[mNivel[CLAVE_NIVEL]] || "normal";      // seguimiento: se mantiene donde estaba
+  const idxGuardado = mNivel && Number.isInteger(mNivel[CLAVE_NIVEL]) ? mNivel[CLAVE_NIVEL] : null;
+  if (pasoPedido) {
+    // Un peldaño arriba o abajo desde donde estaba, sin salirse de la escalera.
+    const desde = idxGuardado != null ? idxGuardado : NIVELES.indexOf("normal");
+    const destino = Math.max(0, Math.min(NIVELES.length - 1, desde + pasoPedido));
+    nivel = NIVELES[destino];
+    if (mNivel) mNivel[CLAVE_NIVEL] = destino;
+  } else if ((esSeg || seguimiento) && idxGuardado != null) {
+    nivel = NIVELES[idxGuardado] || "normal";              // seguimiento: se mantiene donde estaba
   } else {
     nivel = "normal";
     if (mNivel) mNivel[CLAVE_NIVEL] = NIVELES.indexOf("normal");
@@ -2490,7 +2511,7 @@ export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", c
     const instancia = extraerFuncionDerivable(base);
     marcarAplicado(cursores, false);
     return commonRet("derivada", derivadaResueltaLSG({ evitar: previo, instancia, seguimiento: esSeg,
-      nivel: (reglaSuma && !instancia && !nivelPedido) ? "dificil" : nivel,
+      nivel: (reglaSuma && !instancia && !pasoPedido) ? "dificil" : nivel,
       concepto: conceptoOn, practica: pidePracticar, reglaSuma, cursores }));
   }
 
