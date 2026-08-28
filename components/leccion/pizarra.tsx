@@ -82,16 +82,20 @@ export function Pizarra({
     );
   }, [actual, reglas]);
 
-  // El hilo de la lección va por un lado y la aclaración por otro, para que
-  // ésta se lea como una nota al margen y no como más contenido apilado.
-  const lineasLeccion = useMemo(
-    () => (actual?.lineas ?? []).filter((l) => !l.aclaracion),
-    [actual],
-  );
-  const lineasAclaracion = useMemo(
-    () => (actual?.lineas ?? []).filter((l) => l.aclaracion),
-    [actual],
-  );
+  /**
+   * SÓLO EL PASO ACTIVO.
+   *
+   * La pizarra mostraba todas las líneas de la fase y el contenido se apilaba
+   * hasta convertirse en un scroll continuo. Ahora se compone únicamente el
+   * paso en curso —la última expresión escrita—, como un docente que borra y
+   * vuelve a escribir. El hilo de la explicación va en el subtítulo, y las
+   * expresiones anteriores siguen en el estado por si hiciera falta
+   * reconstruirlas.
+   */
+  const pasoActivo = useMemo(() => {
+    const lineas = actual?.lineas ?? [];
+    return lineas.length > 0 ? lineas[lineas.length - 1] : null;
+  }, [actual]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -142,53 +146,25 @@ export function Pizarra({
                   <TarjetaRegla key={reglaEnCurso.clave} regla={reglaEnCurso} />
                 )}
 
-                {/* El hilo de la lección. El paso en curso va destacado y los
-                    anteriores atenuados: la vista sigue al tutor en lugar de
-                    ser un muro uniforme de texto. */}
-                <AnimatePresence initial={false}>
-                  {lineasLeccion.map((linea, i) => (
+                {/* Únicamente el paso en curso: cada expresión sustituye a la
+                    anterior en lugar de acumularse. */}
+                <AnimatePresence mode="wait">
+                  {pasoActivo && (
                     <motion.div
-                      key={linea.id}
-                      initial={{ opacity: 0, y: 8 }}
+                      key={pasoActivo.id}
+                      initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.22 }}
-                      className={cn(
-                        "transition-opacity",
-                        i < lineasLeccion.length - 1 && "opacity-60",
-                      )}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.25 }}
                     >
                       <LineaRenderizada
-                        linea={linea}
-                        resaltada={resaltado != null && linea.texto.includes(resaltado)}
+                        linea={pasoActivo}
+                        resaltada={resaltado != null && pasoActivo.texto.includes(resaltado)}
                         reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
                       />
                     </motion.div>
-                  ))}
+                  )}
                 </AnimatePresence>
-
-                {/* La aclaración, agrupada aparte y siempre la última. */}
-                {lineasAclaracion.length > 0 && (
-                  <motion.aside
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="rounded-md border-l-4 border-primary bg-primary/5 p-3"
-                  >
-                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
-                      Aclaración
-                    </p>
-                    <div className="space-y-2">
-                      {lineasAclaracion.map((linea) => (
-                        <LineaRenderizada
-                          key={linea.id}
-                          linea={linea}
-                          resaltada={false}
-                          reglas={[]}
-                        />
-                      ))}
-                    </div>
-                  </motion.aside>
-                )}
 
                 <div ref={finRef} />
               </div>

@@ -2829,3 +2829,84 @@ export function mockLSG(query, intent, opts = {}) {
   // 5) Tema no reconocido → honesto (no mostrar contenido de otro tema).
   return mockGenerico(query, intent);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NIVELES GENERADOS — para que "más difícil" no se estanque
+//
+// La escalera terminaba en "experto": una vez arriba, pulsar otra vez no subía
+// nada y el alumno rotaba entre los mismos seis ejercicios. Aquí se añaden
+// cuatro peldaños más, generados en lugar de escritos a mano, con más términos,
+// grados mayores y término independiente.
+//
+// La regla que gobierna la generación: TODO lo generado tiene que poder
+// resolverlo el motor determinista. De nada sirve un ejercicio más difícil si
+// después no se puede calificar sin recurrir a la IA. Por eso las ecuaciones se
+// construyen a partir de su solución (entera por construcción) y las
+// factorizaciones a partir de dos cuadrados perfectos.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SUPER = ["⁰", "¹", "²", "³", "⁴", "⁵", "⁶", "⁷", "⁸", "⁹"];
+const exponente = (n) => String(n).split("").map((d) => SUPER[Number(d)]).join("");
+
+/** Polinomio de grado creciente con término independiente. */
+function generarDerivada(k, i) {
+  const grado = 4 + k;                       // 5, 6, 7, 8…
+  const a = 2 + ((i + k) % 6);
+  const b = 1 + ((i * 2 + k) % 5);
+  const c = 1 + ((i * 3 + k) % 7);
+  const d = 1 + ((i + k * 2) % 9);
+  return `${a}x${exponente(grado)} - ${b}x${exponente(grado - 2)} + ${c}x - ${d}`;
+}
+
+/** Ecuación con x a los dos lados, construida DESDE su solución entera. */
+function generarLineal(k, i) {
+  const solucion = 2 + ((i + k) % 9);        // la respuesta, entera por construcción
+  const a = 4 + ((i + k) % 5);
+  const c = 1 + ((i + k) % 3);               // a > c, para que el coeficiente no se anule
+  const b = 3 + ((i * 2 + k) % 11);
+  const d = a * solucion + b - c * solucion; // se despeja para que cuadre
+  const signoD = d < 0 ? `- ${Math.abs(d)}` : `+ ${d}`;
+  return `${a}x + ${b} = ${c}x ${signoD}`;
+}
+
+/** Diferencia de dos cuadrados perfectos, cada vez más grandes. */
+function generarFactorizacion(k, i) {
+  const raizA = 2 + ((i + k) % 7);           // coeficiente de x²
+  const raizB = 3 + ((i * 2 + k) % 9);       // término independiente
+  return `${raizA * raizA}x² - ${raizB * raizB}`;
+}
+
+/** Números cada vez más grandes, sin separadores: el motor parte por espacios. */
+const generarSuma = (k, i) => `${1000 * (k + 2) + i * 137} + ${900 * (k + 2) + i * 219}`;
+const generarResta = (k, i) => `${2000 * (k + 2) + i * 311} - ${700 * (k + 1) + i * 143}`;
+const generarMulti = (k, i) => `${100 + k * 90 + i * 17} × ${12 + k * 6 + i * 3}`;
+const generarDivi = (k, i) => {
+  const divisor = 12 + k * 6 + i * 2;
+  return `${divisor * (14 + k * 5 + i)} ÷ ${divisor}`;   // división exacta
+};
+
+/** Fracciones con denominadores mayores. Formato [n1, d1, n2, d2]. */
+function generarFraccion(k, i) {
+  const d1 = 8 + k * 3 + (i % 4);
+  const d2 = d1 + 2 + ((i + k) % 5);
+  return [1 + (i % (d1 - 1)), d1, 1 + ((i + k) % (d2 - 1)), d2];
+}
+
+// Cuatro peldaños por encima de "experto", con seis ejercicios cada uno.
+const PELDANOS_GENERADOS = 4;
+const EJERCICIOS_POR_NIVEL = 6;
+
+for (let k = 0; k < PELDANOS_GENERADOS; k++) {
+  const clave = `experto${k + 2}`;
+  NIVELES.push(clave);
+  const serie = (fn) => Array.from({ length: EJERCICIOS_POR_NIVEL }, (_, i) => fn(k, i));
+
+  FRACCIONES[clave] = serie(generarFraccion);
+  SUMAS[clave] = serie(generarSuma);
+  RESTAS[clave] = serie(generarResta);
+  MULTIS[clave] = serie(generarMulti);
+  DIVIS[clave] = serie(generarDivi);
+  LINEALES[clave] = serie(generarLineal);
+  DERIVADAS[clave] = serie(generarDerivada);
+  FACTORIZ[clave] = serie(generarFactorizacion);
+}

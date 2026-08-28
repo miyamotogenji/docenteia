@@ -579,6 +579,40 @@ for (const tema of TEMAS_LECCION) {
     `de ${Math.max(...niveles)} a ${nivelTrasBajar}`,
   );
 
+  // La escalera no se estanca: seguir pulsando "más difícil" por encima del
+  // nivel escrito a mano entra en los niveles GENERADOS y sigue subiendo.
+  let cursoresLargos = { ...cursores };
+  const nivelesLargos = [];
+  const ejerciciosLargos = [];
+  for (let paso = 0; paso < 6; paso++) {
+    const datos = await consultar({
+      query: "Proponme un problema más difícil",
+      contexto: tema.consulta,
+      seguimiento: "mas_dificil",
+      currentTopic: tema.consulta,
+      cursores: cursoresLargos,
+    });
+    cursoresLargos = datos.cursores || cursoresLargos;
+    nivelesLargos.push(cursoresLargos["nivel:actual"]);
+    ejerciciosLargos.push(ultimaPizarra(datos));
+  }
+  check(
+    `[${tema.clave}] la escalera sigue subiendo más allá del nivel escrito a mano`,
+    Math.max(...nivelesLargos) >= 5,
+    `niveles: ${nivelesLargos.join(" → ")}`,
+  );
+  // Y lo generado tiene que poder calificarlo el motor: un ejercicio más
+  // difícil que después no se puede corregir no sirve de nada.
+  const sinResolver = ejerciciosLargos
+    .filter(Boolean)
+    .map((e) => e.replace(/\s*=\s*\?$/, ""))
+    .filter((e) => resolverEjercicio(e, tema.clave) == null);
+  check(
+    `[${tema.clave}] todo ejercicio generado es calificable`,
+    sinResolver.length === 0,
+    sinResolver.map((e) => `«${e}»`).join(" · "),
+  );
+
   // Los ejercicios del nivel más alto deben poder resolverse: un enunciado que
   // el motor no sabe calificar dejaría al alumno sin corrección.
   const dificil = vistos[vistos.length - 1];
