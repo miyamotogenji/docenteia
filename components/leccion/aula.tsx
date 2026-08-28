@@ -36,6 +36,7 @@ import {
   type EstadoConversacion,
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
+import { reglaActiva } from "@/lib/leccion/reglas";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
 
@@ -112,9 +113,22 @@ export function Aula({
   // borrándole el ejercicio que estaba resolviendo.
   const esAyuda = useRef(false);
 
+  // ¿La petición en curso es una ACLARACIÓN? Sus líneas se agrupan aparte en la
+  // pizarra y sustituyen a las de la aclaración anterior.
+  const esAclaracion = useRef(false);
+
   // Sesión de aprendizaje abierta en el servidor, a la que se cuelgan los
   // intentos de práctica.
   const sesionId = useRef<string | null>(null);
+
+  // Última regla que el tutor ha nombrado en TODA la lección.
+  //
+  // Es distinta de la que la pizarra resalta en la fase de Reglas: aquélla mira
+  // sólo la escena en curso, porque enseña la tarjeta de lo que se está
+  // narrando. Ésta mira la lección entera, porque el alumno pulsa "Explicar
+  // regla" cuando ya está en Práctica, y lo que hay que explicarle es la regla
+  // que le enseñaron, no ninguna de la fase en la que está.
+  const reglaEnCursoRef = useRef<{ nombre: string; enunciado: string } | null>(null);
 
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
@@ -151,7 +165,12 @@ export function Aula({
     (texto: string, clase: "formula" | "explicacion") => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
-      const linea = { id: idLinea.current++, texto: limpio, clase };
+      const linea = {
+        id: idLinea.current++,
+        texto: limpio,
+        clase,
+        aclaracion: esAclaracion.current,
+      };
       setEscenas((prev) => {
         if (prev.length === 0) {
           return [{ id: "escena-0", titulo: "Lección", lineas: [linea] }];
@@ -276,10 +295,36 @@ export function Aula({
       // Toda petición con seguimiento es una ayuda sobre la clase en curso: no
       // debe reiniciarla ni sacar al alumno de su fase.
       esAyuda.current = Boolean(opciones.seguimiento);
+      esAclaracion.current = Boolean(opciones.soloExplicacion);
+
+      // Una aclaración nueva RETIRA la anterior. Si se acumularan, pedir ayuda
+      // tres veces dejaría tres muros de texto en la pizarra, que es justo lo
+      // que se quiere evitar.
+      if (esAclaracion.current) {
+        setEscenas((prev) => {
+          if (prev.length === 0) return prev;
+          const ultima = prev[prev.length - 1];
+          return [
+            ...prev.slice(0, -1),
+            { ...ultima, lineas: ultima.lineas.filter((l) => !l.aclaracion) },
+          ];
+        });
+      }
 
       try {
         const cuerpo = construirPeticion(consulta, conversacion.current, opciones);
-        if (opciones.soloExplicacion) cuerpo.explicacionDinamica = true;
+        if (opciones.soloExplicacion) {
+          cuerpo.explicacionDinamica = true;
+          // Qué regla se está explicando y sobre qué término. Es la diferencia
+          // entre "explícame la regla de la potencia sobre 5x²" y "háblame de
+          // derivadas", que es lo que el modelo entendía sin este contexto.
+          const activa = reglaEnCursoRef.current;
+          cuerpo.aclaracion = {
+            regla: activa ? { nombre: activa.nombre, formula: activa.enunciado } : null,
+            ejercicio: conversacion.current.ejercicio,
+            tema: conversacion.current.temaActivo || conversacion.current.claveTema,
+          };
+        }
         const r = await fetch("/api/query", {
           method: "POST",
           headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -430,6 +475,13 @@ export function Aula({
     () => (tema ? reglas.filter((r) => r.tema === tema.tema) : []),
     [reglas, tema],
   );
+
+  // Se mantiene al día la última regla nombrada, para poder inyectarla en la
+  // petición de aclaración sin que `pedirLeccion` dependa de este estado.
+  useEffect(() => {
+    const todas = escenas.flatMap((e) => e.lineas.map((l) => l.texto));
+    reglaEnCursoRef.current = reglaActiva(todas, reglasDelTema);
+  }, [escenas, reglasDelTema]);
 
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {

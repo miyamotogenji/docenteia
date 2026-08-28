@@ -18,6 +18,12 @@ export interface LineaPizarra {
   texto: string;
   /** "formula" viene de una directiva `pizarra`; "explicacion", de una `hablar`. */
   clase: "formula" | "explicacion";
+  /**
+   * La línea pertenece a una ACLARACIÓN pedida por el alumno, no al hilo de la
+   * lección. Se agrupa aparte y se sustituye en la siguiente aclaración, para
+   * que pedir ayuda tres veces no deje tres muros de texto en la pizarra.
+   */
+  aclaracion?: boolean;
 }
 
 /** Una fase de la lección, con su propia vista de pizarra. */
@@ -76,6 +82,17 @@ export function Pizarra({
     );
   }, [actual, reglas]);
 
+  // El hilo de la lección va por un lado y la aclaración por otro, para que
+  // ésta se lea como una nota al margen y no como más contenido apilado.
+  const lineasLeccion = useMemo(
+    () => (actual?.lineas ?? []).filter((l) => !l.aclaracion),
+    [actual],
+  );
+  const lineasAclaracion = useMemo(
+    () => (actual?.lineas ?? []).filter((l) => l.aclaracion),
+    [actual],
+  );
+
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [actual?.lineas.length, actual?.id]);
@@ -125,13 +142,20 @@ export function Pizarra({
                   <TarjetaRegla key={reglaEnCurso.clave} regla={reglaEnCurso} />
                 )}
 
+                {/* El hilo de la lección. El paso en curso va destacado y los
+                    anteriores atenuados: la vista sigue al tutor en lugar de
+                    ser un muro uniforme de texto. */}
                 <AnimatePresence initial={false}>
-                  {actual.lineas.map((linea) => (
+                  {lineasLeccion.map((linea, i) => (
                     <motion.div
                       key={linea.id}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.22 }}
+                      className={cn(
+                        "transition-opacity",
+                        i < lineasLeccion.length - 1 && "opacity-60",
+                      )}
                     >
                       <LineaRenderizada
                         linea={linea}
@@ -141,6 +165,31 @@ export function Pizarra({
                     </motion.div>
                   ))}
                 </AnimatePresence>
+
+                {/* La aclaración, agrupada aparte y siempre la última. */}
+                {lineasAclaracion.length > 0 && (
+                  <motion.aside
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="rounded-md border-l-4 border-primary bg-primary/5 p-3"
+                  >
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+                      Aclaración
+                    </p>
+                    <div className="space-y-2">
+                      {lineasAclaracion.map((linea) => (
+                        <LineaRenderizada
+                          key={linea.id}
+                          linea={linea}
+                          resaltada={false}
+                          reglas={[]}
+                        />
+                      ))}
+                    </div>
+                  </motion.aside>
+                )}
+
                 <div ref={finRef} />
               </div>
             </motion.div>
