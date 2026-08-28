@@ -130,6 +130,9 @@ export function Aula({
   // que le enseñaron, no ninguna de la fase en la que está.
   const reglaEnCursoRef = useRef<{ nombre: string; enunciado: string } | null>(null);
 
+  /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
+  const narrado = useRef<string[]>([]);
+
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
   const [tema, setTema] = useState<TemaLeccion | null>(null);
@@ -220,14 +223,25 @@ export function Aula({
         abrirEscena(String(etiqueta ?? ""));
       },
       writeBoard: (texto) => anadirLinea(texto, "formula"),
-      writeBoardExplain: (texto) => anadirLinea(texto, "explicacion"),
+      // La explicación hablada NO va a la pizarra. El motor la escribía además
+      // de narrarla, así que el mismo párrafo aparecía dos veces: en el lienzo
+      // y en el subtítulo. La pizarra queda para el título de la regla, las
+      // expresiones y el ejercicio; la prosa, sólo en el subtítulo.
+      writeBoardExplain: () => {},
       highlightBoard: (objetivo) => setResaltado(objetivo ?? null),
       clearBoard: () => {
         if (esAyuda.current) return;
         setEscenas([]);
         setResaltado(null);
       },
-      setCaption: (texto) => setSubtitulo(String(texto ?? "")),
+      setCaption: (texto) => {
+        const t = String(texto ?? "");
+        setSubtitulo(t);
+        // Lo narrado se guarda aparte para poder saber qué regla está
+        // explicando el tutor. Antes se deducía de la pizarra, pero la prosa ya
+        // no se escribe allí.
+        if (t.trim()) narrado.current = [...narrado.current, t].slice(-40);
+      },
       onStep: () => {},
       setControls: (estado) => setControles(estado),
       onProgress: (index, total) =>
@@ -388,6 +402,7 @@ export function Aula({
       setTema(elegido);
       conversacion.current = estadoInicial();
       conversacion.current.claveTema = elegido.clave;
+      narrado.current = [];
 
       // La sesión se abre en el servidor: es lo que hace que el avance quede
       // registrado. Si falla, la clase sigue igualmente.
@@ -479,9 +494,11 @@ export function Aula({
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
   useEffect(() => {
-    const todas = escenas.flatMap((e) => e.lineas.map((l) => l.texto));
-    reglaEnCursoRef.current = reglaActiva(todas, reglasDelTema);
-  }, [escenas, reglasDelTema]);
+    // Se mira lo narrado Y lo escrito: el nombre de la regla puede aparecer en
+    // cualquiera de los dos ("Regla de la potencia: la derivada de xⁿ…").
+    const fuentes = [...narrado.current, ...escenas.flatMap((e) => e.lineas.map((l) => l.texto))];
+    reglaEnCursoRef.current = reglaActiva(fuentes, reglasDelTema);
+  }, [escenas, reglasDelTema, subtitulo]);
 
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {
