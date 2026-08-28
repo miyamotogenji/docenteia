@@ -37,6 +37,7 @@ import {
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
 import { reglaActiva } from "@/lib/leccion/reglas";
+import { esIdeaFuerza } from "@/lib/matematicas";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
 
@@ -222,7 +223,16 @@ export function Aula({
         if (esAyuda.current) return;
         abrirEscena(String(etiqueta ?? ""));
       },
-      writeBoard: (texto) => anadirLinea(texto, "formula"),
+      // A la pizarra sólo suben IDEAS FUERZA: el título de la regla, las
+      // fórmulas y el ejercicio. Un párrafo explicativo va al subtítulo, aunque
+      // llegue por una directiva de pizarra: desde que las aclaraciones las
+      // redacta el modelo en vivo, eso puede pasar.
+      writeBoard: (texto) => {
+        const linea = String(texto ?? "").trim();
+        if (!linea) return;
+        if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
+        else setSubtitulo(linea);
+      },
       // La explicación hablada NO va a la pizarra. El motor la escribía además
       // de narrarla, así que el mismo párrafo aparecía dos veces: en el lienzo
       // y en el subtítulo. La pizarra queda para el título de la regla, las

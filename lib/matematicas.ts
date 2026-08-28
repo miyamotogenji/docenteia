@@ -50,6 +50,41 @@ export function pareceMatematica(linea: string): boolean {
 }
 
 /**
+ * ¿Esta línea vale para la pizarra, o es un párrafo explicativo?
+ *
+ * La pizarra es un lienzo de IDEAS FUERZA: el título de la regla, las fórmulas
+ * y el ejercicio. La explicación hablada va en el subtítulo. El motor
+ * determinista ya respeta ese reparto —de las 57 líneas distintas que produce,
+ * la más larga son 63 caracteres: "Derivada: razón de cambio (la pendiente) de
+ * una función"—, pero desde que las aclaraciones las redacta el modelo en vivo,
+ * a la pizarra puede llegar un párrafo entero.
+ *
+ * Por eso el reparto se comprueba aquí y no se da por supuesto: lo que no cabe
+ * como idea fuerza se manda al subtítulo, venga de donde venga.
+ *
+ * Los umbrales dejan margen sobre el contenido real (7 palabras y 63
+ * caracteres en el caso más largo) para no rechazar lo que hoy funciona.
+ */
+export const MAX_CARACTERES_PIZARRA = 90;
+export const MAX_PALABRAS_PIZARRA = 8;
+
+export function esIdeaFuerza(texto: string): boolean {
+  const linea = String(texto ?? "").trim();
+  if (!linea) return false;
+
+  // Una fórmula entra siempre, por larga que sea: es el contenido propio de la
+  // pizarra y no hay nada que resumir.
+  if (pareceMatematica(linea)) return true;
+
+  if (linea.length > MAX_CARACTERES_PIZARRA) return false;
+
+  const palabras = (linea.toLowerCase().match(/[a-záéíóúñ]{3,}/g) || []).filter(
+    (p) => !FUNCIONES.has(p),
+  );
+  return palabras.length < MAX_PALABRAS_PIZARRA;
+}
+
+/**
  * Reescribe en NOTACIÓN FORMAL las líneas que el motor escribe en castellano.
  *
  * El motor rotula la derivada con palabras —"derivada de x² = 2x"—, que es
