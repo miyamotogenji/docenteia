@@ -23,6 +23,7 @@ import { checkAnswer, flattenLSG } from "../public/pseLight.js";
 // Se prueba el MISMO resolutor que usa la ruta de corrección, no una copia.
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
+  esIdeaFuerza,
   notacionFormal,
   pareceMatematica,
   planoALatex,
@@ -147,6 +148,47 @@ for (const pura of ["x²", "2x + 5 = 15", "5x²"]) {
 for (const mixta of ["derivada de x² = 2x", "unidades: 4 + 7 = 11"]) {
   check(`«${mixta}» no se compone como fórmula pura`, pareceMatematica(mixta) === false);
 }
+
+// ── Separación entre la voz y la pizarra ─────────────────────────────────────
+// La pizarra es un lienzo de IDEAS FUERZA —título de la regla, fórmulas y el
+// ejercicio— y la explicación hablada vive en el subtítulo. El reparto se
+// comprueba, no se da por supuesto: desde que las aclaraciones las redacta el
+// modelo en vivo, a la pizarra puede llegar un párrafo entero.
+console.log("\n · Separación entre la voz y la pizarra");
+
+const casosIdeaFuerza = [
+  // Lo que SÍ es pizarra: fórmulas y definiciones de una línea.
+  { texto: "2x + 5 = 15", pizarra: true },
+  { texto: "12x³ - 4x", pizarra: true },
+  { texto: "Regla de la potencia: la derivada de xⁿ es n·xⁿ⁻¹", pizarra: true },
+  { texto: "Derivada: razón de cambio (la pendiente) de una función", pizarra: true },
+  { texto: "Suma: juntar cantidades → total", pizarra: true },
+  { texto: "Factorizar: escribir una expresión como un producto de factores", pizarra: true },
+  // Lo que NO: un párrafo explicativo, que es cosa del subtítulo.
+  {
+    texto:
+      "Una derivada mide la RAPIDEZ con la que cambia una función: en cada punto indica cuánto crece o decrece, es decir, la pendiente de su gráfica.",
+    pizarra: false,
+  },
+  {
+    texto:
+      "Para derivar una potencia usamos la regla de la potencia: se baja el exponente multiplicando delante y se le resta 1, y así obtenemos el resultado.",
+    pizarra: false,
+  },
+];
+
+for (const caso of casosIdeaFuerza) {
+  check(
+    `${caso.pizarra ? "va a la pizarra" : "va al subtítulo"}: «${caso.texto.slice(0, 40)}…»`,
+    esIdeaFuerza(caso.texto) === caso.pizarra,
+  );
+}
+
+// Una fórmula larga entra igualmente: es el contenido propio de la pizarra.
+check(
+  "una fórmula larga no se rechaza por su longitud",
+  esIdeaFuerza("4x⁵ - 3x⁴ + 2x³ - 7x² + 5x - 12 = 0"),
+);
 
 // ── Módulo 4 · catálogo formal de reglas ─────────────────────────────────────
 // La fase "Reglas y propiedades" debe presentar el catálogo completo del tema,
@@ -450,6 +492,26 @@ for (const tema of TEMAS_LECCION) {
     }
   }
   check(`${etiqueta} toda la pizarra se compone con KaTeX`, fallosKatex === 0, `${fallosKatex} fallo(s)`);
+
+  // Ninguna línea que el motor escribe en la pizarra puede ser un párrafo: la
+  // explicación hablada es cosa del subtítulo.
+  const parrafos = pizarras.filter((linea) => !esIdeaFuerza(linea));
+  check(
+    `${etiqueta} la pizarra no recibe párrafos explicativos`,
+    parrafos.length === 0,
+    parrafos.map((l) => `«${l.slice(0, 50)}…»`).join(" · "),
+  );
+
+  // Y lo NARRADO no debe repetirse en la pizarra: era la duplicación de la
+  // locución. El motor manda el mismo texto por las dos vías, y la interfaz se
+  // queda sólo con la de la voz.
+  const narrado = pasos.filter((p) => p.tipo === "hablar").map((p) => String(p.texto ?? "").trim());
+  const repetidas = pizarras.filter((l) => narrado.includes(String(l).trim()));
+  check(
+    `${etiqueta} nada de lo narrado se escribe también en la pizarra`,
+    repetidas.length === 0,
+    repetidas.map((l) => `«${l.slice(0, 40)}…»`).join(" · "),
+  );
 
   // Barrido de LETRAS PEGADAS. Ninguna línea con palabras puede acabar
   // compuesta como fórmula pura: KaTeX tipografiaría cada letra como una
