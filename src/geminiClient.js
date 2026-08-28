@@ -115,6 +115,28 @@ export async function generateLSG(query, intent, opts = {}) {
       + `- Si pide una ANALOGÍA con un objeto concreto (perritos, manzanas, dinero), úsala manteniendo el tema.\n`
       + `- Si es una pregunta conceptual ("¿eso quiere decir…?"): respóndela clara y directa con un ejemplo.\n`
       + `Empieza DIRECTAMENTE con la explicación real; NUNCA escribas el mensaje del alumno (ni un fragmento de él) como texto de una directiva, y NO uses frases como "Tomé nota de tu consulta". Cierra con una pregunta de práctica del tema.`;
+  } else if (opts.aclaracion) {
+    // ACLARACIÓN EN LA PIZARRA. Es un caso distinto del "no entendí" genérico de abajo, que manda
+    // partir de una analogía cotidiana: con esa instrucción, pulsar "Explicar regla" sobre 5x²
+    // devolvía una metáfora de una montaña rusa en vez de la regla de la potencia aplicada a ESE
+    // término. Aquí se inyecta la regla activa, su fórmula y el término concreto, y se pide la
+    // conducta de un docente en la pizarra: sin saludos, breve y al grano.
+    const a = opts.aclaracion;
+    const lineas = [];
+    if (a.regla?.nombre) {
+      lineas.push(`- Regla que se está aplicando AHORA: «${a.regla.nombre}»`);
+      if (a.regla.formula) lineas.push(`- Su enunciado formal: ${a.regla.formula}`);
+    }
+    if (a.ejercicio) lineas.push(`- Término concreto que hay delante en la pizarra: ${a.ejercicio}`);
+    if (a.tema) lineas.push(`- Tema: ${a.tema}`);
+
+    reteach = `\n\nIMPORTANTE — ACLARACIÓN EN LA PIZARRA. Actúas como un DOCENTE FRENTE A UNA PIZARRA, no como un chat.\n`
+      + (lineas.length ? `${lineas.join("\n")}\n` : "")
+      + `Explica EXACTAMENTE ese procedimiento aplicado a ESE término, paso a paso. Si hay una regla indicada arriba, es DE ESA de la que hay que hablar: no expliques el concepto general del tema ni te vayas a otra regla.\n`
+      + `PROHIBIDO: saludar o presentarte; frases introductorias del tipo "¡Hola!", "Claro", "Entiendo que…", "Buena pregunta"; analogías, metáforas y ejemplos de la vida real (montañas rusas, coches, pizzas); repetir el mensaje del alumno.\n`
+      + `FORMATO: como mucho TRES directivas de habla, de una o dos frases cortas cada una. Nada de párrafos largos. Empieza directamente por la matemática.\n`
+      + `La pizarra debe mostrar la fórmula de la regla y su aplicación al término, en notación matemática simple (5x², 10x, n·xⁿ⁻¹), SIN LaTeX y SIN el símbolo $: de componerla tipográficamente ya se encarga la aplicación.\n`
+      + `NO propongas un ejercicio nuevo: el alumno está resolviendo el que ya tiene delante.`;
   } else if (reexplain) {
     reteach = "\n\nIMPORTANTE: el alumno dijo que NO ENTENDIÓ. NO repitas las mismas palabras ni el mismo ejemplo; explícalo de OTRA forma. Enséñalo COMO A ALGUIEN QUE NO SABE NADA: parte de una ANALOGÍA cotidiana (comida, dinero, objetos), ve MUY paso a paso y con MUCHO detalle, define cada término, no asumas ningún conocimiento previo y no te saltes pasos. Cuenta o desarrolla lo que haga falta hasta que quede clarísimo, y cierra con un ejercicio más fácil. El objetivo es que POR FIN lo entienda.";
   }

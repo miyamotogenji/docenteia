@@ -208,6 +208,24 @@ export async function manejarConsulta(body, ip = "desconocida") {
   // Va apagada por defecto, de modo que el comportamiento del prototipo —y su suite— no cambia.
   const explicacionDinamica = body?.explicacionDinamica === true;
 
+  // Contexto puntual de la aclaración: qué regla se está explicando, con qué fórmula, y sobre qué
+  // término. Sin esto el modelo sólo sabe el tema, y responde con generalidades sobre "qué es una
+  // derivada" en vez de explicar la regla que el alumno tiene delante. Se saneia porque viene del
+  // navegador: sólo campos de texto, y cortos.
+  const texto = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+  const aclaracion = explicacionDinamica && body?.aclaracion && typeof body.aclaracion === "object"
+    ? {
+        regla: body.aclaracion.regla && typeof body.aclaracion.regla === "object"
+          ? {
+              nombre: texto(body.aclaracion.regla.nombre, 80),
+              formula: texto(body.aclaracion.regla.formula, 200),
+            }
+          : null,
+        ejercicio: texto(body.aclaracion.ejercicio, 120),
+        tema: texto(body.aclaracion.tema, 80),
+      }
+    : null;
+
   if (!query) {
     return { status: 400, json: { error: "Falta la consulta ('query')." } };
   }
@@ -429,6 +447,7 @@ export async function manejarConsulta(body, ip = "desconocida") {
       // de demostración, que es otro guion fijo y devolvería el problema al
       // punto de partida.
       forceAI: modo === "ia" || explicacionDinamica,
+      aclaracion,
     });
     let { lsg: rawLsg, source, model } = gen;
     const { usage, cached } = gen;

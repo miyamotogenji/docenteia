@@ -627,6 +627,70 @@ for (const tema of TEMAS_LECCION.slice(0, 2)) {
   );
 }
 
+// ── Contexto y estilo de la aclaración ───────────────────────────────────────
+// Pulsar "Explicar regla" sobre 5x² devolvía una analogía genérica de una
+// montaña rusa sobre qué es una derivada: el prompt de "no entendí" ORDENA
+// partir de una analogía cotidiana, y el modelo no sabía de qué regla ni sobre
+// qué término tenía que hablar. Ahora se le inyecta ese contexto y se le pide
+// conducta de pizarra: sin saludos y en pocas líneas.
+console.log("\n · Contexto y estilo de la aclaración");
+
+{
+  const derivadas = catalogo?.filter((r) => r.tema === "DERIVADAS") ?? [];
+  const potencia = derivadas.find((r) => /potencia/i.test(r.nombre));
+  check("el catálogo tiene la regla de la potencia para inyectarla", Boolean(potencia));
+
+  const aclaracion = {
+    regla: potencia ? { nombre: potencia.nombre, formula: potencia.enunciado } : null,
+    ejercicio: "5x²",
+    tema: "Enséñame derivadas",
+  };
+
+  const datos = await consultar({
+    query: "Explícame la regla que se aplica",
+    contexto: "Enséñame derivadas",
+    currentTopic: "Enséñame derivadas",
+    seguimiento: "reexplicar",
+    parte: "concepto",
+    explicacionDinamica: true,
+    aclaracion,
+  });
+
+  check("la aclaración con contexto responde", Boolean(datos.lsg), datos.error ?? "");
+  check("no cae en el guion determinista", datos.fuente_ia !== "local", `fuente_ia=${datos.fuente_ia}`);
+
+  const pasos = flattenLSG(datos.lsg || {});
+  const hablado = pasos
+    .filter((p) => p.tipo === "hablar")
+    .map((p) => p.texto)
+    .join(" ");
+
+  // Estilo de pizarra: ni saludos ni presentaciones.
+  const saludos = /\b(hola|buenas|claro que s[ií]|entiendo que|buena pregunta|por supuesto)\b/i;
+  check(
+    "la aclaración no empieza con un saludo ni una presentación",
+    !saludos.test(hablado),
+    hablado.slice(0, 90),
+  );
+
+  // Concisión: la queja era el formato de chat, con párrafos largos.
+  const frases = pasos.filter((p) => p.tipo === "hablar");
+  check(
+    "la aclaración es breve (3 intervenciones como mucho)",
+    frases.length <= 3,
+    `${frases.length} intervenciones`,
+  );
+
+  // Y sin LaTeX crudo: la notación va en texto plano y la compone la interfaz.
+  // Meterla en LaTeX rompería el TTS y los analizadores del motor, que trabajan
+  // sobre esa notación.
+  check(
+    "la aclaración no trae LaTeX crudo",
+    !/\\[a-zA-Z]+\{|\$/.test(hablado),
+    hablado.slice(0, 90),
+  );
+}
+
 // ── Módulo 9 · corrección determinista ───────────────────────────────────────
 console.log("\n · Motor de corrección (Módulo 9)");
 

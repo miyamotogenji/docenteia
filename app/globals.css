@@ -57,6 +57,69 @@
   }
 }
 
+/* ── Avatar 2D ───────────────────────────────────────────────────────────────
+   Las animaciones van en CSS y no en la librería de animación de React: sobre
+   SVG, transformar un grupo depende de `transform-box`, y sin él el navegador
+   toma como origen la esquina del lienzo en vez del propio elemento, de modo
+   que el avatar se quedaba quieto. Con `transform-box: fill-box` cada pieza
+   gira y escala sobre sí misma.
+
+   Además, `prefers-reduced-motion` las desactiva: un avatar que no para de
+   moverse es un problema de accesibilidad para algunas personas. */
+
+.avatar-pieza {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* Parpadeo: constante y discreto, para que el avatar no parezca congelado
+   aunque esté en silencio. */
+@keyframes avatar-parpadeo {
+  0%, 92%, 100% { transform: scaleY(1); }
+  95% { transform: scaleY(0.08); }
+}
+.avatar-ojos { animation: avatar-parpadeo 4.5s ease-in-out infinite; }
+
+/* Boca al hablar: se abre y cierra mientras suena la voz. */
+@keyframes avatar-habla {
+  0%, 100% { transform: scaleY(1); }
+  30% { transform: scaleY(0.45); }
+  60% { transform: scaleY(1.35); }
+}
+.avatar-boca-hablando { animation: avatar-habla 0.38s ease-in-out infinite; }
+
+/* Pensando: la cabeza se balancea despacio. */
+@keyframes avatar-piensa {
+  0%, 100% { transform: rotate(0deg); }
+  25% { transform: rotate(-4deg); }
+  75% { transform: rotate(4deg); }
+}
+.avatar-pensando { animation: avatar-piensa 2.6s ease-in-out infinite; }
+
+/* Corrigiendo: un latido breve que llama la atención sobre la corrección. */
+@keyframes avatar-corrige {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.06); }
+}
+.avatar-corrigiendo { animation: avatar-corrige 1.1s ease-in-out infinite; }
+
+/* Esperando: respiración muy leve, señal de que el tutor sigue ahí. */
+@keyframes avatar-espera {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+.avatar-esperando { animation: avatar-espera 3.4s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .avatar-ojos,
+  .avatar-boca-hablando,
+  .avatar-pensando,
+  .avatar-corrigiendo,
+  .avatar-esperando {
+    animation: none;
+  }
+}
+
 /* La notación matemática se renderiza con KaTeX. Se le da un tamaño algo mayor
    que el del texto corrido: una fórmula que se lee peor que el párrafo que la
    explica no cumple su función. */

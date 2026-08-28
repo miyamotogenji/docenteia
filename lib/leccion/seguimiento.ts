@@ -125,6 +125,16 @@ export interface PeticionQuery {
    * sigue viniendo del motor determinista.
    */
   explicacionDinamica?: boolean;
+  /**
+   * Contexto puntual de la aclaración. Sin él el modelo sólo conoce el tema y
+   * responde con generalidades en lugar de explicar la regla que el alumno
+   * tiene delante.
+   */
+  aclaracion?: {
+    regla?: { nombre: string; formula: string } | null;
+    ejercicio?: string;
+    tema?: string;
+  };
 }
 
 /**
