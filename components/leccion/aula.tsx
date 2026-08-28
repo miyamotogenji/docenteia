@@ -503,11 +503,15 @@ export function Aula({
 
   // Se mantiene al día la última regla nombrada, para poder inyectarla en la
   // petición de aclaración sin que `pedirLeccion` dependa de este estado.
+  const [reglaDetectada, setReglaDetectada] = useState<ReglaVista | null>(null);
+
   useEffect(() => {
     // Se mira lo narrado Y lo escrito: el nombre de la regla puede aparecer en
     // cualquiera de los dos ("Regla de la potencia: la derivada de xⁿ…").
     const fuentes = [...narrado.current, ...escenas.flatMap((e) => e.lineas.map((l) => l.texto))];
-    reglaEnCursoRef.current = reglaActiva(fuentes, reglasDelTema);
+    const encontrada = reglaActiva(fuentes, reglasDelTema);
+    reglaEnCursoRef.current = encontrada;
+    setReglaDetectada(encontrada);
   }, [escenas, reglasDelTema, subtitulo]);
 
   // ── Elección de tema ───────────────────────────────────────────────────────
@@ -663,7 +667,13 @@ export function Aula({
         <div className="space-y-4">
           <Progress value={porcentajeReproducido} />
 
-          <Pizarra escenas={escenas} resaltado={resaltado} reglas={reglasDelTema} />
+          <Pizarra
+            escenas={escenas}
+            resaltado={resaltado}
+            reglas={reglasDelTema}
+            reglaDetectada={reglaDetectada}
+            tema={tema.tema}
+          />
 
           {/* Subtítulo: lo que el tutor está diciendo en este momento. Sus
               fórmulas se componen igual que las de la pizarra. */}

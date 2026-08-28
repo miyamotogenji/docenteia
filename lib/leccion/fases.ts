@@ -31,3 +31,8 @@ export function tituloDeFase(id: string): string {
 export function esFaseConocida(id: string): boolean {
   return FASES.some((f) => f.patron.test(String(id ?? "")));
 }
+
+export const esFaseDeConcepto = (id: string) => /concepto/i.test(String(id ?? ""));
+export const esFaseDeReglas = (id: string) => /regla|propiedad/i.test(String(id ?? ""));
+export const esFaseDeEjemplo = (id: string) => /ejemplo/i.test(String(id ?? ""));
+export const esFaseDePractica = (id: string) => /practica|práctica/i.test(String(id ?? ""));
