@@ -38,6 +38,7 @@ import {
 // La lista real que consulta el componente, no una copia: si se duplicara,
 // podrían desincronizarse y la prueba daría por bueno un concepto vacío.
 import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
+import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
@@ -354,6 +355,19 @@ if (catalogo) {
     "pizarra.tsx dibuja el diagrama de la fase de Concepto",
     /esFaseDeConcepto\s*\([^)]*\)\s*&&/.test(fuentePizarra) && /DiagramaConcepto/.test(fuentePizarra),
   );
+  // El enunciado tiene que quedar anclado. Es la regresión que ya ocurrió una
+  // vez: al componer sólo la última línea, desaparecía en cuanto empezaba el
+  // desarrollo.
+  check(
+    "pizarra.tsx ancla el enunciado y compone el desarrollo aparte",
+    /\{enunciado\s*&&/.test(fuentePizarra) && /desarrollo\.length\s*>\s*0/.test(fuentePizarra),
+  );
+  // Y el paso intermedio NO puede aparecer en la práctica: revelaría la
+  // respuesta que el alumno tiene que hallar.
+  check(
+    "el paso intermedio se añade sólo en el ejemplo, no en la práctica",
+    /if\s*\(esFaseDeEjemplo\([^)]*\)\)\s*\{[\s\S]{0,200}pasoIntermedioDerivada/.test(fuentePizarra),
+  );
 
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
   const trasAvanzar = reglaActiva(
@@ -585,6 +599,61 @@ for (const tema of TEMAS_LECCION) {
     .slice(0, 600);
   estado.ejercicio = pizarras[pizarras.length - 1] ?? "";
   estadoPorTema.set(tema.clave, estado);
+}
+
+// ── Enunciado y desarrollo en la pizarra ─────────────────────────────────────
+// Al componer sólo la última línea, el enunciado desaparecía en cuanto empezaba
+// el desarrollo y el alumno se quedaba con el resultado suelto, sin poder
+// contrastarlo con el planteamiento.
+console.log("\n · Enunciado fijo y desarrollo debajo");
+
+for (const tema of TEMAS_LECCION) {
+  const datos = await consultar({ query: tema.consulta });
+  for (const modulo of datos.lsg?.modulos ?? []) {
+    const id = String(modulo.id);
+    if (!/ejemplo/.test(id)) continue;
+    const lineas = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? ""));
+
+    // El modelo de la pizarra: la primera línea es el enunciado y las
+    // siguientes el desarrollo. Si el motor dejara de escribirlo así, la
+    // tarjeta mostraría un enunciado que en realidad es un paso.
+    check(
+      `[${tema.clave}] el ejemplo trae enunciado y al menos un paso`,
+      lineas.length >= 2,
+      `${lineas.length} línea(s): ${lineas.join(" | ")}`,
+    );
+  }
+}
+
+console.log("\n · Paso intermedio de la derivada");
+const casosPaso = [
+  { entrada: "5x²", esperado: "5 · 2x²⁻¹ = 10x" },
+  { entrada: "3x⁴", esperado: "3 · 4x⁴⁻¹ = 12x³" },
+  { entrada: "x²", esperado: "2x²⁻¹ = 2x" },
+];
+for (const caso of casosPaso) {
+  const obtenido = pasoIntermedioDerivada(caso.entrada);
+  check(
+    `«${caso.entrada}» desarrolla como «${caso.esperado}»`,
+    obtenido === caso.esperado,
+    `obtenido: ${obtenido}`,
+  );
+  // Y el resultado del paso tiene que ser el MISMO que califica el motor: un
+  // desarrollo que lleve a otro número sería peor que no tener desarrollo.
+  const resultado = String(obtenido).split("=").pop()?.trim();
+  check(
+    `«${caso.entrada}» el desarrollo coincide con lo que califica el motor`,
+    resultado === String(resolverEjercicio(caso.entrada, "derivadas")),
+    `paso: ${resultado} · motor: ${resolverEjercicio(caso.entrada, "derivadas")}`,
+  );
+}
+
+// Con un polinomio el desarrollo son varios pasos: fabricar uno solo daría una
+// idea equivocada del método, así que no se inventa nada.
+for (const polinomio of ["4x⁵ - 3x³", "x² - 9", "2/6 + 3/6"]) {
+  check(`«${polinomio}» no se desarrolla en un solo paso`, pasoIntermedioDerivada(polinomio) === null);
 }
 
 // ── Módulo 8 · los botones de apoyo mantienen el tema ────────────────────────
