@@ -84,8 +84,12 @@ export function Pizarra({
     <div className={cn("space-y-3", className)}>
       <Fases escenas={escenas} />
 
+      {/* ALTURA FIJA, no mínima. Con una altura que crecía según el contenido,
+          la pizarra cambiaba de tamaño en cada paso y los botones de abajo
+          saltaban arriba y abajo mientras el alumno leía. El desbordamiento se
+          resuelve dentro, con scroll propio. */}
       <div
-        className="relative min-h-[18rem] overflow-hidden rounded-lg border bg-card shadow-inner sm:min-h-[22rem]"
+        className="relative h-[24rem] overflow-hidden rounded-lg border bg-card shadow-inner sm:h-[30rem]"
         aria-live="polite"
         aria-label="Pizarra"
       >
@@ -103,15 +107,17 @@ export function Pizarra({
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0, x: -28 }}
               transition={{ duration: 0.32, ease: "easeOut" }}
-              className="h-full"
+              className="flex h-full flex-col"
             >
-              <div className="border-b bg-muted/40 px-5 py-2.5">
+              <div className="shrink-0 border-b bg-muted/40 px-5 py-2.5">
                 <h2 className="text-sm font-semibold tracking-wide text-muted-foreground">
                   {actual.titulo}
                 </h2>
               </div>
 
-              <div className="max-h-[26rem] space-y-3 overflow-y-auto p-5">
+              {/* El scroll vive aquí dentro: la caja de fuera nunca cambia de
+                  tamaño, así que nada de lo que hay debajo se mueve. */}
+              <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
                 {/* En la fase de Reglas se compone ÚNICAMENTE la tarjeta de la
                     regla que el tutor está explicando en este momento. Mostrar
                     el catálogo entero desincronizaba la pizarra del audio. */}

@@ -119,6 +119,12 @@ export interface PeticionQuery {
   respuesta?: string;
   parte?: "concepto" | "resolucion";
   modo?: "demo" | "ia";
+  /**
+   * Pide que la explicación la genere la IA en vivo, saltándose los guiones
+   * deterministas. Sólo se usa en las aclaraciones: la matemática calificable
+   * sigue viniendo del motor determinista.
+   */
+  explicacionDinamica?: boolean;
 }
 
 /**

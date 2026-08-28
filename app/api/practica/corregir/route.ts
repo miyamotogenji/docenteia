@@ -33,6 +33,8 @@ const peticionSchema = z.object({
   intento: z.number().int().min(1).max(10).optional(),
   /** Contenido de la pizarra, del que se extrae la pista metodológica. */
   pizarra: z.string().max(2000).optional(),
+  /** Sesión de aprendizaje a la que pertenece este intento. */
+  sesionId: z.string().max(40).optional(),
 });
 
 export async function POST(req: Request) {
@@ -59,7 +61,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { ejercicio, respuesta, tema, intento = 1, pizarra = "" } = parsed.data;
+  const { ejercicio, respuesta, tema, intento = 1, pizarra = "", sesionId } = parsed.data;
 
   // ── Solución determinista, recalculada aquí ────────────────────────────────
   const esperada = resolverEjercicio(ejercicio, tema);
@@ -89,6 +91,7 @@ export async function POST(req: Request) {
         data: {
           perfilId,
           tema: temaEnum,
+          sesionId: sesionId ?? null,
           acierto: correct,
           intentos: intento,
           respuestaDada: respuesta.slice(0, 200),
