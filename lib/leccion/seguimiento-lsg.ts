@@ -1,6 +1,7 @@
 // Con extensión explícita: este módulo lo importa también la suite de qa/, que
 // se ejecuta con Node a secas y exige la extensión en los imports relativos.
 import { esFaseDeConcepto, esFaseDeReglas } from "./fases.ts";
+import { expresionPrincipal } from "../matematicas.ts";
 
 /**
  * Cómo hay que presentar la respuesta a un seguimiento.
@@ -50,12 +51,31 @@ export function enunciadosDeLeccion(lsg: LSGConModulos | null | undefined): Map<
   for (const modulo of lsg.modulos) {
     const id = String(modulo?.id ?? "");
     if (!id) continue;
-    const directivas = Array.isArray(modulo?.directivas) ? modulo.directivas : [];
-    for (const d of directivas as Array<{ tipo?: string; contenido?: string }>) {
-      if (d?.tipo !== "pizarra") continue;
-      const texto = String(d.contenido ?? "").trim();
-      if (texto) porFase.set(id, texto);
-      break; // sólo la primera: las demás son el desarrollo
+    const directivas = (
+      Array.isArray(modulo?.directivas) ? modulo.directivas : []
+    ) as Array<{ tipo?: string; contenido?: string }>;
+
+    // Lo normal: el enunciado es la primera pizarra de la fase.
+    const escrita = directivas.find(
+      (d) => d?.tipo === "pizarra" && String(d.contenido ?? "").trim(),
+    );
+    if (escrita) {
+      porFase.set(id, String(escrita.contenido).trim());
+      continue;
+    }
+
+    // Pero el motor no siempre lo escribe. Cuando la lección la redacta el
+    // modelo en vivo, hay fases que sólo lo NARRAN ("vamos a derivar
+    // 3x⁴ - 2x²") o lo dejan dentro de la pregunta al alumno. Como la prosa
+    // no sube al lienzo, la pizarra se quedaba vacía toda la fase teniendo el
+    // ejercicio delante. Se rescata la expresión y se descarta la prosa.
+    for (const d of directivas) {
+      if (d?.tipo !== "hablar" && d?.tipo !== "preguntar") continue;
+      const formula = expresionPrincipal(String(d.contenido ?? ""));
+      if (formula) {
+        porFase.set(id, formula);
+        break;
+      }
     }
   }
   return porFase;

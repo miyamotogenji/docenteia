@@ -43,7 +43,7 @@ import {
   presentacionDe,
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
-import { esIdeaFuerza } from "@/lib/matematicas";
+import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
 
@@ -222,6 +222,33 @@ export function Aula({
   );
 
   /**
+   * Rellena la tarjeta de EJERCICIO de la fase en curso a partir de una frase.
+   *
+   * La tarjeta superior no puede depender de que el motor emita una directiva
+   * de pizarra: hay fases que sólo narran el enunciado o lo dejan dentro de la
+   * pregunta, y entonces el lienzo se quedaba en blanco con el ejercicio ya
+   * planteado. Se extrae la expresión de la frase y se descarta la prosa, que
+   * sigue yendo sólo al subtítulo.
+   *
+   * Sin efecto si la fase no plantea ejercicio o si la tarjeta ya tiene uno:
+   * el enunciado se fija una vez y no lo pisa nada.
+   */
+  const fijarEjercicio = useCallback((frase: string) => {
+    const formula = expresionPrincipal(frase);
+    if (!formula) return;
+    setEscenas((prev) => {
+      if (prev.length === 0) return prev;
+      const ultima = prev[prev.length - 1];
+      const plantea = esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id);
+      if (!plantea || ultima.ejercicio) return prev;
+      return [
+        ...prev.slice(0, -1),
+        { ...ultima, ejercicio: { id: idLinea.current++, texto: formula, clase: "formula" as const } },
+      ];
+    });
+  }, []);
+
+  /**
    * Abre una escena nueva. Cada fase pedagógica es una vista propia: la pizarra
    * se sustituye con una transición limpia en lugar de seguir apilando
    * párrafos hacia abajo.
@@ -237,11 +264,13 @@ export function Aula({
 
       // El enunciado se adelanta: se conoce desde que llegó la lección, así que
       // no hay razón para dejar la pizarra en blanco mientras el tutor lo narra.
-      const adelantado = enunciadoPorFase.current.get(clave);
       const planteaEjercicio = esFaseDeEjemplo(clave) || esFaseDePractica(clave);
+      // Y si esta fase no lo trae, el que el alumno tiene entre manos: en una
+      // fase de ejercicio la tarjeta NUNCA debe abrirse vacía.
+      const texto = enunciadoPorFase.current.get(clave) || conversacion.current.ejercicio;
       const ejercicio =
-        adelantado && planteaEjercicio
-          ? { id: idLinea.current++, texto: adelantado, clase: "formula" as const }
+        texto && planteaEjercicio
+          ? { id: idLinea.current++, texto, clase: "formula" as const }
           : null;
 
       return [...prev, { id: clave, titulo: tituloDeFase(clave), ejercicio, pasos: [] }];
@@ -318,6 +347,9 @@ export function Aula({
       // desde el formulario de respuesta, o con null si se aborta la lección.
       askAnswer: (textoPregunta, opciones) =>
         new Promise<string | null>((resolve) => {
+          // Último recurso para la tarjeta: si la fase llegó hasta aquí sin
+          // escribir ni narrar el enunciado, lo lleva la propia pregunta.
+          fijarEjercicio(String(textoPregunta ?? ""));
           setPregunta(String(textoPregunta ?? ""));
           setBorrador("");
           setIntento(1);

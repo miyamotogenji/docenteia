@@ -24,6 +24,7 @@ import { checkAnswer, flattenLSG } from "../public/pseLight.js";
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
   esIdeaFuerza,
+  expresionPrincipal,
   notacionFormal,
   pareceMatematica,
   planoALatex,
@@ -372,7 +373,8 @@ if (catalogo) {
   // desarrollo.
   check(
     "pizarra.tsx ancla el enunciado y compone el desarrollo aparte",
-    /\{enunciado\s*&&/.test(fuentePizarra) && /desarrollo\.length\s*>\s*0/.test(fuentePizarra),
+    /\(enunciado \|\| planteaEjercicio\)\s*&&/.test(fuentePizarra) &&
+      /desarrollo\.length\s*>\s*0/.test(fuentePizarra),
   );
   // Y el paso intermedio NO puede aparecer en la práctica: revelaría la
   // respuesta que el alumno tiene que hallar.
@@ -1195,6 +1197,104 @@ check(
   check(
     "el componente toma el viewBox de la geometría comprobada",
     /viewBox=\{`0 0 \$\{g\.ancho\} \$\{g\.alto\}`\}/.test(fuenteDiagrama),
+  );
+}
+
+// ── La pizarra nunca arranca en blanco ───────────────────────────────────────
+// El cliente entraba en Práctica, oía "vamos a derivar 3x⁴ - 2x²" y veía el
+// lienzo vacío hasta que terminaba la locución. La tarjeta de EJERCICIO no
+// puede esperar a que el motor emita una directiva de pizarra: hay fases que
+// sólo NARRAN el enunciado, o lo llevan dentro de la pregunta al alumno.
+console.log("\n · La tarjeta de ejercicio no espera a la locución");
+
+{
+  const casos = [
+    { frase: "Vamos a derivar 3x⁴ - 2x²", esperado: "3x⁴ - 2x²" },
+    { frase: "Ahora resuelve tú: 2x + 5 = 15", esperado: "2x + 5 = 15" },
+    { frase: "¿Cuánto vale la derivada de 5x²?", esperado: "5x²" },
+    { frase: "Muy bien, sigamos con el siguiente apartado", esperado: null },
+    { frase: "Lo haremos en 2 pasos", esperado: null },
+  ];
+  for (const c of casos) {
+    const obtenido = expresionPrincipal(c.frase);
+    check(
+      `de «${c.frase}» se rescata ${c.esperado ? `«${c.esperado}»` : "nada"}`,
+      obtenido === c.esperado,
+      `obtenido: ${obtenido === null ? "null" : `«${obtenido}»`}`,
+    );
+  }
+
+  // Una fase que sólo narra el enunciado también lo adelanta a la pizarra.
+  const soloHablada = enunciadosDeLeccion({
+    modulos: [
+      {
+        id: "practica",
+        directivas: [
+          { tipo: "hablar", contenido: "Vamos a derivar 3x⁴ - 2x². Tómate tu tiempo." },
+          { tipo: "preguntar", contenido: "¿Cuál es la derivada?" },
+        ],
+      },
+    ],
+  });
+  check(
+    "una fase que sólo narra el enunciado igualmente lo adelanta",
+    soloHablada.get("practica") === "3x⁴ - 2x²",
+    `obtenido: ${soloHablada.get("practica") ?? "ninguno"}`,
+  );
+
+  // Y la prosa sigue sin subir al lienzo: una fase sin matemáticas no aporta
+  // enunciado, porque no lo tiene.
+  const soloProsa = enunciadosDeLeccion({
+    modulos: [{ id: "concepto", directivas: [{ tipo: "hablar", contenido: "Una derivada mide el cambio" }] }],
+  });
+  check(
+    "la prosa sin fórmula no se cuela como enunciado",
+    soloProsa.get("concepto") === undefined,
+    `obtenido: ${soloProsa.get("concepto") ?? "ninguno"}`,
+  );
+
+}
+
+{
+  const fuentePizarra2 = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const fuenteAula2 = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+
+  // La tarjeta de arriba se pinta por entrar en la fase, no por haber pasos.
+  check(
+    "la tarjeta de EJERCICIO no está condicionada al desarrollo",
+    /\{\(enunciado \|\| planteaEjercicio\) && \(/.test(fuentePizarra2),
+  );
+  // Y la de abajo sigue oculta mientras no haya nada que desarrollar.
+  check(
+    "la tarjeta de DESARROLLO permanece oculta hasta que hay pasos",
+    /\{desarrollo\.length > 0 && \(/.test(fuentePizarra2),
+  );
+  // El orden importa: el planteamiento arriba, el procedimiento debajo.
+  check(
+    "el enunciado se compone por encima del desarrollo",
+    fuentePizarra2.indexOf("(enunciado || planteaEjercicio)") <
+      fuentePizarra2.indexOf("{desarrollo.length > 0"),
+  );
+  // En una fase con ejercicio los pasos no se degradan a "paso suelto".
+  check(
+    "en una fase con ejercicio los pasos van al desarrollo, no sueltos",
+    /if \(planteaEjercicio\) return \{ \.\.\.vacio, desarrollo: actual\.pasos \};/.test(fuentePizarra2),
+  );
+  // Último recurso: el enunciado que viaja dentro de la pregunta.
+  check(
+    "aula.tsx rescata el enunciado de la pregunta al alumno",
+    /askAnswer:[\s\S]{0,320}fijarEjercicio\(String\(textoPregunta/.test(fuenteAula2),
+  );
+  // Y si la fase no trae enunciado, se usa el que el alumno tiene entre manos.
+  check(
+    "al abrir una fase con ejercicio se recurre al ejercicio activo",
+    /enunciadoPorFase\.current\.get\(clave\) \|\| conversacion\.current\.ejercicio/.test(fuenteAula2),
   );
 }
 

@@ -152,12 +152,21 @@ export function Pizarra({
    * dentro de la fase. Al cambiar de fase la pizarra se limpia, así que el
    * desarrollo nunca crece más allá del ejercicio en curso.
    */
+  /** ¿La fase en curso plantea un ejercicio al alumno? */
+  const planteaEjercicio =
+    actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
+
   const { enunciado, desarrollo, pasoSuelto } = useMemo((): ContenidoPizarra => {
     const vacio: ContenidoPizarra = { enunciado: null, desarrollo: [], pasoSuelto: null };
     if (!actual) return vacio;
 
-    // Concepto y Reglas no plantean un ejercicio: se compone el paso actual.
     if (!actual.ejercicio) {
+      // En una fase que PLANTEA ejercicio, los pasos son el desarrollo aunque
+      // el enunciado aún no haya llegado. Degradarlos a "paso suelto" los
+      // sacaba de su bloque y dejaba la pantalla sin la tarjeta de arriba.
+      if (planteaEjercicio) return { ...vacio, desarrollo: actual.pasos };
+
+      // Concepto y Reglas no plantean ejercicio: se compone el paso actual.
       const pasos = actual.pasos;
       return { ...vacio, pasoSuelto: pasos.length > 0 ? pasos[pasos.length - 1] : null };
     }
@@ -175,7 +184,7 @@ export function Pizarra({
     }
 
     return { enunciado: actual.ejercicio, desarrollo: pasos, pasoSuelto: null };
-  }, [actual]);
+  }, [actual, planteaEjercicio]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -232,17 +241,27 @@ export function Pizarra({
 
                 {/* Fases con ejercicio: el enunciado anclado arriba y su
                     desarrollo debajo, para que el alumno pueda contrastar el
-                    planteamiento con el procedimiento. */}
-                {enunciado && (
+                    planteamiento con el procedimiento.
+
+                    La tarjeta de ARRIBA no depende de que haya desarrollo: se
+                    pinta en cuanto se entra en la fase, con el enunciado que se
+                    adelantó al recibir la lección. La de ABAJO sólo aparece
+                    cuando hay pasos que mostrar. Atar la primera a la segunda
+                    dejaba la pizarra en blanco durante toda la locución. */}
+                {(enunciado || planteaEjercicio) && (
                   <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-3">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                       Ejercicio
                     </p>
-                    <LineaRenderizada
-                      linea={enunciado}
-                      resaltada={resaltado != null && enunciado.texto.includes(resaltado)}
-                      reglas={[]}
-                    />
+                    {enunciado ? (
+                      <LineaRenderizada
+                        linea={enunciado}
+                        resaltada={resaltado != null && enunciado.texto.includes(resaltado)}
+                        reglas={[]}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Preparando el ejercicio…</p>
+                    )}
                   </div>
                 )}
 
