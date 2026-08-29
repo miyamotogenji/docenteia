@@ -50,11 +50,23 @@ interface ContenidoPizarra {
   pasoSuelto: LineaPizarra | null;
 }
 
-/** Una fase de la lección, con su propia vista de pizarra. */
+/**
+ * Una fase de la lección, con su propia vista de pizarra.
+ *
+ * El ejercicio y los pasos van en campos SEPARADOS, no deducidos por posición.
+ * Cuando el enunciado era "la primera línea de la escena", bastaba con que
+ * llegara contenido nuevo sin vaciarla para que la tarjeta de arriba se quedara
+ * anclada al ejercicio anterior mientras el nuevo aparecía al fondo del
+ * desarrollo. Con campos propios eso no puede ocurrir: el ejercicio es el
+ * ejercicio, y el desarrollo se vacía cuando toca.
+ */
 export interface Escena {
   id: string;
   titulo: string;
-  lineas: LineaPizarra[];
+  /** Ejercicio activo de la fase. Null en Concepto y Reglas, que no plantean uno. */
+  ejercicio: LineaPizarra | null;
+  /** Pasos del procedimiento. */
+  pasos: LineaPizarra[];
 }
 
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
@@ -121,7 +133,7 @@ export function Pizarra({
     if (!actual || !esFaseDeReglas(actual.id) || reglas.length === 0) return null;
     if (reglaDetectada) return reglaDetectada;
     const porPizarra = reglaActiva(
-      actual.lineas.map((l) => l.texto),
+      [actual.ejercicio?.texto ?? "", ...actual.pasos.map((l) => l.texto)],
       reglas,
     );
     return porPizarra ?? reglas[0];
@@ -141,35 +153,33 @@ export function Pizarra({
    * desarrollo nunca crece más allá del ejercicio en curso.
    */
   const { enunciado, desarrollo, pasoSuelto } = useMemo((): ContenidoPizarra => {
-    const lineas = actual?.lineas ?? [];
     const vacio: ContenidoPizarra = { enunciado: null, desarrollo: [], pasoSuelto: null };
-    if (!actual || lineas.length === 0) return vacio;
+    if (!actual) return vacio;
 
-    const conEjercicio = esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id);
-    if (!conEjercicio) {
-      // Concepto y Reglas no plantean un ejercicio: se compone el paso actual.
-      return { ...vacio, pasoSuelto: lineas[lineas.length - 1] };
+    // Concepto y Reglas no plantean un ejercicio: se compone el paso actual.
+    if (!actual.ejercicio) {
+      const pasos = actual.pasos;
+      return { ...vacio, pasoSuelto: pasos.length > 0 ? pasos[pasos.length - 1] : null };
     }
 
-    const [primera, ...resto] = lineas;
-    const pasos = [...resto];
+    const pasos = [...actual.pasos];
 
     // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
     // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
     // hallar, que es justo lo que la ramificación pedagógica evita.
     if (esFaseDeEjemplo(actual.id)) {
-      const intermedio = pasoIntermedioDerivada(primera.texto);
+      const intermedio = pasoIntermedioDerivada(actual.ejercicio.texto);
       if (intermedio) {
-        pasos.unshift({ id: -primera.id - 1, texto: intermedio, clase: "formula" });
+        pasos.unshift({ id: -actual.ejercicio.id - 1, texto: intermedio, clase: "formula" });
       }
     }
 
-    return { enunciado: primera, desarrollo: pasos, pasoSuelto: null };
+    return { enunciado: actual.ejercicio, desarrollo: pasos, pasoSuelto: null };
   }, [actual]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [actual?.lineas.length, actual?.id]);
+  }, [actual?.pasos.length, actual?.ejercicio?.id, actual?.id]);
 
   return (
     <div className={cn("space-y-3", className)}>

@@ -36,6 +36,7 @@ import {
   type EstadoConversacion,
   type Seguimiento,
 } from "@/lib/leccion/seguimiento";
+import { esFaseDeEjemplo, esFaseDePractica } from "@/lib/leccion/fases";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import { presentacionDe, recortarParaSeguimiento } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza } from "@/lib/matematicas";
@@ -178,10 +179,20 @@ export function Aula({
       };
       setEscenas((prev) => {
         if (prev.length === 0) {
-          return [{ id: "escena-0", titulo: "Lección", lineas: [linea] }];
+          return [{ id: "escena-0", titulo: "Lección", ejercicio: null, pasos: [linea] }];
         }
         const ultima = prev[prev.length - 1];
-        return [...prev.slice(0, -1), { ...ultima, lineas: [...ultima.lineas, linea] }];
+
+        // La PRIMERA expresión de una fase con ejercicio es el enunciado; las
+        // demás son el procedimiento. Se guarda en su propio campo para que
+        // la tarjeta de arriba no dependa de la posición en una lista: era
+        // eso lo que la dejaba anclada al ejercicio anterior.
+        const planteaEjercicio = esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id);
+        if (planteaEjercicio && ultima.ejercicio === null && !esAclaracion.current) {
+          return [...prev.slice(0, -1), { ...ultima, ejercicio: linea }];
+        }
+
+        return [...prev.slice(0, -1), { ...ultima, pasos: [...ultima.pasos, linea] }];
       });
     },
     [],
@@ -200,7 +211,7 @@ export function Aula({
       // reconstrucción vuelve a anunciar los módulos ya vistos. Sin esta guarda
       // se duplicarían las escenas.
       if (prev.length > 0 && prev[prev.length - 1].id === clave) return prev;
-      return [...prev, { id: clave, titulo: tituloDeFase(clave), lineas: [] }];
+      return [...prev, { id: clave, titulo: tituloDeFase(clave), ejercicio: null, pasos: [] }];
     });
   }, []);
 
@@ -319,19 +330,17 @@ export function Aula({
 
       esAclaracion.current = Boolean(opciones.soloExplicacion);
 
-      // Una aclaración nueva RETIRA la anterior. Si se acumularan, pedir ayuda
-      // tres veces dejaría tres muros de texto en la pizarra, que es justo lo
-      // que se quiere evitar.
-      if (esAclaracion.current) {
-        setEscenas((prev) => {
-          if (prev.length === 0) return prev;
-          const ultima = prev[prev.length - 1];
-          return [
-            ...prev.slice(0, -1),
-            { ...ultima, lineas: ultima.lineas.filter((l) => !l.aclaracion) },
-          ];
-        });
-      }
+      // TODA petición que vaya a escribir en la pizarra vacía antes el
+      // desarrollo. Si no, el procedimiento del ejercicio anterior se queda
+      // debajo y el contenido nuevo se añade al fondo, de modo que en pantalla
+      // conviven dos ejercicios distintos como si fueran uno. El ENUNCIADO se
+      // conserva, porque una aclaración no cambia el ejercicio que el alumno
+      // está resolviendo.
+      setEscenas((prev) => {
+        if (prev.length === 0) return prev;
+        const ultima = prev[prev.length - 1];
+        return [...prev.slice(0, -1), { ...ultima, pasos: [] }];
+      });
 
       try {
         const cuerpo = construirPeticion(consulta, conversacion.current, opciones);
@@ -377,12 +386,13 @@ export function Aula({
         esAyuda.current = presentacion !== "reiniciar";
 
         if (presentacion === "sustituir") {
-          // Mismo ejercicio no: otro. Se vacía la escena en curso conservando
-          // la fase, para que el alumno no retroceda a Concepto.
+          // Llega OTRO ejercicio, no otro paso del mismo: se retira también el
+          // enunciado para que la tarjeta de arriba tome el nuevo. Se conserva
+          // la fase, de modo que el alumno no retroceda a Concepto.
           setEscenas((prev) => {
             if (prev.length === 0) return prev;
             const ultima = prev[prev.length - 1];
-            return [...prev.slice(0, -1), { ...ultima, lineas: [] }];
+            return [...prev.slice(0, -1), { ...ultima, ejercicio: null, pasos: [] }];
           });
         }
 
@@ -489,7 +499,7 @@ export function Aula({
             sesionId: sesionId.current ?? undefined,
             intento,
             pizarra: escenas
-              .flatMap((e) => e.lineas.map((l) => l.texto))
+              .flatMap((e) => [e.ejercicio?.texto ?? "", ...e.pasos.map((l) => l.texto)])
               .join("\n")
               .slice(0, 2000),
           }),
@@ -538,7 +548,11 @@ export function Aula({
   useEffect(() => {
     // Se mira lo narrado Y lo escrito: el nombre de la regla puede aparecer en
     // cualquiera de los dos ("Regla de la potencia: la derivada de xⁿ…").
-    const fuentes = [...narrado.current, ...escenas.flatMap((e) => e.lineas.map((l) => l.texto))];
+    const escrito = escenas.flatMap((e) => [
+      e.ejercicio?.texto ?? "",
+      ...e.pasos.map((l) => l.texto),
+    ]);
+    const fuentes = [...narrado.current, ...escrito];
     const encontrada = reglaActiva(fuentes, reglasDelTema);
     reglaEnCursoRef.current = encontrada;
     setReglaDetectada(encontrada);
