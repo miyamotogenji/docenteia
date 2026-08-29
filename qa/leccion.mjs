@@ -37,9 +37,20 @@ import {
 } from "../lib/leccion/fases.ts";
 // La lista real que consulta el componente, no una copia: si se duplicara,
 // podrían desincronizarse y la prueba daría por bueno un concepto vacío.
-import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
+import {
+  tieneDiagrama,
+  TEMAS_CON_DIAGRAMA,
+  GEOMETRIAS,
+  cajaDeEtiqueta,
+  etiquetaCabe,
+  MARGEN_ETIQUETA,
+} from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
-import { presentacionDe, recortarParaSeguimiento } from "../lib/leccion/seguimiento-lsg.ts";
+import {
+  enunciadosDeLeccion,
+  presentacionDe,
+  recortarParaSeguimiento,
+} from "../lib/leccion/seguimiento-lsg.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
@@ -387,17 +398,66 @@ if (catalogo) {
   // procedimiento del ejercicio anterior se queda debajo del nuevo.
   check(
     "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
-    /\{\s*\.\.\.ultima,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+    /\.\.\.ultima,[\s\S]{0,240}pasos:\s*\[\]\s*,?\s*\}/.test(fuenteAula),
   );
   check(
     "aula.tsx retira también el enunciado cuando llega otro ejercicio",
     /\{\s*\.\.\.ultima,\s*ejercicio:\s*null,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
   );
+  // El enunciado se adelanta al abrir la fase, sin esperar a la cola de voz.
+  check(
+    "aula.tsx adelanta el enunciado al abrir la fase",
+    /enunciadoPorFase\.current\.get\(clave\)/.test(fuenteAula),
+  );
+  // Y no se repite abajo cuando el motor lo escribe con su propia directiva.
+  check(
+    "aula.tsx no repite el enunciado dentro del desarrollo",
+    /ultima\.ejercicio\.texto === limpio/.test(fuenteAula),
+  );
+}
 
+// ── Enunciado adelantado ─────────────────────────────────────────────────────
+// El motor narra primero y escribe después: la pizarra se quedaba en blanco
+// durante toda la locución inicial de la fase. El enunciado se conoce desde que
+// llega la lección, así que se adelanta.
+console.log("\n · Enunciado disponible antes de narrarlo");
+
+for (const tema of TEMAS_LECCION) {
+  const datos = await consultar({ query: tema.consulta });
+  const enunciados = enunciadosDeLeccion(datos.lsg);
+
+  for (const modulo of datos.lsg?.modulos ?? []) {
+    const id = String(modulo.id);
+    if (!/ejemplo|practica/.test(id)) continue;
+
+    const adelantado = enunciados.get(id);
+    check(
+      `[${tema.clave}] la fase «${tituloDeFase(id)}» tiene enunciado adelantado`,
+      Boolean(adelantado),
+      `obtenido: ${adelantado}`,
+    );
+
+    // Y es de verdad el enunciado: la PRIMERA expresión que la fase escribe.
+    const primera = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? "").trim())[0];
+    check(
+      `[${tema.clave}] el enunciado adelantado coincide con el que escribe el motor`,
+      adelantado === primera,
+      `adelantado: ${adelantado} · motor: ${primera}`,
+    );
+  }
+}
+
+{
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
+  const reglasDerivadas = (catalogo ?? []).filter((r) => r.tema === "DERIVADAS");
   const trasAvanzar = reglaActiva(
-    [...lineasReglaReal, "Ahora la regla de la suma y la resta: se deriva término a término."],
-    derivadas,
+    [
+      "Para derivar una potencia usamos la REGLA DE LA POTENCIA.",
+      "Ahora la regla de la suma y la resta: se deriva término a término.",
+    ],
+    reglasDerivadas,
   );
   check(
     "al avanzar el diálogo, la tarjeta pasa a la regla nueva",
@@ -1085,6 +1145,58 @@ check(
   sinSesion.status === 401,
   `status=${sinSesion.status}`,
 );
+
+// ── Etiquetas de los diagramas ───────────────────────────────────────────────
+// El cliente vio "pendie" donde debía leerse "pendiente": el texto se anclaba
+// por la izquierda a cuatro unidades del borde y el navegador lo recortaba.
+// Nada fallaba —el SVG existe y el componente monta— así que ninguna prueba de
+// comportamiento podía verlo. Con la geometría como dato, sí se comprueba.
+{
+  for (const tema of TEMAS_CON_DIAGRAMA) {
+    const g = GEOMETRIAS[tema];
+    check(`${tema}: el diagrama declara su geometría`, Boolean(g) && g.etiquetas.length > 0);
+    if (!g) continue;
+
+    for (const e of g.etiquetas) {
+      const caja = cajaDeEtiqueta(e);
+      check(
+        `${tema}: la etiqueta "${e.texto}" cabe entera en el lienzo`,
+        etiquetaCabe(e, g),
+        `x de ${caja.izquierda.toFixed(1)} a ${caja.derecha.toFixed(1)} · lienzo 0..${g.ancho} · margen ${MARGEN_ETIQUETA}`,
+      );
+    }
+  }
+
+  // El caso exacto que reportó el cliente: la palabra completa, no un recorte.
+  const pieDerivadas = GEOMETRIAS.DERIVADAS.etiquetas.find((e) => e.texto.includes("pendiente"));
+  check(
+    "el diagrama de derivadas nombra la pendiente con la palabra entera",
+    Boolean(pieDerivadas) && /\bpendiente\b/.test(pieDerivadas.texto),
+    `obtenido: ${pieDerivadas?.texto ?? "ninguna"}`,
+  );
+  check(
+    "la etiqueta de la pendiente va centrada, no pegada al borde",
+    pieDerivadas?.anclaje === "middle",
+    `anclaje: ${pieDerivadas?.anclaje ?? "ninguno"}`,
+  );
+
+  // Y que el componente pinte ESOS números, no otros escritos a mano: si algún
+  // diagrama volviera a poner su propio <text>, la comprobación de arriba
+  // dejaría de decir nada sobre lo que se dibuja.
+  const fuenteDiagrama = readFileSync(
+    new URL("../components/leccion/diagrama-concepto.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "los diagramas no escriben textos sueltos: todos salen de la geometría",
+    (fuenteDiagrama.match(/<text/g) ?? []).length === 1,
+    `<text> encontrados: ${(fuenteDiagrama.match(/<text/g) ?? []).length}`,
+  );
+  check(
+    "el componente toma el viewBox de la geometría comprobada",
+    /viewBox=\{`0 0 \$\{g\.ancho\} \$\{g\.alto\}`\}/.test(fuenteDiagrama),
+  );
+}
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");

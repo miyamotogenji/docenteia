@@ -38,7 +38,11 @@ import {
 } from "@/lib/leccion/seguimiento";
 import { esFaseDeEjemplo, esFaseDePractica } from "@/lib/leccion/fases";
 import { reglaActiva } from "@/lib/leccion/reglas";
-import { presentacionDe, recortarParaSeguimiento } from "@/lib/leccion/seguimiento-lsg";
+import {
+  enunciadosDeLeccion,
+  presentacionDe,
+  recortarParaSeguimiento,
+} from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza } from "@/lib/matematicas";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -136,6 +140,19 @@ export function Aula({
   /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
   const narrado = useRef<string[]>([]);
 
+  /**
+   * Enunciado de cada fase, leído de la lección ANTES de reproducirla.
+   *
+   * El motor narra primero y escribe después: en la fase de práctica dice
+   * "Vamos a derivar 3x⁴ - 2x²" durante varios segundos y sólo al terminar
+   * emite la directiva que lo escribe. Como la locución ya no se vuelca al
+   * lienzo, la pizarra se quedaba en blanco todo ese rato.
+   *
+   * Adelantando el enunciado al abrir la fase, la tarjeta aparece en el mismo
+   * instante en que empieza a hablar de ella, sin esperar a la cola de voz.
+   */
+  const enunciadoPorFase = useRef<Map<string, string>>(new Map());
+
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
   const [tema, setTema] = useState<TemaLeccion | null>(null);
@@ -192,6 +209,12 @@ export function Aula({
           return [...prev.slice(0, -1), { ...ultima, ejercicio: linea }];
         }
 
+        // El enunciado NO se repite en el desarrollo. El motor lo escribe con
+        // una directiva propia, y si el enunciado ya se adelantó al abrir la
+        // fase, esa directiva llegaría aquí y lo pintaría por segunda vez: el
+        // desarrollo debe llevar sólo los pasos y la solución.
+        if (ultima.ejercicio && ultima.ejercicio.texto === limpio) return prev;
+
         return [...prev.slice(0, -1), { ...ultima, pasos: [...ultima.pasos, linea] }];
       });
     },
@@ -211,7 +234,17 @@ export function Aula({
       // reconstrucción vuelve a anunciar los módulos ya vistos. Sin esta guarda
       // se duplicarían las escenas.
       if (prev.length > 0 && prev[prev.length - 1].id === clave) return prev;
-      return [...prev, { id: clave, titulo: tituloDeFase(clave), ejercicio: null, pasos: [] }];
+
+      // El enunciado se adelanta: se conoce desde que llegó la lección, así que
+      // no hay razón para dejar la pizarra en blanco mientras el tutor lo narra.
+      const adelantado = enunciadoPorFase.current.get(clave);
+      const planteaEjercicio = esFaseDeEjemplo(clave) || esFaseDePractica(clave);
+      const ejercicio =
+        adelantado && planteaEjercicio
+          ? { id: idLinea.current++, texto: adelantado, clase: "formula" as const }
+          : null;
+
+      return [...prev, { id: clave, titulo: tituloDeFase(clave), ejercicio, pasos: [] }];
     });
   }, []);
 
@@ -336,10 +369,24 @@ export function Aula({
       // conviven dos ejercicios distintos como si fueran uno. El ENUNCIADO se
       // conserva, porque una aclaración no cambia el ejercicio que el alumno
       // está resolviendo.
+      // El enunciado se refresca con el ejercicio activo: si el alumno ya pasó
+      // al siguiente, la tarjeta no puede seguir mostrando el anterior.
+      const activo = conversacion.current.ejercicio;
       setEscenas((prev) => {
         if (prev.length === 0) return prev;
         const ultima = prev[prev.length - 1];
-        return [...prev.slice(0, -1), { ...ultima, pasos: [] }];
+        const desfasado =
+          activo && ultima.ejercicio && ultima.ejercicio.texto !== activo;
+        return [
+          ...prev.slice(0, -1),
+          {
+            ...ultima,
+            ejercicio: desfasado
+              ? { id: idLinea.current++, texto: activo, clase: "formula" as const }
+              : ultima.ejercicio,
+            pasos: [],
+          },
+        ];
       });
 
       try {
@@ -403,6 +450,10 @@ export function Aula({
             ? recortarParaSeguimiento(datos.lsg)
             : datos.lsg
         ) as LSG;
+
+        // Se anota el enunciado de cada fase antes de reproducir nada, para
+        // poder mostrarlo en cuanto se entra en ella.
+        enunciadoPorFase.current = enunciadosDeLeccion(lsg);
 
         // El servidor no guarda sesión: el contexto se mantiene aquí y viaja en
         // cada petición. Los cursores de rotación tienen que dar la vuelta

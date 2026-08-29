@@ -15,3 +15,109 @@ export const TEMAS_CON_DIAGRAMA = [
 export function tieneDiagrama(tema: string): boolean {
   return (TEMAS_CON_DIAGRAMA as readonly string[]).includes(tema);
 }
+
+/**
+ * Geometría de las etiquetas de los diagramas.
+ *
+ * Vive aquí, y no suelta dentro del SVG, por un motivo concreto: la etiqueta
+ * "pendiente = 2" se escribía anclada por la izquierda a cuatro unidades del
+ * borde derecho, así que el texto se salía del lienzo y el navegador lo
+ * recortaba a "pendie". Un fallo invisible para cualquier prueba de
+ * comportamiento —el componente monta, el SVG existe, no hay error— y que sólo
+ * se ve mirando el dibujo.
+ *
+ * Con las posiciones como datos, la suite puede calcular la caja de cada texto
+ * y exigir que quepa entera. El componente pinta exactamente estos números, de
+ * modo que lo que se comprueba es lo que se dibuja.
+ */
+export type AnclajeEtiqueta = "start" | "middle" | "end";
+
+/** Tono visual de la etiqueta; el componente lo traduce a clases de Tailwind. */
+export type TonoEtiqueta = "acento" | "tenue" | "normal";
+
+export interface EtiquetaDiagrama {
+  texto: string;
+  x: number;
+  y: number;
+  anclaje: AnclajeEtiqueta;
+  /** Tamaño de fuente en unidades del viewBox. */
+  tamano: number;
+  tono: TonoEtiqueta;
+}
+
+export interface GeometriaDiagrama {
+  ancho: number;
+  alto: number;
+  etiquetas: EtiquetaDiagrama[];
+}
+
+/**
+ * Ancho de un carácter como proporción del tamaño de fuente.
+ *
+ * Generoso a propósito: la fuente real es de ancho variable y la mayoría de
+ * letras ocupan menos, pero al estimar por lo alto una etiqueta que pasa la
+ * comprobación cabe también con fuentes más anchas que la del navegador de
+ * turno.
+ */
+export const ANCHO_CARACTER = 0.62;
+
+/** Holgura mínima entre el texto y el borde del lienzo, en unidades del viewBox. */
+export const MARGEN_ETIQUETA = 4;
+
+/** Extremos horizontales que ocupará la etiqueta al dibujarse. */
+export function cajaDeEtiqueta(e: EtiquetaDiagrama): { izquierda: number; derecha: number } {
+  const ancho = e.texto.length * e.tamano * ANCHO_CARACTER;
+  if (e.anclaje === "end") return { izquierda: e.x - ancho, derecha: e.x };
+  if (e.anclaje === "middle") return { izquierda: e.x - ancho / 2, derecha: e.x + ancho / 2 };
+  return { izquierda: e.x, derecha: e.x + ancho };
+}
+
+/** ¿La etiqueta cabe entera dentro del lienzo, con holgura? */
+export function etiquetaCabe(e: EtiquetaDiagrama, g: GeometriaDiagrama): boolean {
+  const { izquierda, derecha } = cajaDeEtiqueta(e);
+  const dentroEnHorizontal = izquierda >= MARGEN_ETIQUETA && derecha <= g.ancho - MARGEN_ETIQUETA;
+  // `y` es la línea base: por arriba sube el tamaño de la fuente y por abajo
+  // baja el rasgo descendente de las letras con cola (p, g, q).
+  const dentroEnVertical = e.y - e.tamano >= 0 && e.y + e.tamano * 0.25 <= g.alto;
+  return dentroEnHorizontal && dentroEnVertical;
+}
+
+/**
+ * El pie del diagrama de derivadas dice la pendiente con todas las letras.
+ *
+ * Centrado abajo, como en los otros dos diagramas: es la única banda del
+ * lienzo que está libre de curva, tangente y ejes, así que la frase cabe
+ * entera por larga que sea sin pisar el dibujo ni salirse por el lado.
+ */
+export const GEOMETRIA_DERIVADAS: GeometriaDiagrama = {
+  ancho: 240,
+  alto: 155,
+  etiquetas: [
+    { texto: "la pendiente de la tangente es 2", x: 120, y: 148, anclaje: "middle", tamano: 9, tono: "acento" },
+    { texto: "y = x²", x: 126, y: 24, anclaje: "start", tamano: 9, tono: "tenue" },
+  ],
+};
+
+export const GEOMETRIA_FRACCIONES: GeometriaDiagrama = {
+  ancho: 240,
+  alto: 90,
+  etiquetas: [
+    { texto: "1 de 4 partes iguales", x: 120, y: 84, anclaje: "middle", tamano: 10, tono: "tenue" },
+  ],
+};
+
+export const GEOMETRIA_LINEALES: GeometriaDiagrama = {
+  ancho: 240,
+  alto: 110,
+  etiquetas: [
+    { texto: "2x + 5", x: 40, y: 47, anclaje: "middle", tamano: 10, tono: "normal" },
+    { texto: "15", x: 200, y: 47, anclaje: "middle", tamano: 10, tono: "normal" },
+    { texto: "lo que hagas a un lado, hazlo al otro", x: 120, y: 106, anclaje: "middle", tamano: 9, tono: "tenue" },
+  ],
+};
+
+export const GEOMETRIAS: Record<string, GeometriaDiagrama> = {
+  DERIVADAS: GEOMETRIA_DERIVADAS,
+  FRACCIONES: GEOMETRIA_FRACCIONES,
+  ECUACIONES_LINEALES: GEOMETRIA_LINEALES,
+};
