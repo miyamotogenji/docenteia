@@ -47,6 +47,7 @@ import {
   MARGEN_ETIQUETA,
 } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
+import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
   enunciadosDeLeccion,
@@ -1553,6 +1554,73 @@ console.log("\n · Factorización: la expresión se lee entera");
     "la diferencia de cuadrados se devuelve del todo factorizada",
     resolverEjercicio("36x² - 100", "factorizacion") === "4(3x - 5)(3x + 5)",
     `obtenido: ${resolverEjercicio("36x² - 100", "factorizacion")}`,
+  );
+}
+
+// ── La pista no sobrevive al acierto ─────────────────────────────────────────
+// Al responder bien, el alumno veía el "¡Correcto! Continuemos." en verde y,
+// justo encima, la caja roja con la pista del intento anterior. Llega por dos
+// caminos y hay que cerrar los dos: la corrección del servidor puede no llegar
+// —sesión caducada, un 401, un fallo de red— y dejar el veredicto viejo tal
+// cual, o llegar después de que el motor local haya cantado el acierto.
+console.log("\n · Retroalimentación: la pista no sobrevive al acierto");
+
+{
+  const conPista = {
+    correcto: false,
+    verificable: true,
+    pista: "Para derivar una potencia, baja el exponente y réstale uno.",
+  };
+  check(
+    "al acertar se retira la pista del intento anterior",
+    veredictoTrasAcierto(conPista) === null,
+  );
+  check(
+    "la caja de ayuda no se compone sobre un veredicto correcto",
+    hayQueMostrarAyuda({ correcto: true, verificable: true }) === false,
+  );
+  // Pero la confirmación del servidor SÍ se conserva: es la que dice que el
+  // acierto está comprobado contra la solución recalculada, no sólo cantado
+  // por el motor local.
+  const acierto = { correcto: true, verificable: true };
+  check(
+    "el veredicto correcto del servidor se conserva",
+    veredictoTrasAcierto(acierto) === acierto,
+  );
+  check(
+    "sin nada que decir no se compone caja de ayuda",
+    hayQueMostrarAyuda({ correcto: false, verificable: true }) === false,
+  );
+  check(
+    "con pista y sin acierto, la ayuda sí se compone",
+    hayQueMostrarAyuda(conPista) === true,
+  );
+  // Un ejercicio que el motor no cubre no es un fallo del alumno: se explica,
+  // sin pintarlo como error.
+  check(
+    "un ejercicio no verificable muestra su mensaje",
+    hayQueMostrarAyuda({ correcto: null, verificable: false, mensaje: "Fuera de alcance." }) === true,
+  );
+
+  const fuenteAulaR = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "aula.tsx limpia la pista en cuanto el motor canta el acierto",
+    /if \(ok\) setVeredicto\(veredictoTrasAcierto\);/.test(fuenteAulaR),
+  );
+  check(
+    "aula.tsx retira la pista antes de mandar el intento siguiente",
+    /pertenece al intento que la provoc[\s\S]{0,160}setVeredicto\(null\);/.test(fuenteAulaR),
+  );
+  // Y la cara opuesta: el mensaje del tutor tampoco acompaña al ejercicio
+  // siguiente. Un "¡Correcto!" bajo un enunciado nuevo es el mismo fallo.
+  check(
+    "aula.tsx limpia el mensaje del tutor al plantear la pregunta siguiente",
+    /setVeredicto\(null\);\s*\n\s*setFeedback\(null\);\s*\n\s*resolverRespuesta\.current = resolve;/.test(
+      fuenteAulaR,
+    ),
   );
 }
 
