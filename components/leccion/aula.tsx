@@ -40,6 +40,7 @@ import { esFaseDeEjemplo, esFaseDePractica } from "@/lib/leccion/fases";
 import { reglaActiva } from "@/lib/leccion/reglas";
 import {
   enunciadosDeLeccion,
+  enunciadoTrasPeticion,
   presentacionDe,
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
@@ -153,12 +154,16 @@ export function Aula({
    */
   const enunciadoPorFase = useRef<Map<string, string>>(new Map());
 
+  /** Espejo de las escenas, para consultarlas desde una petición en vuelo. */
+  const escenasRef = useRef<Escena[]>([]);
+
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
   const [tema, setTema] = useState<TemaLeccion | null>(null);
   const [estadoAvatar, setEstadoAvatar] = useState<EstadoAvatar>("neutral");
   const [hablando, setHablando] = useState(false);
   const [escenas, setEscenas] = useState<Escena[]>([]);
+  escenasRef.current = escenas;
   const [resaltado, setResaltado] = useState<string | null>(null);
   const [subtitulo, setSubtitulo] = useState("");
   const [controles, setControles] = useState<EstadoControles>({
@@ -407,18 +412,21 @@ export function Aula({
       setEscenas((prev) => {
         if (prev.length === 0) return prev;
         const ultima = prev[prev.length - 1];
-        const desfasado =
-          activo && ultima.ejercicio && ultima.ejercicio.texto !== activo;
-        return [
-          ...prev.slice(0, -1),
-          {
-            ...ultima,
-            ejercicio: desfasado
-              ? { id: idLinea.current++, texto: activo, clase: "formula" as const }
-              : ultima.ejercicio,
-            pasos: [],
-          },
-        ];
+        const texto = enunciadoTrasPeticion({
+          enTarjeta: ultima.ejercicio?.texto ?? null,
+          deLaFase: enunciadoPorFase.current.get(ultima.id) ?? null,
+          activo,
+          planteaEjercicio: esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id),
+        });
+        // La línea sólo se rehace cuando el texto cambia: rehacerla siempre le
+        // daría un id nuevo y la tarjeta parpadearía en cada pulsación.
+        const ejercicio =
+          texto === (ultima.ejercicio?.texto ?? null)
+            ? ultima.ejercicio
+            : texto
+              ? { id: idLinea.current++, texto, clase: "formula" as const }
+              : null;
+        return [...prev.slice(0, -1), { ...ultima, ejercicio, pasos: [] }];
       });
 
       try {
@@ -462,7 +470,11 @@ export function Aula({
         // cuando se REINICIA. Al anexar y al sustituir hay que conservar las
         // escenas, porque son las que mantienen al alumno en su fase; en el
         // segundo caso el vaciado se hace aquí abajo, escena a escena.
-        esAyuda.current = presentacion !== "reiniciar";
+        // Con la pizarra vacía NO se suprime la apertura de fases: si el alumno
+        // pulsa un botón de apoyo antes de que se abra ninguna escena, anexar a
+        // "lo que hay" no anexa a nada y el lienzo se queda en blanco sin nada
+        // que vuelva a abrirlo.
+        esAyuda.current = presentacion !== "reiniciar" && escenasRef.current.length > 0;
 
         if (presentacion === "sustituir") {
           // Llega OTRO ejercicio, no otro paso del mismo: se retira también el

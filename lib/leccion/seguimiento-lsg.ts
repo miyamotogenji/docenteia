@@ -114,3 +114,33 @@ export function recortarParaSeguimiento<T extends LSGConModulos>(lsg: T): T {
   if (utiles.length === 0) return lsg;
   return { ...lsg, modulos: utiles };
 }
+
+/**
+ * Qué enunciado debe quedar en la tarjeta de EJERCICIO tras una petición.
+ *
+ * Toda petición vacía el desarrollo, y ahí es donde la pizarra se quedaba en
+ * blanco al pulsar "Explicar regla": si la tarjeta de arriba todavía no tenía
+ * enunciado —porque el alumno pulsó mientras el tutor narraba—, el vaciado
+ * dejaba la escena sin nada y la aclaración, que es prosa, va al subtítulo y no
+ * al lienzo. Resultado: fase abierta, pizarra vacía y nada que la rellenara.
+ *
+ * El orden de preferencia importa. Manda el enunciado DE ESTA FASE, no el
+ * ejercicio activo de la conversación: el activo es el de la práctica, y usarlo
+ * en la fase de ejemplo cambiaría el enunciado por otro que el alumno no está
+ * viendo. Sólo cuando la fase no declara el suyo se recurre al activo, y si no
+ * hay ninguno se conserva el que hubiera.
+ */
+export function enunciadoTrasPeticion(opciones: {
+  /** El que está pintado ahora mismo, si lo hay. */
+  enTarjeta: string | null;
+  /** El que declara esta fase, leído de la lección al recibirla. */
+  deLaFase?: string | null;
+  /** El que el alumno tiene entre manos según la conversación. */
+  activo?: string | null;
+  /** Falso en Concepto y Reglas, que no plantean ejercicio. */
+  planteaEjercicio: boolean;
+}): string | null {
+  if (!opciones.planteaEjercicio) return opciones.enTarjeta;
+  const objetivo = opciones.deLaFase || opciones.activo || null;
+  return objetivo ?? opciones.enTarjeta;
+}

@@ -48,6 +48,7 @@ import {
 } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
+  enunciadoTrasPeticion,
   enunciadosDeLeccion,
   presentacionDe,
   recortarParaSeguimiento,
@@ -1295,6 +1296,81 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
   check(
     "al abrir una fase con ejercicio se recurre al ejercicio activo",
     /enunciadoPorFase\.current\.get\(clave\) \|\| conversacion\.current\.ejercicio/.test(fuenteAula2),
+  );
+}
+
+// ── "Explicar regla" no puede vaciar la pizarra ──────────────────────────────
+// Toda petición borra el desarrollo. Si el alumno pulsaba el botón mientras el
+// tutor narraba —con la tarjeta de enunciado todavía sin rellenar—, ese borrado
+// dejaba la escena sin nada, y la aclaración es prosa: va al subtítulo, no al
+// lienzo. La fase quedaba abierta y la pizarra en blanco hasta el final.
+console.log("\n · Los botones de apoyo no dejan la pizarra vacía");
+
+{
+  const casos = [
+    {
+      nombre: "con la tarjeta vacía, la práctica recupera su enunciado",
+      entrada: { enTarjeta: null, deLaFase: "3x⁴ - 2x²", activo: "3x⁴ - 2x²", planteaEjercicio: true },
+      esperado: "3x⁴ - 2x²",
+    },
+    {
+      nombre: "sin enunciado de fase, vale el ejercicio activo",
+      entrada: { enTarjeta: null, deLaFase: null, activo: "5x²", planteaEjercicio: true },
+      esperado: "5x²",
+    },
+    {
+      // El activo es el de la práctica: usarlo en el ejemplo cambiaría el
+      // enunciado por otro que el alumno no tiene delante.
+      nombre: "el ejemplo conserva el suyo, no toma el de la práctica",
+      entrada: { enTarjeta: "x²", deLaFase: "x²", activo: "5x²", planteaEjercicio: true },
+      esperado: "x²",
+    },
+    {
+      nombre: "una tarjeta desfasada se refresca",
+      entrada: { enTarjeta: "2x", deLaFase: "5x²", activo: "5x²", planteaEjercicio: true },
+      esperado: "5x²",
+    },
+    {
+      nombre: "sin nada conocido, se conserva lo que hubiera",
+      entrada: { enTarjeta: "x²", deLaFase: null, activo: null, planteaEjercicio: true },
+      esperado: "x²",
+    },
+    {
+      nombre: "Concepto y Reglas siguen sin tarjeta de ejercicio",
+      entrada: { enTarjeta: null, deLaFase: "x²", activo: "x²", planteaEjercicio: false },
+      esperado: null,
+    },
+  ];
+  for (const c of casos) {
+    const obtenido = enunciadoTrasPeticion(c.entrada);
+    check(c.nombre, obtenido === c.esperado, `obtenido: ${obtenido} · esperado: ${c.esperado}`);
+  }
+
+  // "Explicar regla" es un seguimiento que sólo aclara: se anexa a la escena en
+  // curso. Si se tratara como lección nueva, borraría la pizarra entera.
+  check(
+    "«Explicar regla» se anexa a la fase en curso, no la reinicia",
+    presentacionDe({ modulos: [{ id: "regla" }] }, { esSeguimiento: true, soloExplicacion: true }) ===
+      "anexar",
+  );
+
+  const fuenteAula3 = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  // El enunciado que sobrevive al vaciado lo decide la función comprobada
+  // arriba, no una condición escrita a mano en el componente.
+  check(
+    "aula.tsx decide el enunciado con la regla verificada",
+    /enunciadoTrasPeticion\(\{[\s\S]{0,320}planteaEjercicio:/.test(fuenteAula3),
+  );
+  // Y con la pizarra vacía no se suprime la apertura de fases: si no, una
+  // aclaración anexaría a una pizarra que no existe y nada volvería a abrirla.
+  check(
+    "con la pizarra vacía, una aclaración no bloquea la apertura de fase",
+    /esAyuda\.current = presentacion !== "reiniciar" && escenasRef\.current\.length > 0;/.test(
+      fuenteAula3,
+    ),
   );
 }
 
