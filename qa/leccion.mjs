@@ -370,6 +370,30 @@ if (catalogo) {
     /if\s*\(esFaseDeEjemplo\([^)]*\)\)\s*\{[\s\S]{0,200}pasoIntermedioDerivada/.test(fuentePizarra),
   );
 
+  // El enunciado NO puede deducirse por posición. Mientras fue "la primera
+  // línea de la escena", bastaba con que llegara contenido nuevo sin vaciarla
+  // para que la tarjeta se quedara anclada al ejercicio anterior y el nuevo
+  // cayera al fondo del desarrollo. Ahora es un campo propio de la escena.
+  check(
+    "el enunciado sale de su propio campo, no de la primera línea",
+    /actual\.ejercicio/.test(fuentePizarra) && !/lineas\[0\]|\[primera,\s*\.\.\.resto\]/.test(fuentePizarra),
+  );
+
+  const fuenteAula = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  // Y el desarrollo se vacía en TODA petición que vaya a escribir: si no, el
+  // procedimiento del ejercicio anterior se queda debajo del nuevo.
+  check(
+    "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
+    /\{\s*\.\.\.ultima,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+  );
+  check(
+    "aula.tsx retira también el enunciado cuando llega otro ejercicio",
+    /\{\s*\.\.\.ultima,\s*ejercicio:\s*null,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+  );
+
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
   const trasAvanzar = reglaActiva(
     [...lineasReglaReal, "Ahora la regla de la suma y la resta: se deriva término a término."],
