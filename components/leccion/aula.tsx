@@ -46,6 +46,7 @@ import {
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
+import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
 
@@ -381,7 +382,14 @@ export function Aula({
       setControls: (estado) => setControles(estado),
       onProgress: (index, total) =>
         setControles((prev) => ({ ...prev, index, total })),
-      showFeedback: (ok, msg) => setFeedback({ ok, msg }),
+      showFeedback: (ok, msg) => {
+        setFeedback({ ok, msg });
+        // Al acertar se retira la pista del intento anterior. El motor local
+        // canta el acierto por su cuenta, y si la corrección del servidor no
+        // llegó —sesión caducada, fallo de red— su caja roja se quedaba en
+        // pantalla junto al "¡Correcto!" en verde.
+        if (ok) setVeredicto(veredictoTrasAcierto);
+      },
       onLessonEnd: () => {
         setPregunta(null);
         setEstadoAvatar("sonriendo");
@@ -404,7 +412,10 @@ export function Aula({
           setPregunta(String(textoPregunta ?? ""));
           setBorrador("");
           setIntento(1);
+          // La retroalimentación del ejercicio anterior no acompaña al
+          // siguiente: ni el veredicto del servidor ni el mensaje del tutor.
           setVeredicto(null);
+          setFeedback(null);
           resolverRespuesta.current = resolve;
           opciones?.signal?.addEventListener("abort", () => {
             resolverRespuesta.current = null;
@@ -623,6 +634,11 @@ export function Aula({
     if (!respuesta) return;
 
     const estado = conversacion.current;
+
+    // La pista pertenece al intento que la provocó: se retira antes de mandar
+    // el siguiente, para que no acompañe a una respuesta que aún no se ha
+    // calificado.
+    setVeredicto(null);
 
     // Evaluación inmediata contra la solución que RECALCULA el servidor. El
     // navegador no conoce la respuesta correcta.
@@ -901,8 +917,10 @@ export function Aula({
             </Card>
           )}
 
-          {/* Veredicto del servidor */}
-          {veredicto && (
+          {/* Veredicto del servidor. La caja de ayuda no se compone sobre un
+              acierto: sin esta condición, la pista del intento fallado quedaba
+              encima del mensaje verde. */}
+          {veredicto && (veredicto.correcto === true || hayQueMostrarAyuda(veredicto)) && (
             <Alert
               variant={
                 veredicto.correcto === true
