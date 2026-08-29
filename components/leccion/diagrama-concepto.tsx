@@ -65,7 +65,10 @@ function CurvaYTangente() {
       {/* El punto de tangencia */}
       <circle cx={px} cy={py} r="4" className="fill-amber-500" />
 
-      <text x={t2x - 4} y={t2y - 6} className="fill-amber-600 text-[9px]">
+      {/* Las etiquetas se anclan por su extremo derecho y se separan del borde:
+          ancladas por la izquierda, "pendiente = 2" se salía del lienzo y el
+          navegador la recortaba a "pendi…". */}
+      <text x={t2x - 6} y={t2y + 14} textAnchor="end" className="fill-amber-600 text-[9px]">
         pendiente = 2
       </text>
       <text x="126" y="24" className="fill-muted-foreground text-[9px]">

@@ -39,7 +39,11 @@ import {
 // podrían desincronizarse y la prueba daría por bueno un concepto vacío.
 import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
-import { presentacionDe, recortarParaSeguimiento } from "../lib/leccion/seguimiento-lsg.ts";
+import {
+  enunciadosDeLeccion,
+  presentacionDe,
+  recortarParaSeguimiento,
+} from "../lib/leccion/seguimiento-lsg.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
 import { construirPeticion, estadoInicial } from "../lib/leccion/seguimiento.ts";
 import { TEMAS_LECCION } from "../lib/leccion/temas.ts";
@@ -387,17 +391,66 @@ if (catalogo) {
   // procedimiento del ejercicio anterior se queda debajo del nuevo.
   check(
     "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
-    /\{\s*\.\.\.ultima,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+    /\.\.\.ultima,[\s\S]{0,240}pasos:\s*\[\]\s*,?\s*\}/.test(fuenteAula),
   );
   check(
     "aula.tsx retira también el enunciado cuando llega otro ejercicio",
     /\{\s*\.\.\.ultima,\s*ejercicio:\s*null,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
   );
+  // El enunciado se adelanta al abrir la fase, sin esperar a la cola de voz.
+  check(
+    "aula.tsx adelanta el enunciado al abrir la fase",
+    /enunciadoPorFase\.current\.get\(clave\)/.test(fuenteAula),
+  );
+  // Y no se repite abajo cuando el motor lo escribe con su propia directiva.
+  check(
+    "aula.tsx no repite el enunciado dentro del desarrollo",
+    /ultima\.ejercicio\.texto === limpio/.test(fuenteAula),
+  );
+}
 
+// ── Enunciado adelantado ─────────────────────────────────────────────────────
+// El motor narra primero y escribe después: la pizarra se quedaba en blanco
+// durante toda la locución inicial de la fase. El enunciado se conoce desde que
+// llega la lección, así que se adelanta.
+console.log("\n · Enunciado disponible antes de narrarlo");
+
+for (const tema of TEMAS_LECCION) {
+  const datos = await consultar({ query: tema.consulta });
+  const enunciados = enunciadosDeLeccion(datos.lsg);
+
+  for (const modulo of datos.lsg?.modulos ?? []) {
+    const id = String(modulo.id);
+    if (!/ejemplo|practica/.test(id)) continue;
+
+    const adelantado = enunciados.get(id);
+    check(
+      `[${tema.clave}] la fase «${tituloDeFase(id)}» tiene enunciado adelantado`,
+      Boolean(adelantado),
+      `obtenido: ${adelantado}`,
+    );
+
+    // Y es de verdad el enunciado: la PRIMERA expresión que la fase escribe.
+    const primera = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? "").trim())[0];
+    check(
+      `[${tema.clave}] el enunciado adelantado coincide con el que escribe el motor`,
+      adelantado === primera,
+      `adelantado: ${adelantado} · motor: ${primera}`,
+    );
+  }
+}
+
+{
   // Al avanzar el diálogo, la tarjeta cambia: manda la MÁS RECIENTE.
+  const reglasDerivadas = (catalogo ?? []).filter((r) => r.tema === "DERIVADAS");
   const trasAvanzar = reglaActiva(
-    [...lineasReglaReal, "Ahora la regla de la suma y la resta: se deriva término a término."],
-    derivadas,
+    [
+      "Para derivar una potencia usamos la REGLA DE LA POTENCIA.",
+      "Ahora la regla de la suma y la resta: se deriva término a término.",
+    ],
+    reglasDerivadas,
   );
   check(
     "al avanzar el diálogo, la tarjeta pasa a la regla nueva",

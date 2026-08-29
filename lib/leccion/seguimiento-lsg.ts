@@ -31,6 +31,36 @@ export interface LSGConModulos {
   [clave: string]: unknown;
 }
 
+/**
+ * Enunciado de cada fase, leído de la lección antes de reproducirla.
+ *
+ * El motor narra primero y escribe después: en la práctica dice "Vamos a
+ * derivar 3x⁴ - 2x²" durante varios segundos y sólo al terminar emite la
+ * directiva que lo escribe en la pizarra. Como la locución ya no se vuelca al
+ * lienzo, éste se quedaba en blanco todo ese rato.
+ *
+ * El enunciado es la PRIMERA expresión que la fase escribe, y se conoce desde
+ * que llega la lección: adelantarlo permite pintar la tarjeta en cuanto se
+ * entra en la fase, sin depender de la cola de voz.
+ */
+export function enunciadosDeLeccion(lsg: LSGConModulos | null | undefined): Map<string, string> {
+  const porFase = new Map<string, string>();
+  if (!Array.isArray(lsg?.modulos)) return porFase;
+
+  for (const modulo of lsg.modulos) {
+    const id = String(modulo?.id ?? "");
+    if (!id) continue;
+    const directivas = Array.isArray(modulo?.directivas) ? modulo.directivas : [];
+    for (const d of directivas as Array<{ tipo?: string; contenido?: string }>) {
+      if (d?.tipo !== "pizarra") continue;
+      const texto = String(d.contenido ?? "").trim();
+      if (texto) porFase.set(id, texto);
+      break; // sólo la primera: las demás son el desarrollo
+    }
+  }
+  return porFase;
+}
+
 /** Decide cómo presentar una respuesta del servidor. */
 export function presentacionDe(
   lsg: LSGConModulos | null | undefined,
