@@ -332,26 +332,126 @@ export function computeDerivative(text) {
 export function computeFactorization(text) {
   if (typeof text !== "string") return null;
   const t = normDashes(text.toLowerCase()).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c)).join(""));
-  // "c v^2 - d": coeficiente opcional, variable (una letra), al cuadrado, RESTA (diferencia), nº positivo.
-  const m = t.match(/(\d*)\s*\*?\s*([a-z])\s*\^\s*2\s*-\s*(\d+)/);
-  if (!m) return null;
-  const c = m[1] === "" ? 1 : Number(m[1]);
-  const v = m[2];
-  const d = Number(m[3]);
-  if (!(c > 0) || !(d > 0)) return null;
+  // La expresión, sin la orden ("factoriza x² - 9" → "x² - 9").
+  const expr = t.replace(/^[^:]*(?:factoriza\w*|descompon\w*)\s*/i, "").replace(/^.*:\s*/, "").trim();
+
+  // Se lee la expresión ENTERA, no un trozo. Con una búsqueda parcial, "x² - 4x - 21"
+  // casaba con su principio "x² - 4" y se factorizaba como (x - 2)(x + 2): la
+  // respuesta de OTRO ejercicio, dada por buena. Es justo el veredicto inventado
+  // que este módulo existe para evitar, así que si la expresión no se entiende
+  // entera no se factoriza.
+  const q = expresionCuadratica(expr);
+  if (!q) return null;
+  const { a, b, c, v } = q;
+  if (!(a > 0)) return null; // con el término principal negativo no se arriesga
+
   const isSq = (n) => Number.isInteger(Math.sqrt(n));
+  const mcd = (x, y) => { x = Math.abs(x); y = Math.abs(y); while (y) { [x, y] = [y, x % y]; } return x || 1; };
   const vc = (k) => (k === 1 ? "" : String(k)); // coeficiente visible ante la variable
-  // Caso 1: AMBOS son cuadrados perfectos → (√c·v - √d)(√c·v + √d). Cubre "x² - 9" y "4x² - 25".
-  if (isSq(c) && isSq(d)) {
-    const sc = Math.sqrt(c), sd = Math.sqrt(d);
-    return `(${vc(sc)}${v} - ${sd})(${vc(sc)}${v} + ${sd})`;
+
+  // DIFERENCIA DE CUADRADOS: "a·v² - d", sin término en v.
+  if (b === 0 && c < 0) {
+    const d = -c;
+    // Caso 1: AMBOS son cuadrados perfectos → (√a·v - √d)(√a·v + √d). Cubre "x² - 9" y "4x² - 25".
+    if (isSq(a) && isSq(d)) {
+      const sa = Math.sqrt(a), sd = Math.sqrt(d);
+      // Si las dos raíces comparten factor, se saca fuera: "36x² - 100" es
+      // "4(3x - 5)(3x + 5)", no "(6x - 10)(6x + 10)". Lo segundo es cierto pero
+      // no está acabado, y en una clase de factorización eso es media respuesta.
+      const g = mcd(sa, sd);
+      if (g > 1) return `${g * g}(${vc(sa / g)}${v} - ${sd / g})(${vc(sa / g)}${v} + ${sd / g})`;
+      return `(${vc(sa)}${v} - ${sd})(${vc(sa)}${v} + ${sd})`;
+    }
+    // Caso 2: factor común a con d/a cuadrado perfecto → a(v - r)(v + r). Cubre "2x² - 8".
+    if (d % a === 0 && isSq(d / a)) {
+      const r = Math.sqrt(d / a);
+      return `${a === 1 ? "" : String(a)}(${v} - ${r})(${v} + ${r})`;
+    }
+    return null; // sin raíces enteras no se arriesga
   }
-  // Caso 2: factor común c con d/c cuadrado perfecto → c(v - a)(v + a). Cubre "2x² - 8" → "2(x - 2)(x + 2)".
-  if (d % c === 0 && isSq(d / c)) {
-    const a = Math.sqrt(d / c);
-    return `${c === 1 ? "" : String(c)}(${v} - ${a})(${v} + ${a})`;
+
+  return factorizarPorTerminos(q, v);
+}
+
+// Aisla la expresión cuadrática dentro de una frase ("¿factorización de x² - 9?").
+// Se prueban las subcadenas matemáticas de la frase y se exige que la elegida se
+// entienda ENTERA como cuadrática: así "x² - 4x - 21" no puede colarse por su
+// principio "x² - 4", que devolvería la factorización de otro ejercicio.
+function expresionCuadratica(texto) {
+  const directo = coeficientesCuadraticos(texto);
+  if (directo) return directo;
+  const limpio = String(texto).replace(/[¿?¡!.,;]/g, " ");
+  const trozos = limpio.match(/[0-9a-z^]+(?:\s*[-+]\s*[0-9a-z^]+)*/g) || [];
+  let mejor = null;
+  for (const trozo of trozos) {
+    const q = coeficientesCuadraticos(trozo.trim());
+    if (q && (!mejor || trozo.length > mejor.largo)) mejor = { q, largo: trozo.length };
   }
-  return null; // no es diferencia de cuadrados factorizable con raíces enteras → sin nota (no se arriesga)
+  return mejor ? mejor.q : null;
+}
+
+// Lee "a·v² + b·v + c" y devuelve sus coeficientes, o null si no es de segundo
+// grado en una sola variable. Acepta los términos en cualquier orden y con los
+// signos pegados ("x²+5x+6", "6 - 5x + x²").
+function coeficientesCuadraticos(texto) {
+  const t = String(texto).replace(/\s+/g, "");
+  const partes = t.match(/[+-]?[^+-]+/g);
+  if (!partes) return null;
+  let v = null, a = 0, b = 0, c = 0;
+  for (const parte of partes) {
+    const m = parte.match(/^([+-]?)(\d*)(?:\*?([a-z])(?:\^(\d+))?)?$/);
+    if (!m) return null;
+    const signo = m[1] === "-" ? -1 : 1;
+    const num = m[2] === "" ? 1 : Number(m[2]);
+    const variable = m[3] || null;
+    if (variable) { if (v && v !== variable) return null; v = variable; }
+    const exp = m[4] ? Number(m[4]) : (variable ? 1 : 0);
+    if (exp === 2) a += signo * num;
+    else if (exp === 1) b += signo * num;
+    else if (exp === 0) c += signo * num;
+    else return null; // grado mayor que dos: fuera del alcance del motor
+  }
+  return v && a !== 0 ? { a, b, c, v } : null;
+}
+
+// Factoriza sacando factor común ("x² + 7x" → "x(x + 7)") o como trinomio con
+// raíces enteras ("x² + 5x + 6" → "(x + 2)(x + 3)", "x² - 10x + 25" → "(x - 5)²").
+// Devuelve null en cuanto el resultado dejaría de ser entero: es preferible no
+// calificar a calificar con una factorización aproximada.
+function factorizarPorTerminos(q, variableConocida) {
+  if (!q) return null;
+  const { a, b, c } = q;
+  const v = q.v || variableConocida;
+  if (a <= 0) return null; // con el término principal negativo no se arriesga
+  const mcd = (x, y) => { x = Math.abs(x); y = Math.abs(y); while (y) { [x, y] = [y, x % y]; } return x || 1; };
+  const coef = (k) => (k === 1 ? "" : String(k));
+  const bin = (k) => `${k >= 0 ? "+" : "-"} ${Math.abs(k)}`;
+
+  // FACTOR COMÚN: "x² + 7x" → "x(x + 7)"; "3x² - 6x" → "3x(x - 2)".
+  if (c === 0 && b !== 0) {
+    const g = mcd(a, b);
+    return `${coef(g)}${v}(${coef(a / g)}${v} ${bin(b / g)})`;
+  }
+
+  // TRINOMIO: se saca el factor común si lo hay y se buscan dos enteros que
+  // sumen b y multipliquen c. Sin ellos, las raíces no son enteras y no se
+  // devuelve nada.
+  if (b !== 0 && c !== 0) {
+    const g = mcd(mcd(a, b), c);
+    if (a / g !== 1) return null; // con a distinto de 1 el método no aplica
+    const B = b / g, C = c / g;
+    for (let p = -Math.abs(C); p <= Math.abs(C); p++) {
+      if (p === 0 || C % p !== 0) continue;
+      const q2 = C / p;
+      if (p + q2 !== B) continue;
+      const fuera = coef(g);
+      // Raíz doble: se compone como cuadrado, que es como se enseña.
+      if (p === q2) return `${fuera}(${v} ${bin(p)})²`;
+      const [p1, p2] = p <= q2 ? [p, q2] : [q2, p];
+      return `${fuera}(${v} ${bin(p1)})(${v} ${bin(p2)})`;
+    }
+  }
+  return null;
 }
 
 // Piezas para NARRAR una factorización paso a paso: la expresión tal cual, los dos cuadrados
@@ -362,9 +462,13 @@ export function factorizacionPasos(text) {
   const factor = computeFactorization(text);
   if (!factor) return null;
   const t = normDashes(String(text).toLowerCase()).replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]+/g, (m) => "^" + [...m].map((c) => "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(c)).join(""));
-  const m = t.match(/(\d*)\s*\*?\s*([a-z])\s*\^\s*2\s*-\s*(\d+)/);
-  if (!m) return null;
-  const c = m[1] === "" ? 1 : Number(m[1]), v = m[2], d = Number(m[3]);
+  const limpia = t.replace(/^[^:]*(?:factoriza\w*|descompon\w*)\s*/i, "").replace(/^.*:\s*/, "").trim();
+  // Esta narración cuenta la diferencia de cuadrados y sólo esa. Para un
+  // trinomio devuelve null y el tutor usa la explicación general: contarlo como
+  // "un cuadrado menos otro cuadrado" sería contarlo mal.
+  const q = expresionCuadratica(limpia);
+  if (!q || q.b !== 0 || q.c >= 0) return null;
+  const c = q.a, v = q.v, d = -q.c;
   const isSq = (n) => Number.isInteger(Math.sqrt(n));
   const sup2 = (s) => `${s}²`;
   const coef = (k) => (k === 1 ? "" : String(k));

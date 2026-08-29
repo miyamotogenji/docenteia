@@ -914,6 +914,17 @@ for (const tema of TEMAS_LECCION) {
     new Set(vistos.filter(Boolean)).size >= 3,
     vistos.join(" | "),
   );
+  // Subir de nivel no puede dejar al alumno sin corrección: si el motor
+  // determinista no resuelve el ejercicio que propone la escalera, el Módulo 9
+  // responde "no puedo calificarlo" y la práctica se queda a medias. Es el
+  // riesgo real del entregable, y se comprueba peldaño a peldaño.
+  for (const propuesto of vistos.filter(Boolean)) {
+    check(
+      `[${tema.clave}] el motor puede calificar «${propuesto}»`,
+      resolverEjercicio(propuesto, tema.clave) != null,
+      "la escalera propone un ejercicio que la corrección no sabe resolver",
+    );
+  }
 
   // Bajar también es un peldaño, no un salto al nivel más fácil.
   const bajada = await consultar({
@@ -1431,6 +1442,117 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
     "el desarrollo se reemplaza al abrir fase, al pedir y al cambiar de ejercicio",
     reemplazos >= 3,
     `reemplazos encontrados: ${reemplazos}`,
+  );
+}
+
+// ── Módulo 5 · alcance del validador determinista ────────────────────────────
+// El motor sólo cubría la diferencia de cuadrados, así que un trinomio —el
+// ejercicio de factorización más común, y lo que genera el modelo en vivo— se
+// devolvía como "no verificable" y la práctica se quedaba sin calificar. Se
+// amplía a factor común y trinomios con raíces enteras, sin aflojar la regla de
+// no calificar lo que no se puede calcular.
+console.log("\n · Factorización: alcance del motor determinista");
+
+{
+  const factorizaciones = [
+    // Diferencia de cuadrados: lo que ya estaba, intacto.
+    { entrada: "x² - 9", esperado: "(x - 3)(x + 3)" },
+    { entrada: "4x² - 25", esperado: "(2x - 5)(2x + 5)" },
+    { entrada: "2x² - 8", esperado: "2(x - 2)(x + 2)" },
+    // Factor común.
+    { entrada: "x² + 7x", esperado: "x(x + 7)" },
+    { entrada: "3x² - 6x", esperado: "3x(x - 2)" },
+    // Trinomios con raíces enteras.
+    { entrada: "x² + 5x + 6", esperado: "(x + 2)(x + 3)" },
+    { entrada: "x² - 5x + 6", esperado: "(x - 3)(x - 2)" },
+    { entrada: "2x² + 10x + 12", esperado: "2(x + 2)(x + 3)" },
+    // Raíz doble: se compone como cuadrado, que es como se enseña.
+    { entrada: "x² - 10x + 25", esperado: "(x - 5)²" },
+  ];
+  for (const c of factorizaciones) {
+    const obtenido = resolverEjercicio(c.entrada, "factorizacion");
+    check(
+      `factoriza «${c.entrada}» → ${c.esperado}`,
+      obtenido === c.esperado,
+      `obtenido: ${obtenido}`,
+    );
+  }
+
+  // Y lo que NO tiene solución entera sigue sin calificarse: inventar una
+  // factorización aproximada es justo la alucinación que este módulo evita.
+  for (const fuera of ["x² + 2x + 5", "x³ + 1", "x² + x + 1"]) {
+    check(
+      `«${fuera}» queda sin calificar, no se inventa`,
+      resolverEjercicio(fuera, "factorizacion") == null,
+      `obtenido: ${resolverEjercicio(fuera, "factorizacion")}`,
+    );
+  }
+}
+
+// ── Módulo 9 · el alumno no pierde por la forma de escribirlo ────────────────
+// Un falso negativo —marcar mal una respuesta correcta— es peor que no
+// calificar: el alumno pierde la confianza en el corrector.
+console.log("\n · Corrección: formas equivalentes de una factorización");
+
+{
+  const equivalentes = [
+    ["(x + 3)(x + 2)", "(x + 2)(x + 3)", "el orden de los factores no cuenta"],
+    ["(x - 5)(x - 5)", "(x - 5)²", "el cuadrado y el producto repetido son lo mismo"],
+    ["(x - 5)^2", "(x - 5)²", "da igual el acento circunflejo que el superíndice"],
+    ["(x + 7)x", "x(x + 7)", "el factor común puede ir delante o detrás"],
+    ["x·(x + 7)", "x(x + 7)", "el punto de multiplicar es opcional"],
+    ["(2x - 4)(2x + 4)", "4(x - 2)(x + 2)", "el factor común sacado o dentro"],
+  ];
+  for (const [alumno, esperada, motivo] of equivalentes) {
+    check(
+      `«${alumno}» se acepta para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === true,
+    );
+  }
+
+  const distintas = [
+    ["(x + 7)", "x(x + 7)", "falta el factor común"],
+    ["(x + 2)(x + 4)", "(x + 2)(x + 3)", "un factor equivocado"],
+    ["x² - 10x + 25", "(x - 5)²", "sin factorizar no es la respuesta"],
+    ["(x - 2)(x + 2)", "2(x - 2)(x + 2)", "falta el coeficiente"],
+  ];
+  for (const [alumno, esperada, motivo] of distintas) {
+    check(
+      `«${alumno}» se rechaza para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === false,
+    );
+  }
+}
+
+// ── El motor lee la expresión entera, nunca un trozo ─────────────────────────
+// "x² - 4x - 21" empezaba por "x² - 4" y la búsqueda parcial lo daba por una
+// diferencia de cuadrados: se calificaba con (x - 2)(x + 2), la respuesta de
+// otro ejercicio. Un veredicto inventado con toda la apariencia de correcto,
+// que es exactamente lo que el validador determinista existe para evitar.
+console.log("\n · Factorización: la expresión se lee entera");
+
+{
+  const trampas = [
+    { entrada: "x² - 4x - 21", esperado: "(x - 7)(x + 3)" },
+    { entrada: "x² - 4x - 32", esperado: "(x - 8)(x + 4)" },
+    { entrada: "x² - 9x + 20", esperado: "(x - 5)(x - 4)" },
+    { entrada: "4x² - 16x", esperado: "4x(x - 4)" },
+  ];
+  for (const t of trampas) {
+    const obtenido = resolverEjercicio(t.entrada, "factorizacion");
+    check(
+      `«${t.entrada}» no se confunde con su principio`,
+      obtenido === t.esperado,
+      `obtenido: ${obtenido} · esperado: ${t.esperado}`,
+    );
+  }
+  // La forma completamente factorizada: "(6x - 10)(6x + 10)" es cierta pero
+  // deja un factor común dentro, y en una clase de factorización eso es media
+  // respuesta.
+  check(
+    "la diferencia de cuadrados se devuelve del todo factorizada",
+    resolverEjercicio("36x² - 100", "factorizacion") === "4(3x - 5)(3x + 5)",
+    `obtenido: ${resolverEjercicio("36x² - 100", "factorizacion")}`,
   );
 }
 
