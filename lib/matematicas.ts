@@ -278,3 +278,30 @@ export function separarFormulas(texto: string): Parte[] {
 
   return partes.length > 0 ? partes : [{ tipo: "texto", contenido: entrada }];
 }
+
+/**
+ * La expresión matemática principal de una frase, o `null` si no hay ninguna.
+ *
+ * El motor no siempre ESCRIBE el enunciado: a veces sólo lo narra ("vamos a
+ * derivar 3x⁴ - 2x²") o lo lleva dentro de la pregunta que le hace al alumno.
+ * Como la prosa no sube a la pizarra, en esos casos el lienzo se quedaba en
+ * blanco aunque el ejercicio estuviera perfectamente definido.
+ *
+ * Aquí se recupera: se detectan los tramos de fórmula de la frase y se elige el
+ * más largo, que es el enunciado y no un número suelto de la explicación. La
+ * prosa se descarta entera, así que a la pizarra sigue subiendo sólo la
+ * expresión.
+ */
+export function expresionPrincipal(texto: string): string | null {
+  const formulas = separarProsaYMatematicas(String(texto ?? ""))
+    .filter((p) => p.tipo === "linea")
+    // Los signos de puntuación cierran la frase, no la fórmula.
+    .map((p) => p.contenido.replace(/[.,;:¿?¡!]+$/u, "").trim())
+    .filter((f) => f.length > 0);
+
+  if (formulas.length === 0) return null;
+
+  const principal = formulas.reduce((a, b) => (b.length > a.length ? b : a));
+  // Un número suelto no es un enunciado: "en 2 pasos" no plantea nada.
+  return /[a-zA-Z]|[-+*/=·×÷^]/.test(principal) ? principal : null;
+}
