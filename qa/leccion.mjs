@@ -37,7 +37,14 @@ import {
 } from "../lib/leccion/fases.ts";
 // La lista real que consulta el componente, no una copia: si se duplicara,
 // podrían desincronizarse y la prueba daría por bueno un concepto vacío.
-import { tieneDiagrama } from "../lib/leccion/diagramas.ts";
+import {
+  tieneDiagrama,
+  TEMAS_CON_DIAGRAMA,
+  GEOMETRIAS,
+  cajaDeEtiqueta,
+  etiquetaCabe,
+  MARGEN_ETIQUETA,
+} from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   enunciadosDeLeccion,
@@ -1138,6 +1145,58 @@ check(
   sinSesion.status === 401,
   `status=${sinSesion.status}`,
 );
+
+// ── Etiquetas de los diagramas ───────────────────────────────────────────────
+// El cliente vio "pendie" donde debía leerse "pendiente": el texto se anclaba
+// por la izquierda a cuatro unidades del borde y el navegador lo recortaba.
+// Nada fallaba —el SVG existe y el componente monta— así que ninguna prueba de
+// comportamiento podía verlo. Con la geometría como dato, sí se comprueba.
+{
+  for (const tema of TEMAS_CON_DIAGRAMA) {
+    const g = GEOMETRIAS[tema];
+    check(`${tema}: el diagrama declara su geometría`, Boolean(g) && g.etiquetas.length > 0);
+    if (!g) continue;
+
+    for (const e of g.etiquetas) {
+      const caja = cajaDeEtiqueta(e);
+      check(
+        `${tema}: la etiqueta "${e.texto}" cabe entera en el lienzo`,
+        etiquetaCabe(e, g),
+        `x de ${caja.izquierda.toFixed(1)} a ${caja.derecha.toFixed(1)} · lienzo 0..${g.ancho} · margen ${MARGEN_ETIQUETA}`,
+      );
+    }
+  }
+
+  // El caso exacto que reportó el cliente: la palabra completa, no un recorte.
+  const pieDerivadas = GEOMETRIAS.DERIVADAS.etiquetas.find((e) => e.texto.includes("pendiente"));
+  check(
+    "el diagrama de derivadas nombra la pendiente con la palabra entera",
+    Boolean(pieDerivadas) && /\bpendiente\b/.test(pieDerivadas.texto),
+    `obtenido: ${pieDerivadas?.texto ?? "ninguna"}`,
+  );
+  check(
+    "la etiqueta de la pendiente va centrada, no pegada al borde",
+    pieDerivadas?.anclaje === "middle",
+    `anclaje: ${pieDerivadas?.anclaje ?? "ninguno"}`,
+  );
+
+  // Y que el componente pinte ESOS números, no otros escritos a mano: si algún
+  // diagrama volviera a poner su propio <text>, la comprobación de arriba
+  // dejaría de decir nada sobre lo que se dibuja.
+  const fuenteDiagrama = readFileSync(
+    new URL("../components/leccion/diagrama-concepto.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "los diagramas no escriben textos sueltos: todos salen de la geometría",
+    (fuenteDiagrama.match(/<text/g) ?? []).length === 1,
+    `<text> encontrados: ${(fuenteDiagrama.match(/<text/g) ?? []).length}`,
+  );
+  check(
+    "el componente toma el viewBox de la geometría comprobada",
+    /viewBox=\{`0 0 \$\{g\.ancho\} \$\{g\.alto\}`\}/.test(fuenteDiagrama),
+  );
+}
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");
