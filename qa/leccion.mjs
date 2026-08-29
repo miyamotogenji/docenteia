@@ -374,14 +374,14 @@ if (catalogo) {
   // desarrollo.
   check(
     "pizarra.tsx ancla el enunciado y compone el desarrollo aparte",
-    /\(enunciado \|\| planteaEjercicio\)\s*&&/.test(fuentePizarra) &&
-      /desarrollo\.length\s*>\s*0/.test(fuentePizarra),
+    /\(ejercicio \|\| planteaEjercicio\)\s*&&/.test(fuentePizarra) &&
+      /pasos\.length\s*>\s*0/.test(fuentePizarra),
   );
   // Y el paso intermedio NO puede aparecer en la práctica: revelaría la
   // respuesta que el alumno tiene que hallar.
   check(
     "el paso intermedio se añade sólo en el ejemplo, no en la práctica",
-    /if\s*\(esFaseDeEjemplo\([^)]*\)\)\s*\{[\s\S]{0,200}pasoIntermedioDerivada/.test(fuentePizarra),
+    /esFaseDeEjemplo\(actual\.id\)[\s\S]{0,160}pasoIntermedioDerivada/.test(fuentePizarra),
   );
 
   // El enunciado NO puede deducirse por posición. Mientras fue "la primera
@@ -389,8 +389,9 @@ if (catalogo) {
   // para que la tarjeta se quedara anclada al ejercicio anterior y el nuevo
   // cayera al fondo del desarrollo. Ahora es un campo propio de la escena.
   check(
-    "el enunciado sale de su propio campo, no de la primera línea",
-    /actual\.ejercicio/.test(fuentePizarra) && !/lineas\[0\]|\[primera,\s*\.\.\.resto\]/.test(fuentePizarra),
+    "el enunciado sale de su propia prop, no de la primera línea",
+    /ejercicio: LineaPizarra \| null;/.test(fuentePizarra) &&
+      !/lineas\[0\]|\[primera,\s*\.\.\.resto\]/.test(fuentePizarra),
   );
 
   const fuenteAula = readFileSync(
@@ -401,11 +402,11 @@ if (catalogo) {
   // procedimiento del ejercicio anterior se queda debajo del nuevo.
   check(
     "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
-    /\.\.\.ultima,[\s\S]{0,240}pasos:\s*\[\]\s*,?\s*\}/.test(fuenteAula),
+    /SUSTITUCIÓN, no concatenación[\s\S]{0,320}setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
   check(
     "aula.tsx retira también el enunciado cuando llega otro ejercicio",
-    /\{\s*\.\.\.ultima,\s*ejercicio:\s*null,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+    /fijarLineaEjercicio\(null\);[\s\S]{0,40}setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
   // El enunciado se adelanta al abrir la fase, sin esperar a la cola de voz.
   check(
@@ -415,7 +416,7 @@ if (catalogo) {
   // Y no se repite abajo cuando el motor lo escribe con su propia directiva.
   check(
     "aula.tsx no repite el enunciado dentro del desarrollo",
-    /ultima\.ejercicio\.texto === limpio/.test(fuenteAula),
+    /ejercicioRef\.current\?\.texto === limpio/.test(fuenteAula),
   );
 }
 
@@ -1269,23 +1270,23 @@ console.log("\n · La tarjeta de ejercicio no espera a la locución");
   // La tarjeta de arriba se pinta por entrar en la fase, no por haber pasos.
   check(
     "la tarjeta de EJERCICIO no está condicionada al desarrollo",
-    /\{\(enunciado \|\| planteaEjercicio\) && \(/.test(fuentePizarra2),
+    /\{\(ejercicio \|\| planteaEjercicio\) && \(/.test(fuentePizarra2),
   );
   // Y la de abajo sigue oculta mientras no haya nada que desarrollar.
   check(
     "la tarjeta de DESARROLLO permanece oculta hasta que hay pasos",
-    /\{desarrollo\.length > 0 && \(/.test(fuentePizarra2),
+    /\{pasos\.length > 0 && \(/.test(fuentePizarra2),
   );
   // El orden importa: el planteamiento arriba, el procedimiento debajo.
   check(
     "el enunciado se compone por encima del desarrollo",
-    fuentePizarra2.indexOf("(enunciado || planteaEjercicio)") <
-      fuentePizarra2.indexOf("{desarrollo.length > 0"),
+    fuentePizarra2.indexOf("(ejercicio || planteaEjercicio)") <
+      fuentePizarra2.indexOf("{pasos.length > 0"),
   );
   // En una fase con ejercicio los pasos no se degradan a "paso suelto".
   check(
     "en una fase con ejercicio los pasos van al desarrollo, no sueltos",
-    /if \(planteaEjercicio\) return \{ \.\.\.vacio, desarrollo: actual\.pasos \};/.test(fuentePizarra2),
+    /if \(!planteaEjercicio\) \{[\s\S]{0,200}pasoSuelto: desarrollo\.length > 0/.test(fuentePizarra2),
   );
   // Último recurso: el enunciado que viaja dentro de la pregunta.
   check(
@@ -1368,9 +1369,68 @@ console.log("\n · Los botones de apoyo no dejan la pizarra vacía");
   // aclaración anexaría a una pizarra que no existe y nada volvería a abrirla.
   check(
     "con la pizarra vacía, una aclaración no bloquea la apertura de fase",
-    /esAyuda\.current = presentacion !== "reiniciar" && escenasRef\.current\.length > 0;/.test(
+    /esAyuda\.current = presentacion !== "reiniciar" && fasesRef\.current\.length > 0;/.test(
       fuenteAula3,
     ),
+  );
+}
+
+// ── Estado del ejercicio, desacoplado del ciclo de desarrollo ────────────────
+// El ejercicio y el desarrollo son estados INDEPENDIENTES del aula y llegan a
+// la pizarra en props separadas. Mientras el enunciado colgaba de la fase,
+// cualquier cambio en el desarrollo pasaba por la misma estructura que la
+// tarjeta de arriba: bastaba con no vaciarla a tiempo para que el enunciado se
+// quedara anclado al ejercicio anterior o desapareciera con los pasos.
+console.log("\n · El ejercicio no depende del ciclo de desarrollo");
+
+{
+  const fuenteP = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const fuenteA = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+
+  check(
+    "la pizarra recibe el ejercicio y el desarrollo en props separadas",
+    /ejercicio: LineaPizarra \| null;/.test(fuenteP) && /desarrollo: LineaPizarra\[\];/.test(fuenteP),
+  );
+  // La fase es sólo identidad: si volviera a llevar contenido dentro, el
+  // desacoplamiento se deshace sin que ninguna prueba de comportamiento lo note.
+  const fase = fuenteP.match(/export interface FaseAbierta \{[\s\S]*?\}/);
+  check(
+    "una fase abierta es sólo identidad, sin contenido dentro",
+    Boolean(fase) && !/ejercicio|pasos/.test(fase[0]),
+    `obtenido: ${fase?.[0].replace(/\s+/g, " ") ?? "no declarada"}`,
+  );
+  check(
+    "el aula gobierna los tres estados por separado",
+    /useState<FaseAbierta\[\]>\(\[\]\)/.test(fuenteA) &&
+      /useState<LineaPizarra \| null>\(null\)/.test(fuenteA) &&
+      /useState<LineaPizarra\[\]>\(\[\]\)/.test(fuenteA),
+  );
+  // Al entrar en la fase, el ejercicio queda puesto y el desarrollo a cero, en
+  // el mismo instante: la tarjeta de arriba no espera a ninguna directiva.
+  check(
+    "al abrir la fase se fija el ejercicio y se vacía el desarrollo",
+    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,200}setDesarrollo\(\[\]\);/.test(
+      fuenteA,
+    ),
+  );
+  // Sustitución, no concatenación: entre peticiones el array se reemplaza.
+  const concatenaciones = (fuenteA.match(/setDesarrollo\(\(prev\) => \[\.\.\.prev/g) ?? []).length;
+  check(
+    "el desarrollo sólo se concatena al escribir un paso, nunca entre peticiones",
+    concatenaciones === 1,
+    `concatenaciones encontradas: ${concatenaciones}`,
+  );
+  const reemplazos = (fuenteA.match(/setDesarrollo\(\[\]\)/g) ?? []).length;
+  check(
+    "el desarrollo se reemplaza al abrir fase, al pedir y al cambiar de ejercicio",
+    reemplazos >= 3,
+    `reemplazos encontrados: ${reemplazos}`,
   );
 }
 

@@ -42,31 +42,26 @@ export interface LineaPizarra {
  * explotar la comprobación de tipos durante la compilación.
  */
 interface ContenidoPizarra {
-  /** Ejercicio activo, anclado arriba. Null en Concepto y Reglas. */
-  enunciado: LineaPizarra | null;
   /** Pasos del procedimiento, debajo del enunciado. */
-  desarrollo: LineaPizarra[];
+  pasos: LineaPizarra[];
   /** Paso suelto de las fases que no plantean ejercicio. */
   pasoSuelto: LineaPizarra | null;
 }
 
 /**
- * Una fase de la lección, con su propia vista de pizarra.
+ * Una fase abierta de la lección. Sólo identidad: ningún contenido.
  *
- * El ejercicio y los pasos van en campos SEPARADOS, no deducidos por posición.
- * Cuando el enunciado era "la primera línea de la escena", bastaba con que
- * llegara contenido nuevo sin vaciarla para que la tarjeta de arriba se quedara
- * anclada al ejercicio anterior mientras el nuevo aparecía al fondo del
- * desarrollo. Con campos propios eso no puede ocurrir: el ejercicio es el
- * ejercicio, y el desarrollo se vacía cuando toca.
+ * El ejercicio y el desarrollo NO viven aquí dentro, sino como estado propio
+ * del aula que llega en props independientes. Mientras el enunciado colgaba de
+ * la fase, cualquier cambio en el desarrollo pasaba por la misma estructura
+ * que la tarjeta de arriba, y bastaba con no vaciarla a tiempo para que el
+ * enunciado se quedara anclado al ejercicio anterior o desapareciera con los
+ * pasos. Separados, la tarjeta superior se compone en cuanto se entra en la
+ * fase y no depende en absoluto del ciclo de desarrollo.
  */
-export interface Escena {
+export interface FaseAbierta {
   id: string;
   titulo: string;
-  /** Ejercicio activo de la fase. Null en Concepto y Reglas, que no plantean uno. */
-  ejercicio: LineaPizarra | null;
-  /** Pasos del procedimiento. */
-  pasos: LineaPizarra[];
 }
 
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
@@ -93,14 +88,28 @@ export interface ReglaPizarra {
  * la lógica ya validada.
  */
 export function Pizarra({
-  escenas,
+  fases,
+  ejercicio,
+  desarrollo,
   resaltado,
   reglas = [],
   reglaDetectada = null,
   tema,
   className,
 }: {
-  escenas: Escena[];
+  /** Fases ya abiertas: la tira de progreso y la vista en curso. */
+  fases: FaseAbierta[];
+  /**
+   * Ejercicio activo. Llega ya resuelto desde el aula, que lo fija al entrar
+   * en la fase, así que la tarjeta de arriba se compone en el milisegundo 0
+   * sin esperar a que haya un solo paso calculado.
+   */
+  ejercicio: LineaPizarra | null;
+  /**
+   * Pasos del procedimiento. Vacío mientras el alumno no pida ayuda ni
+   * resolución; el aula lo SUSTITUYE entero en cada petición.
+   */
+  desarrollo: LineaPizarra[];
   /** Texto de la línea que el puntero está señalando, si hay alguno. */
   resaltado: string | null;
   /** Catálogo formal del tema, del que sale la tarjeta de la fase de Reglas. */
@@ -111,7 +120,7 @@ export function Pizarra({
   tema?: string;
   className?: string;
 }) {
-  const actual = escenas[escenas.length - 1] ?? null;
+  const actual = fases[fases.length - 1] ?? null;
   const finRef = useRef<HTMLDivElement>(null);
 
   // La regla que el tutor está explicando ahora mismo, deducida de las líneas
@@ -133,66 +142,58 @@ export function Pizarra({
     if (!actual || !esFaseDeReglas(actual.id) || reglas.length === 0) return null;
     if (reglaDetectada) return reglaDetectada;
     const porPizarra = reglaActiva(
-      [actual.ejercicio?.texto ?? "", ...actual.pasos.map((l) => l.texto)],
+      [ejercicio?.texto ?? "", ...desarrollo.map((l) => l.texto)],
       reglas,
     );
     return porPizarra ?? reglas[0];
-  }, [actual, reglas, reglaDetectada]);
+  }, [actual, ejercicio, desarrollo, reglas, reglaDetectada]);
 
-  /**
-   * ENUNCIADO FIJO + DESARROLLO DEBAJO.
-   *
-   * En las fases con ejercicio, el motor escribe primero el enunciado y después
-   * los pasos: "x²" y luego "derivada de x² = 2x"; "2x + 5 = 15", "2x = 10",
-   * "x = 5". Mostrando sólo la última línea, el enunciado desaparecía en cuanto
-   * empezaba el desarrollo y el alumno se quedaba con el resultado suelto, sin
-   * poder contrastarlo con el planteamiento.
-   *
-   * Ahora el enunciado queda anclado arriba y los pasos se acumulan debajo,
-   * dentro de la fase. Al cambiar de fase la pizarra se limpia, así que el
-   * desarrollo nunca crece más allá del ejercicio en curso.
-   */
   /** ¿La fase en curso plantea un ejercicio al alumno? */
   const planteaEjercicio =
     actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
 
-  const { enunciado, desarrollo, pasoSuelto } = useMemo((): ContenidoPizarra => {
-    const vacio: ContenidoPizarra = { enunciado: null, desarrollo: [], pasoSuelto: null };
-    if (!actual) return vacio;
+  /**
+   * ENUNCIADO FIJO ARRIBA + DESARROLLO DEBAJO.
+   *
+   * El enunciado llega en su propia prop y se compone tal cual: no se deduce de
+   * los pasos ni espera a que haya ninguno. Aquí sólo se decide cómo
+   * presentar el desarrollo, que en las fases sin ejercicio se reduce al último
+   * paso escrito.
+   */
+  const { pasos, pasoSuelto } = useMemo((): ContenidoPizarra => {
+    if (!actual) return { pasos: [], pasoSuelto: null };
 
-    if (!actual.ejercicio) {
-      // En una fase que PLANTEA ejercicio, los pasos son el desarrollo aunque
-      // el enunciado aún no haya llegado. Degradarlos a "paso suelto" los
-      // sacaba de su bloque y dejaba la pantalla sin la tarjeta de arriba.
-      if (planteaEjercicio) return { ...vacio, desarrollo: actual.pasos };
-
-      // Concepto y Reglas no plantean ejercicio: se compone el paso actual.
-      const pasos = actual.pasos;
-      return { ...vacio, pasoSuelto: pasos.length > 0 ? pasos[pasos.length - 1] : null };
+    // Concepto y Reglas no plantean ejercicio: se compone el paso actual.
+    if (!planteaEjercicio) {
+      return {
+        pasos: [],
+        pasoSuelto: desarrollo.length > 0 ? desarrollo[desarrollo.length - 1] : null,
+      };
     }
-
-    const pasos = [...actual.pasos];
 
     // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
     // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
     // hallar, que es justo lo que la ramificación pedagógica evita.
-    if (esFaseDeEjemplo(actual.id)) {
-      const intermedio = pasoIntermedioDerivada(actual.ejercicio.texto);
+    if (ejercicio && esFaseDeEjemplo(actual.id) && desarrollo.length > 0) {
+      const intermedio = pasoIntermedioDerivada(ejercicio.texto);
       if (intermedio) {
-        pasos.unshift({ id: -actual.ejercicio.id - 1, texto: intermedio, clase: "formula" });
+        return {
+          pasos: [{ id: -ejercicio.id - 1, texto: intermedio, clase: "formula" }, ...desarrollo],
+          pasoSuelto: null,
+        };
       }
     }
 
-    return { enunciado: actual.ejercicio, desarrollo: pasos, pasoSuelto: null };
-  }, [actual, planteaEjercicio]);
+    return { pasos: desarrollo, pasoSuelto: null };
+  }, [actual, planteaEjercicio, ejercicio, desarrollo]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [actual?.pasos.length, actual?.ejercicio?.id, actual?.id]);
+  }, [desarrollo.length, ejercicio?.id, actual?.id]);
 
   return (
     <div className={cn("space-y-3", className)}>
-      <Fases escenas={escenas} />
+      <Fases fases={fases} />
 
       {/* ALTURA FIJA, no mínima. Con una altura que crecía según el contenido,
           la pizarra cambiaba de tamaño en cada paso y los botones de abajo
@@ -248,15 +249,15 @@ export function Pizarra({
                     adelantó al recibir la lección. La de ABAJO sólo aparece
                     cuando hay pasos que mostrar. Atar la primera a la segunda
                     dejaba la pizarra en blanco durante toda la locución. */}
-                {(enunciado || planteaEjercicio) && (
+                {(ejercicio || planteaEjercicio) && (
                   <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-3">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                       Ejercicio
                     </p>
-                    {enunciado ? (
+                    {ejercicio ? (
                       <LineaRenderizada
-                        linea={enunciado}
-                        resaltada={resaltado != null && enunciado.texto.includes(resaltado)}
+                        linea={ejercicio}
+                        resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
                         reglas={[]}
                       />
                     ) : (
@@ -265,13 +266,13 @@ export function Pizarra({
                   </div>
                 )}
 
-                {desarrollo.length > 0 && (
+                {pasos.length > 0 && (
                   <div className="space-y-2 rounded-md border bg-muted/20 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Desarrollo
                     </p>
                     <AnimatePresence initial={false}>
-                      {desarrollo.map((linea) => (
+                      {pasos.map((linea) => (
                         <motion.div
                           key={linea.id}
                           initial={{ opacity: 0, y: 8 }}
@@ -319,17 +320,17 @@ export function Pizarra({
 }
 
 /** Indicador de en qué fase de la lección va el alumno. */
-function Fases({ escenas }: { escenas: Escena[] }) {
-  if (escenas.length === 0) return null;
-  const indiceActual = escenas.length - 1;
+function Fases({ fases }: { fases: FaseAbierta[] }) {
+  if (fases.length === 0) return null;
+  const indiceActual = fases.length - 1;
 
   return (
     <ol className="flex flex-wrap items-center gap-1.5" aria-label="Fases de la lección">
-      {escenas.map((escena, i) => {
+      {fases.map((fase, i) => {
         const completada = i < indiceActual;
         const activa = i === indiceActual;
         return (
-          <li key={escena.id}>
+          <li key={fase.id}>
             <span
               className={cn(
                 "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
@@ -340,7 +341,7 @@ function Fases({ escenas }: { escenas: Escena[] }) {
               aria-current={activa ? "step" : undefined}
             >
               {completada && <Check className="h-3 w-3" />}
-              {escena.titulo}
+              {fase.titulo}
             </span>
           </li>
         );

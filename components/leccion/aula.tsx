@@ -21,7 +21,8 @@ import { Avatar2D } from "@/components/leccion/avatar-2d";
 import {
   Pizarra,
   tituloDeFase,
-  type Escena,
+  type FaseAbierta,
+  type LineaPizarra,
   type ReglaPizarra,
 } from "@/components/leccion/pizarra";
 import { TextoMatematico } from "@/components/math";
@@ -154,16 +155,36 @@ export function Aula({
    */
   const enunciadoPorFase = useRef<Map<string, string>>(new Map());
 
-  /** Espejo de las escenas, para consultarlas desde una petición en vuelo. */
-  const escenasRef = useRef<Escena[]>([]);
+  /**
+   * Espejos del estado de la pizarra.
+   *
+   * Las directivas del motor llegan varias en el mismo tick, y la decisión de
+   * si una línea es el ENUNCIADO o un paso del desarrollo depende de si ya hay
+   * enunciado. Leyendo el estado de React esa respuesta llega tarde: dos
+   * líneas seguidas se promocionaban las dos a enunciado. Los espejos se
+   * adelantan al render y la decisión es siempre sobre el valor real.
+   */
+  const fasesRef = useRef<FaseAbierta[]>([]);
+  const ejercicioRef = useRef<LineaPizarra | null>(null);
+  /** Todo lo escrito en la pizarra durante la lección, para detectar la regla. */
+  const escrito = useRef<string[]>([]);
 
   // ── Estado visible ─────────────────────────────────────────────────────────
   const [listo, setListo] = useState(false);
   const [tema, setTema] = useState<TemaLeccion | null>(null);
   const [estadoAvatar, setEstadoAvatar] = useState<EstadoAvatar>("neutral");
   const [hablando, setHablando] = useState(false);
-  const [escenas, setEscenas] = useState<Escena[]>([]);
-  escenasRef.current = escenas;
+  /**
+   * La pizarra en TRES estados independientes.
+   *
+   * El ejercicio ya no cuelga de la fase ni se deduce del desarrollo: se fija
+   * al entrar en la fase y vive por su cuenta, así que la tarjeta de arriba se
+   * compone en el milisegundo 0 aunque no haya un solo paso calculado. El
+   * desarrollo es un array aparte que se SUSTITUYE entero en cada petición.
+   */
+  const [fases, setFases] = useState<FaseAbierta[]>([]);
+  const [ejercicio, setEjercicio] = useState<LineaPizarra | null>(null);
+  const [desarrollo, setDesarrollo] = useState<LineaPizarra[]>([]);
   const [resaltado, setResaltado] = useState<string | null>(null);
   const [subtitulo, setSubtitulo] = useState("");
   const [controles, setControles] = useState<EstadoControles>({
@@ -183,47 +204,70 @@ export function Aula({
   const [vozActiva, setVozActiva] = useState(true);
   const [estadoVoz, setEstadoVoz] = useState("");
 
+  /** Deja la pizarra entera en blanco: fases, ejercicio y desarrollo. */
+  const limpiarPizarra = useCallback(() => {
+    fasesRef.current = [];
+    ejercicioRef.current = null;
+    escrito.current = [];
+    setFases([]);
+    setEjercicio(null);
+    setDesarrollo([]);
+  }, []);
+
+  /** Abre una fase genérica cuando el motor escribe sin haber anunciado ninguna. */
+  const asegurarFase = useCallback(() => {
+    if (fasesRef.current.length > 0) return;
+    fasesRef.current = [{ id: "leccion", titulo: "Lección" }];
+    setFases(fasesRef.current);
+  }, []);
+
+  /** ¿La fase abierta plantea un ejercicio al alumno? */
+  const faseConEjercicio = useCallback(() => {
+    const fase = fasesRef.current[fasesRef.current.length - 1];
+    return fase != null && (esFaseDeEjemplo(fase.id) || esFaseDePractica(fase.id));
+  }, []);
+
+  /** Fija el ejercicio activo, o lo retira. Mantiene el espejo al día. */
+  const fijarLineaEjercicio = useCallback((linea: LineaPizarra | null) => {
+    ejercicioRef.current = linea;
+    setEjercicio(linea);
+    if (linea) escrito.current = [...escrito.current, linea.texto].slice(-60);
+  }, []);
+
   /**
-   * Escribe una línea en la escena en curso.
+   * Escribe una línea en la pizarra.
    *
-   * Si todavía no hay ninguna —lecciones sin módulos, como la resolución de un
-   * ejercicio suelto— se abre una genérica, para que el contenido no se pierda.
+   * La PRIMERA expresión de una fase con ejercicio es el ENUNCIADO y va a su
+   * propio estado; las demás son el procedimiento y se acumulan en el
+   * desarrollo. Al vivir en estados separados, un paso nuevo no puede tocar la
+   * tarjeta de arriba ni al revés.
    */
   const anadirLinea = useCallback(
     (texto: string, clase: "formula" | "explicacion") => {
       const limpio = String(texto ?? "").trim();
       if (!limpio) return;
-      const linea = {
+      const linea: LineaPizarra = {
         id: idLinea.current++,
         texto: limpio,
         clase,
         aclaracion: esAclaracion.current,
       };
-      setEscenas((prev) => {
-        if (prev.length === 0) {
-          return [{ id: "escena-0", titulo: "Lección", ejercicio: null, pasos: [linea] }];
-        }
-        const ultima = prev[prev.length - 1];
+      asegurarFase();
 
-        // La PRIMERA expresión de una fase con ejercicio es el enunciado; las
-        // demás son el procedimiento. Se guarda en su propio campo para que
-        // la tarjeta de arriba no dependa de la posición en una lista: era
-        // eso lo que la dejaba anclada al ejercicio anterior.
-        const planteaEjercicio = esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id);
-        if (planteaEjercicio && ultima.ejercicio === null && !esAclaracion.current) {
-          return [...prev.slice(0, -1), { ...ultima, ejercicio: linea }];
-        }
+      if (faseConEjercicio() && ejercicioRef.current === null && !esAclaracion.current) {
+        fijarLineaEjercicio(linea);
+        return;
+      }
 
-        // El enunciado NO se repite en el desarrollo. El motor lo escribe con
-        // una directiva propia, y si el enunciado ya se adelantó al abrir la
-        // fase, esa directiva llegaría aquí y lo pintaría por segunda vez: el
-        // desarrollo debe llevar sólo los pasos y la solución.
-        if (ultima.ejercicio && ultima.ejercicio.texto === limpio) return prev;
+      // El enunciado NO se repite en el desarrollo. El motor lo escribe con una
+      // directiva propia, y si ya se adelantó al abrir la fase, esa directiva
+      // llegaría aquí y lo pintaría por segunda vez.
+      if (ejercicioRef.current?.texto === limpio) return;
 
-        return [...prev.slice(0, -1), { ...ultima, pasos: [...ultima.pasos, linea] }];
-      });
+      escrito.current = [...escrito.current, limpio].slice(-60);
+      setDesarrollo((prev) => [...prev, linea]);
     },
-    [],
+    [asegurarFase, faseConEjercicio, fijarLineaEjercicio],
   );
 
   /**
@@ -238,49 +282,51 @@ export function Aula({
    * Sin efecto si la fase no plantea ejercicio o si la tarjeta ya tiene uno:
    * el enunciado se fija una vez y no lo pisa nada.
    */
-  const fijarEjercicio = useCallback((frase: string) => {
-    const formula = expresionPrincipal(frase);
-    if (!formula) return;
-    setEscenas((prev) => {
-      if (prev.length === 0) return prev;
-      const ultima = prev[prev.length - 1];
-      const plantea = esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id);
-      if (!plantea || ultima.ejercicio) return prev;
-      return [
-        ...prev.slice(0, -1),
-        { ...ultima, ejercicio: { id: idLinea.current++, texto: formula, clase: "formula" as const } },
-      ];
-    });
-  }, []);
+  const fijarEjercicio = useCallback(
+    (frase: string) => {
+      if (!faseConEjercicio() || ejercicioRef.current) return;
+      const formula = expresionPrincipal(frase);
+      if (!formula) return;
+      fijarLineaEjercicio({ id: idLinea.current++, texto: formula, clase: "formula" });
+    },
+    [faseConEjercicio, fijarLineaEjercicio],
+  );
 
   /**
-   * Abre una escena nueva. Cada fase pedagógica es una vista propia: la pizarra
-   * se sustituye con una transición limpia en lugar de seguir apilando
-   * párrafos hacia abajo.
+   * Abre una fase. Cada fase pedagógica es una vista propia: la pizarra se
+   * sustituye con una transición limpia en lugar de seguir apilando párrafos.
+   *
+   * El ejercicio se fija AQUÍ, en el mismo instante en que se entra, y el
+   * desarrollo arranca vacío. No se espera a ninguna directiva ni a la cola de
+   * voz: la tarjeta de arriba está puesta antes de que el tutor abra la boca.
    */
-  const abrirEscena = useCallback((id: string) => {
-    const clave = String(id ?? "").trim();
-    if (!clave) return;
-    setEscenas((prev) => {
+  const abrirEscena = useCallback(
+    (id: string) => {
+      const clave = String(id ?? "").trim();
+      if (!clave) return;
+
       // El reproductor reconstruye la pizarra al retroceder o reanudar, y en esa
       // reconstrucción vuelve a anunciar los módulos ya vistos. Sin esta guarda
-      // se duplicarían las escenas.
-      if (prev.length > 0 && prev[prev.length - 1].id === clave) return prev;
+      // se duplicarían las fases.
+      const abiertas = fasesRef.current;
+      if (abiertas.length > 0 && abiertas[abiertas.length - 1].id === clave) return;
 
-      // El enunciado se adelanta: se conoce desde que llegó la lección, así que
-      // no hay razón para dejar la pizarra en blanco mientras el tutor lo narra.
-      const planteaEjercicio = esFaseDeEjemplo(clave) || esFaseDePractica(clave);
-      // Y si esta fase no lo trae, el que el alumno tiene entre manos: en una
-      // fase de ejercicio la tarjeta NUNCA debe abrirse vacía.
+      fasesRef.current = [...abiertas, { id: clave, titulo: tituloDeFase(clave) }];
+      setFases(fasesRef.current);
+
+      // El enunciado se conoce desde que llegó la lección; y si esta fase no lo
+      // trae, vale el que el alumno tiene entre manos. En una fase de ejercicio
+      // la tarjeta no puede abrirse vacía.
+      const plantea = esFaseDeEjemplo(clave) || esFaseDePractica(clave);
       const texto = enunciadoPorFase.current.get(clave) || conversacion.current.ejercicio;
-      const ejercicio =
-        texto && planteaEjercicio
-          ? { id: idLinea.current++, texto, clase: "formula" as const }
-          : null;
-
-      return [...prev, { id: clave, titulo: tituloDeFase(clave), ejercicio, pasos: [] }];
-    });
-  }, []);
+      fijarLineaEjercicio(
+        plantea && texto ? { id: idLinea.current++, texto, clase: "formula" } : null,
+      );
+      // Desarrollo a cero: el lienzo empieza limpio en cada fase.
+      setDesarrollo([]);
+    },
+    [fijarLineaEjercicio],
+  );
 
   // ── Montaje del reproductor ────────────────────────────────────────────────
   useEffect(() => {
@@ -320,7 +366,7 @@ export function Aula({
       highlightBoard: (objetivo) => setResaltado(objetivo ?? null),
       clearBoard: () => {
         if (esAyuda.current) return;
-        setEscenas([]);
+        limpiarPizarra();
         setResaltado(null);
       },
       setCaption: (texto) => {
@@ -409,25 +455,26 @@ export function Aula({
       // El enunciado se refresca con el ejercicio activo: si el alumno ya pasó
       // al siguiente, la tarjeta no puede seguir mostrando el anterior.
       const activo = conversacion.current.ejercicio;
-      setEscenas((prev) => {
-        if (prev.length === 0) return prev;
-        const ultima = prev[prev.length - 1];
+      const faseActual = fasesRef.current[fasesRef.current.length - 1];
+      if (faseActual) {
         const texto = enunciadoTrasPeticion({
-          enTarjeta: ultima.ejercicio?.texto ?? null,
-          deLaFase: enunciadoPorFase.current.get(ultima.id) ?? null,
+          enTarjeta: ejercicioRef.current?.texto ?? null,
+          deLaFase: enunciadoPorFase.current.get(faseActual.id) ?? null,
           activo,
-          planteaEjercicio: esFaseDeEjemplo(ultima.id) || esFaseDePractica(ultima.id),
+          planteaEjercicio: faseConEjercicio(),
         });
         // La línea sólo se rehace cuando el texto cambia: rehacerla siempre le
         // daría un id nuevo y la tarjeta parpadearía en cada pulsación.
-        const ejercicio =
-          texto === (ultima.ejercicio?.texto ?? null)
-            ? ultima.ejercicio
-            : texto
-              ? { id: idLinea.current++, texto, clase: "formula" as const }
-              : null;
-        return [...prev.slice(0, -1), { ...ultima, ejercicio, pasos: [] }];
-      });
+        if (texto !== (ejercicioRef.current?.texto ?? null)) {
+          fijarLineaEjercicio(
+            texto ? { id: idLinea.current++, texto, clase: "formula" } : null,
+          );
+        }
+      }
+      // SUSTITUCIÓN, no concatenación: el desarrollo del ejercicio activo se
+      // reemplaza entero. Los pasos de la respuesta anterior no pueden quedar
+      // debajo de los nuevos, que es lo que apilaba dos ejercicios en pantalla.
+      setDesarrollo([]);
 
       try {
         const cuerpo = construirPeticion(consulta, conversacion.current, opciones);
@@ -474,17 +521,14 @@ export function Aula({
         // pulsa un botón de apoyo antes de que se abra ninguna escena, anexar a
         // "lo que hay" no anexa a nada y el lienzo se queda en blanco sin nada
         // que vuelva a abrirlo.
-        esAyuda.current = presentacion !== "reiniciar" && escenasRef.current.length > 0;
+        esAyuda.current = presentacion !== "reiniciar" && fasesRef.current.length > 0;
 
         if (presentacion === "sustituir") {
           // Llega OTRO ejercicio, no otro paso del mismo: se retira también el
           // enunciado para que la tarjeta de arriba tome el nuevo. Se conserva
           // la fase, de modo que el alumno no retroceda a Concepto.
-          setEscenas((prev) => {
-            if (prev.length === 0) return prev;
-            const ultima = prev[prev.length - 1];
-            return [...prev.slice(0, -1), { ...ultima, ejercicio: null, pasos: [] }];
-          });
+          fijarLineaEjercicio(null);
+          setDesarrollo([]);
         }
 
         // Una lección de seguimiento repite concepto y reglas tal cual: se
@@ -593,10 +637,9 @@ export function Aula({
             tema: estado.claveTema,
             sesionId: sesionId.current ?? undefined,
             intento,
-            pizarra: escenas
-              .flatMap((e) => [e.ejercicio?.texto ?? "", ...e.pasos.map((l) => l.texto)])
-              .join("\n")
-              .slice(0, 2000),
+            // Lo escrito en la pizarra durante la lección: el corrector lo usa
+            // como contexto de lo que el alumno tenía delante.
+            pizarra: escrito.current.join("\n").slice(0, 2000),
           }),
         });
         if (r.ok) setVeredicto(await r.json());
@@ -612,7 +655,7 @@ export function Aula({
     setPregunta(null);
     setBorrador("");
     resolver?.(respuesta);
-  }, [borrador, intento, escenas]);
+  }, [borrador, intento]);
 
   // ── Controles de reproducción ──────────────────────────────────────────────
   const alternarVoz = useCallback(() => {
@@ -643,15 +686,11 @@ export function Aula({
   useEffect(() => {
     // Se mira lo narrado Y lo escrito: el nombre de la regla puede aparecer en
     // cualquiera de los dos ("Regla de la potencia: la derivada de xⁿ…").
-    const escrito = escenas.flatMap((e) => [
-      e.ejercicio?.texto ?? "",
-      ...e.pasos.map((l) => l.texto),
-    ]);
-    const fuentes = [...narrado.current, ...escrito];
+    const fuentes = [...narrado.current, ...escrito.current];
     const encontrada = reglaActiva(fuentes, reglasDelTema);
     reglaEnCursoRef.current = encontrada;
     setReglaDetectada(encontrada);
-  }, [escenas, reglasDelTema, subtitulo]);
+  }, [ejercicio, desarrollo, reglasDelTema, subtitulo]);
 
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {
@@ -736,7 +775,7 @@ export function Aula({
           onClick={() => {
             pseRef.current?.stop();
             setTema(null);
-            setEscenas([]);
+            limpiarPizarra();
             setSubtitulo("");
             setFeedback(null);
             setVeredicto(null);
@@ -807,7 +846,9 @@ export function Aula({
           <Progress value={porcentajeReproducido} />
 
           <Pizarra
-            escenas={escenas}
+            fases={fases}
+            ejercicio={ejercicio}
+            desarrollo={desarrollo}
             resaltado={resaltado}
             reglas={reglasDelTema}
             reglaDetectada={reglaDetectada}
