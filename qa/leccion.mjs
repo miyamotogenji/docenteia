@@ -42,6 +42,7 @@ import {
   tieneDiagrama,
   TEMAS_CON_DIAGRAMA,
   GEOMETRIAS,
+  GEOMETRIA_DERIVADAS,
   cajaDeEtiqueta,
   etiquetaCabe,
   MARGEN_ETIQUETA,
@@ -1182,6 +1183,15 @@ check(
       );
     }
   }
+
+  // La derivada de y = x² no vale 2: vale 2 EN x = 1. Sin el punto, el número
+  // parece arbitrario, y esta es la fase que introduce el concepto.
+  const dice = GEOMETRIA_DERIVADAS.etiquetas.map((e) => e.texto).join(" · ");
+  check(
+    "el diagrama de derivadas dice EN QUÉ PUNTO vale 2 la pendiente",
+    /x\s*=\s*1/.test(dice),
+    `etiquetas: ${dice}`,
+  );
 
   // El caso exacto que reportó el cliente: la palabra completa, no un recorte.
   const pieDerivadas = GEOMETRIAS.DERIVADAS.etiquetas.find((e) => e.texto.includes("pendiente"));
