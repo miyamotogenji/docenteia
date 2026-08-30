@@ -48,6 +48,11 @@ import {
   MARGEN_ETIQUETA,
 } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
+import {
+  columnaDeLinea,
+  leerSumaOResta,
+  marcasDeColumna,
+} from "../lib/leccion/columna.ts";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -1631,6 +1636,202 @@ console.log("\n · Retroalimentación: la pista no sobrevive al acierto");
     /setVeredicto\(null\);\s*\n\s*setFeedback\(null\);\s*\n\s*resolverRespuesta\.current = resolve;/.test(
       fuenteAulaR,
     ),
+  );
+}
+
+// ── Aritmética en columna ────────────────────────────────────────────────────
+// En primaria una suma no se escribe "24 + 17": se escribe en vertical, con las
+// unidades bajo las unidades y la llevada encima. En horizontal el alumno ve
+// una expresión que todavía no sabe leer y se pierde justo lo que se le está
+// enseñando, que es alinear las cifras por su valor posicional.
+console.log("\n · Sumas y restas dispuestas en columna");
+
+{
+  // Lo que SÍ se dispone en columna, y lo que no.
+  const seDispone = ["24 + 17", "19 + 45 = ?", "147 + 285", "52 - 27", "152 - 87", "845 - 210"];
+  for (const linea of seDispone) {
+    check(
+      `«${linea}» se dispone en columna`,
+      columnaDeLinea(linea, { conResultado: false }) != null,
+    );
+  }
+
+  const noSeDispone = [
+    ["unidades: 4 + 7 = 11", "es el relato de UNA columna, no la operación"],
+    ["decenas: 2 + 1 + 1 = 4", "ídem"],
+    ["24 + 17 = 40", "el resultado declarado no cuadra"],
+    ["12 - 30", "una resta negativa no se enseña así"],
+    ["3 · 4", "la multiplicación no es una suma en columna"],
+    ["1/2 + 1/4", "fracciones, no naturales"],
+    ["2x + 5 = 15", "una ecuación no es una cuenta"],
+    ["3x⁴ - 2x²", "un polinomio tampoco"],
+  ];
+  for (const [linea, motivo] of noSeDispone) {
+    check(
+      `«${linea}» se deja como está: ${motivo}`,
+      columnaDeLinea(linea, { conResultado: false }) == null,
+      `obtenido: ${columnaDeLinea(linea, { conResultado: false })}`,
+    );
+  }
+
+  // Las llevadas, que son el motivo de disponerlo así.
+  const llevadas = [
+    { linea: "24 + 17", esperado: ["1", ""] },
+    { linea: "147 + 285", esperado: ["1", "1", ""] },
+    { linea: "31 + 46", esperado: ["", ""] },
+    // En la resta, la marca es la cifra del minuendo ya rebajada por el
+    // préstamo: lo mismo que narra el tutor ("decenas: 4 - 2 = 2").
+    { linea: "52 - 27", esperado: ["4", ""] },
+    { linea: "152 - 87", esperado: ["0", "4", ""] },
+    { linea: "845 - 210", esperado: ["", "", ""] },
+  ];
+  for (const caso of llevadas) {
+    const op = leerSumaOResta(caso.linea);
+    const marcas = marcasDeColumna(op, caso.esperado.length);
+    check(
+      `«${caso.linea}» lleva [${caso.esperado.map((m) => m || "·").join(" ")}]`,
+      marcas.join("|") === caso.esperado.join("|"),
+      `obtenido: [${marcas.map((m) => m || "·").join(" ")}]`,
+    );
+  }
+
+  // Y lo importante: que KaTeX lo componga de verdad. Un LaTeX que no compila
+  // no se ve como un error, se ve como un hueco en la pizarra.
+  for (const linea of seDispone) {
+    for (const conResultado of [false, true]) {
+      const tex = columnaDeLinea(linea, { conResultado });
+      let compone = true;
+      try {
+        katex.renderToString(tex, { throwOnError: true, strict: false });
+      } catch (e) {
+        compone = false;
+        console.log(`      KaTeX: ${e.message}`);
+      }
+      check(
+        `KaTeX compone «${linea}»${conResultado ? " resuelta" : " planteada"}`,
+        compone,
+        tex,
+      );
+    }
+  }
+
+  // El planteamiento NO lleva el total: es lo que el alumno tiene delante
+  // cuando le toca resolverla, y con el resultado puesto no habría ejercicio.
+  const planteada = columnaDeLinea("19 + 45 = ?", { conResultado: false });
+  check(
+    "la operación planteada no adelanta el resultado",
+    !planteada.includes("6") || !planteada.includes("4 \\\\ \\hline  & 6"),
+    planteada,
+  );
+  check(
+    "la operación planteada lleva su raya, para saber dónde escribir",
+    planteada.includes("\\hline"),
+  );
+  const resuelta = columnaDeLinea("24 + 17", { conResultado: true });
+  check(
+    "la operación resuelta lleva el total bajo la raya",
+    /\\hline\s+&\s+4\s+&\s+1\s+\\end\{array\}/.test(resuelta),
+    resuelta,
+  );
+  check(
+    "la operación resuelta lleva la llevada encima",
+    resuelta.includes("\\scriptstyle 1"),
+    resuelta,
+  );
+
+  // Una columna por cifra: es lo que permite poner la llevada justo encima de
+  // la columna que la genera. Con el número entero en una celda, la llevada
+  // queda al lado y no encima.
+  check(
+    "hay una columna por cifra, más la del signo",
+    columnaDeLinea("147 + 285", { conResultado: true }).startsWith("\\begin{array}{rccc}"),
+    columnaDeLinea("147 + 285", { conResultado: true }),
+  );
+
+  // Fuente: la pizarra tiene que pedir la disposición en los dos sitios.
+  const fuenteP2 = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la tarjeta de EJERCICIO compone la operación planteada",
+    /columna="planteamiento"/.test(fuenteP2),
+  );
+  check(
+    "el desarrollo compone la cuenta resuelta",
+    /columna: "resuelta"/.test(fuenteP2),
+  );
+  // Y sólo en el ejemplo: en la práctica, el total es la respuesta.
+  check(
+    "la cuenta resuelta sólo se compone en el ejemplo",
+    /esFaseDeEjemplo\(actual\.id\) && desarrollo\.length > 0[\s\S]{0,1500}columna: "resuelta"/.test(
+      fuenteP2,
+    ),
+  );
+  check(
+    "la cuenta resuelta espera a que estén narradas todas las columnas",
+    /desarrollo\.length >= columnas/.test(fuenteP2),
+  );
+}
+
+// ── Punta a punta: toda línea de pizarra se compone ──────────────────────────
+// La queja recurrente es "errores de renderizado en cada iteración". Aquí se
+// recorre la lección REAL de los cinco temas y se compone cada línea por el
+// MISMO camino que sigue la interfaz: primero la disposición en columna, luego
+// la notación formal, y si no, la traducción a LaTeX cuando la línea no lleva
+// palabras. Lo que la pizarra vaya a componer, se compone aquí antes.
+console.log("\n · Punta a punta: cada línea de la pizarra se compone");
+
+{
+  /** La misma decisión que toma LineaRenderizada, sin montar React. */
+  const latexDeLinea = (texto, columna) =>
+    (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
+    ?? notacionFormal(texto)
+    ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
+
+  let compuestas = 0;
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const modulos = datos?.lsg?.modulos ?? [];
+
+    check(`[${tema.clave}] la lección llega con sus fases`, modulos.length > 0);
+
+    for (const modulo of modulos) {
+      const id = String(modulo.id ?? "");
+      const pizarras = (modulo.directivas ?? [])
+        .filter((d) => d.tipo === "pizarra")
+        .map((d) => String(d.contenido ?? "").trim())
+        .filter(Boolean);
+
+      for (const [indice, texto] of pizarras.entries()) {
+        // La primera línea de una fase con ejercicio va a la tarjeta de
+        // EJERCICIO, que la compone en columna cuando es una cuenta.
+        const enTarjeta = indice === 0 && /ejemplo|practica/.test(id);
+        const latex = latexDeLinea(texto, enTarjeta ? "planteamiento" : undefined);
+        if (!latex) continue; // es prosa: se compone como texto, no como fórmula
+
+        compuestas++;
+        let bien = true;
+        let motivo = "";
+        try {
+          katex.renderToString(latex, { throwOnError: true, strict: false });
+        } catch (e) {
+          bien = false;
+          motivo = String(e.message).slice(0, 120);
+        }
+        check(
+          `[${tema.clave}] «${texto}» se compone`,
+          bien,
+          `${motivo} · latex: ${latex}`,
+        );
+      }
+    }
+  }
+
+  check(
+    "el recorrido ha compuesto fórmulas de verdad, no cero",
+    compuestas >= 15,
+    `compuestas: ${compuestas}`,
   );
 }
 

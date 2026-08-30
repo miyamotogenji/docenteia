@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
+import { columnaDeLinea, columnasDeOperacion } from "@/lib/leccion/columna";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
 import {
   esFaseDeConcepto,
@@ -41,9 +42,24 @@ export interface LineaPizarra {
  * devolviendo formas distintas, TypeScript construía una unión que hacía
  * explotar la comprobación de tipos durante la compilación.
  */
+/**
+ * Cómo se compone una línea de aritmética.
+ *
+ * "planteamiento" es la operación en columna con la raya y sin el total: lo que
+ * el alumno tiene delante cuando le toca resolverla. "resuelta" añade las
+ * llevadas y el resultado.
+ */
+type ModoColumna = "planteamiento" | "resuelta";
+
+/** Un paso del desarrollo, con la forma en que hay que componerlo. */
+interface PasoCompuesto {
+  linea: LineaPizarra;
+  columna?: ModoColumna;
+}
+
 interface ContenidoPizarra {
   /** Pasos del procedimiento, debajo del enunciado. */
-  pasos: LineaPizarra[];
+  pasos: PasoCompuesto[];
   /** Paso suelto de las fases que no plantean ejercicio. */
   pasoSuelto: LineaPizarra | null;
 }
@@ -171,20 +187,37 @@ export function Pizarra({
       };
     }
 
-    // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
-    // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
-    // hallar, que es justo lo que la ramificación pedagógica evita.
+    const pasos: PasoCompuesto[] = desarrollo.map((linea) => ({ linea }));
+
+    // Estos dos añadidos son del EJEMPLO y sólo del ejemplo: en la práctica
+    // revelarían la respuesta que el alumno tiene que hallar, que es justo lo
+    // que la ramificación pedagógica evita.
     if (ejercicio && esFaseDeEjemplo(actual.id) && desarrollo.length > 0) {
+      // Paso intermedio de la derivada, donde se ve APLICADA la regla.
       const intermedio = pasoIntermedioDerivada(ejercicio.texto);
       if (intermedio) {
         return {
-          pasos: [{ id: -ejercicio.id - 1, texto: intermedio, clase: "formula" }, ...desarrollo],
+          pasos: [{ linea: { id: -ejercicio.id - 1, texto: intermedio, clase: "formula" } }, ...pasos],
+          pasoSuelto: null,
+        };
+      }
+
+      // La operación resuelta en columna, con sus llevadas y el total. El
+      // desarrollo narra las columnas una a una ("unidades: 4 + 7 = 11"); esto
+      // es la cuenta entera, que es donde se ve el resultado en su sitio.
+      //
+      // Se espera a que estén narradas TODAS las columnas: aparecer antes sería
+      // dar el total mientras el tutor va por las unidades.
+      const columnas = columnasDeOperacion(ejercicio.texto);
+      if (columnas > 0 && desarrollo.length >= columnas) {
+        return {
+          pasos: [...pasos, { linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
           pasoSuelto: null,
         };
       }
     }
 
-    return { pasos: desarrollo, pasoSuelto: null };
+    return { pasos, pasoSuelto: null };
   }, [actual, planteaEjercicio, ejercicio, desarrollo]);
 
   useEffect(() => {
@@ -257,6 +290,7 @@ export function Pizarra({
                     {ejercicio ? (
                       <LineaRenderizada
                         linea={ejercicio}
+                        columna="planteamiento"
                         resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
                         reglas={[]}
                       />
@@ -272,7 +306,7 @@ export function Pizarra({
                       Desarrollo
                     </p>
                     <AnimatePresence initial={false}>
-                      {pasos.map((linea) => (
+                      {pasos.map(({ linea, columna }) => (
                         <motion.div
                           key={linea.id}
                           initial={{ opacity: 0, y: 8 }}
@@ -281,6 +315,7 @@ export function Pizarra({
                         >
                           <LineaRenderizada
                             linea={linea}
+                            columna={columna}
                             resaltada={resaltado != null && linea.texto.includes(resaltado)}
                             reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
                           />
@@ -425,10 +460,16 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
 function LineaRenderizada({
   linea,
   resaltada,
+  columna,
   reglas = [],
 }: {
   linea: LineaPizarra;
   resaltada: boolean;
+  /**
+   * Compone la línea como una cuenta en columna. Sólo tiene efecto si la
+   * línea es de verdad una suma o una resta de dos naturales.
+   */
+  columna?: ModoColumna;
   /** Si se pasan, se etiqueta qué regla aplica este paso. */
   reglas?: ReglaPizarra[];
 }) {
@@ -446,7 +487,13 @@ function LineaRenderizada({
     // Se reescriben en notación formal; si no encajan en ningún patrón, sólo se
     // componen enteras cuando NO llevan palabras, porque KaTeX tipografiaría
     // cada letra como una variable y el texto saldría pegado y en cursiva.
-    const latex = notacionFormal(linea.texto)
+    // Las sumas y restas se disponen en COLUMNA, como se enseñan en clase: las
+    // unidades bajo las unidades y la raya debajo. En horizontal el alumno ve
+    // una expresión que aún no sabe leer y se pierde lo que se le está
+    // enseñando, que es alinear las cifras por su valor posicional.
+    const latex =
+      (columna ? columnaDeLinea(linea.texto, { conResultado: columna === "resuelta" }) : null)
+      ?? notacionFormal(linea.texto)
       ?? (pareceMatematica(linea.texto) ? planoALatex(linea.texto) : null);
     if (!latex) return null;
 
@@ -460,7 +507,7 @@ function LineaRenderizada({
     } catch {
       return null;
     }
-  }, [linea.texto, linea.clase]);
+  }, [linea.texto, linea.clase, columna]);
 
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.
