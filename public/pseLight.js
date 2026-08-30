@@ -130,11 +130,20 @@ function polyCanon(s) {
 // binomios (x±k). Acepta reordenar los factores y variantes de signo/espacio. Devuelve null si no
 // parece una factorización (producto de binomios), para no interferir con otras comparaciones.
 function factorCanon(s) {
-  const t = String(s).toLowerCase().replace(/\s+/g, "").replace(/[·*]/g, "");
+  let t = String(s).toLowerCase().replace(/\s+/g, "").replace(/[·*]/g, "");
+  // "(x - 5)²" y "(x - 5)^2" son "(x - 5)(x - 5)". El alumno escribe una u otra
+  // y las dos son la misma factorización: marcarle mal la suya era un falso
+  // negativo, que es peor que no calificar.
+  t = t.replace(/\(([^()]+)\)(?:²|\^2)/g, "($1)($1)");
   const bins = [...t.matchAll(/\(([+-]?\d*)([a-z])([+-]\d+)\)/g)];
   if (!bins.length) return null;
-  const cm = t.match(/^([+-]?\d+)\(/);                 // coeficiente líder antes del primer "("
-  let coef = cm ? Number(cm[1]) : 1;
+  // Lo que queda FUERA de los paréntesis es el factor común, vaya delante o
+  // detrás: "3x(x - 2)" y "(x - 2)3x" son la misma respuesta.
+  const fuera = t.replace(/\([^()]*\)/g, "");
+  const mf = fuera.match(/^([+-]?)(\d*)([a-z]*)$/);
+  if (!mf) return null; // hay algo fuera que no sabemos leer: no se compara
+  const varsFuera = [...mf[3]].sort().join("");
+  let coef = Number((mf[1] === "-" ? "-" : "") + (mf[2] === "" ? "1" : mf[2]));
   const gcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a || 1; };
   const terms = [];
   for (const b of bins) {
@@ -147,7 +156,7 @@ function factorCanon(s) {
     terms.push(`${a}${v}${k >= 0 ? "+" : ""}${k}`);
   }
   terms.sort();
-  return `${coef}|${terms.join(",")}`;
+  return `${coef}|${varsFuera}|${terms.join(",")}`;
 }
 
 // Evalúa la respuesta del alumno contra la esperada.
@@ -169,9 +178,16 @@ export function checkAnswer(student, expected) {
   }
   // Respuesta FACTORIZADA ("(x - 3)(x + 3)"): comparar como PRODUCTO DE BINOMIOS (orden indistinto).
   // Va antes que el polinomio para que "(x-3)(x+3)" no se intente comparar como polinomio suelto.
-  if (/\)\s*\(/.test(a) || /\)\s*\(/.test(b)) {
+  // Basta con que HAYA un paréntesis con variable: exigir ")(" dejaba fuera las factorizaciones
+  // con un solo paréntesis ("x(x + 7)", "(x - 5)²"), que caían en la comparación polinómica —que no
+  // sabe leer paréntesis— y daban por buena "(x + 7)" para "x(x + 7)".
+  const factorizada = (s) => /\(/.test(s) && /[a-z]/.test(s);
+  if (factorizada(a) || factorizada(b)) {
     const fa = factorCanon(a), fb = factorCanon(b);
     if (fa != null && fb != null) return { known: true, correct: fa === fb };
+    // Si una de las dos no se deja leer como factorización, NO se sigue: el
+    // comparador polinómico ignora los paréntesis y daría un veredicto falso.
+    return { known: true, correct: false };
   }
   // Respuesta POLINÓMICA ("12x³ - 12x + 9"): comparar forma canónica (ordena términos, normaliza
   // exponentes) → acepta reordenar y "x^3"/"x³", y rechaza un polinomio incorrecto/incompleto.

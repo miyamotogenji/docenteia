@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
+import { columnaDeLinea, columnasDeOperacion } from "@/lib/leccion/columna";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
 import {
   esFaseDeConcepto,
@@ -41,32 +42,42 @@ export interface LineaPizarra {
  * devolviendo formas distintas, TypeScript construía una unión que hacía
  * explotar la comprobación de tipos durante la compilación.
  */
+/**
+ * Cómo se compone una línea de aritmética.
+ *
+ * "planteamiento" es la operación en columna con la raya y sin el total: lo que
+ * el alumno tiene delante cuando le toca resolverla. "resuelta" añade las
+ * llevadas y el resultado.
+ */
+type ModoColumna = "planteamiento" | "resuelta";
+
+/** Un paso del desarrollo, con la forma en que hay que componerlo. */
+interface PasoCompuesto {
+  linea: LineaPizarra;
+  columna?: ModoColumna;
+}
+
 interface ContenidoPizarra {
-  /** Ejercicio activo, anclado arriba. Null en Concepto y Reglas. */
-  enunciado: LineaPizarra | null;
   /** Pasos del procedimiento, debajo del enunciado. */
-  desarrollo: LineaPizarra[];
+  pasos: PasoCompuesto[];
   /** Paso suelto de las fases que no plantean ejercicio. */
   pasoSuelto: LineaPizarra | null;
 }
 
 /**
- * Una fase de la lección, con su propia vista de pizarra.
+ * Una fase abierta de la lección. Sólo identidad: ningún contenido.
  *
- * El ejercicio y los pasos van en campos SEPARADOS, no deducidos por posición.
- * Cuando el enunciado era "la primera línea de la escena", bastaba con que
- * llegara contenido nuevo sin vaciarla para que la tarjeta de arriba se quedara
- * anclada al ejercicio anterior mientras el nuevo aparecía al fondo del
- * desarrollo. Con campos propios eso no puede ocurrir: el ejercicio es el
- * ejercicio, y el desarrollo se vacía cuando toca.
+ * El ejercicio y el desarrollo NO viven aquí dentro, sino como estado propio
+ * del aula que llega en props independientes. Mientras el enunciado colgaba de
+ * la fase, cualquier cambio en el desarrollo pasaba por la misma estructura
+ * que la tarjeta de arriba, y bastaba con no vaciarla a tiempo para que el
+ * enunciado se quedara anclado al ejercicio anterior o desapareciera con los
+ * pasos. Separados, la tarjeta superior se compone en cuanto se entra en la
+ * fase y no depende en absoluto del ciclo de desarrollo.
  */
-export interface Escena {
+export interface FaseAbierta {
   id: string;
   titulo: string;
-  /** Ejercicio activo de la fase. Null en Concepto y Reglas, que no plantean uno. */
-  ejercicio: LineaPizarra | null;
-  /** Pasos del procedimiento. */
-  pasos: LineaPizarra[];
 }
 
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
@@ -93,14 +104,28 @@ export interface ReglaPizarra {
  * la lógica ya validada.
  */
 export function Pizarra({
-  escenas,
+  fases,
+  ejercicio,
+  desarrollo,
   resaltado,
   reglas = [],
   reglaDetectada = null,
   tema,
   className,
 }: {
-  escenas: Escena[];
+  /** Fases ya abiertas: la tira de progreso y la vista en curso. */
+  fases: FaseAbierta[];
+  /**
+   * Ejercicio activo. Llega ya resuelto desde el aula, que lo fija al entrar
+   * en la fase, así que la tarjeta de arriba se compone en el milisegundo 0
+   * sin esperar a que haya un solo paso calculado.
+   */
+  ejercicio: LineaPizarra | null;
+  /**
+   * Pasos del procedimiento. Vacío mientras el alumno no pida ayuda ni
+   * resolución; el aula lo SUSTITUYE entero en cada petición.
+   */
+  desarrollo: LineaPizarra[];
   /** Texto de la línea que el puntero está señalando, si hay alguno. */
   resaltado: string | null;
   /** Catálogo formal del tema, del que sale la tarjeta de la fase de Reglas. */
@@ -111,7 +136,7 @@ export function Pizarra({
   tema?: string;
   className?: string;
 }) {
-  const actual = escenas[escenas.length - 1] ?? null;
+  const actual = fases[fases.length - 1] ?? null;
   const finRef = useRef<HTMLDivElement>(null);
 
   // La regla que el tutor está explicando ahora mismo, deducida de las líneas
@@ -133,57 +158,75 @@ export function Pizarra({
     if (!actual || !esFaseDeReglas(actual.id) || reglas.length === 0) return null;
     if (reglaDetectada) return reglaDetectada;
     const porPizarra = reglaActiva(
-      [actual.ejercicio?.texto ?? "", ...actual.pasos.map((l) => l.texto)],
+      [ejercicio?.texto ?? "", ...desarrollo.map((l) => l.texto)],
       reglas,
     );
     return porPizarra ?? reglas[0];
-  }, [actual, reglas, reglaDetectada]);
+  }, [actual, ejercicio, desarrollo, reglas, reglaDetectada]);
+
+  /** ¿La fase en curso plantea un ejercicio al alumno? */
+  const planteaEjercicio =
+    actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
 
   /**
-   * ENUNCIADO FIJO + DESARROLLO DEBAJO.
+   * ENUNCIADO FIJO ARRIBA + DESARROLLO DEBAJO.
    *
-   * En las fases con ejercicio, el motor escribe primero el enunciado y después
-   * los pasos: "x²" y luego "derivada de x² = 2x"; "2x + 5 = 15", "2x = 10",
-   * "x = 5". Mostrando sólo la última línea, el enunciado desaparecía en cuanto
-   * empezaba el desarrollo y el alumno se quedaba con el resultado suelto, sin
-   * poder contrastarlo con el planteamiento.
-   *
-   * Ahora el enunciado queda anclado arriba y los pasos se acumulan debajo,
-   * dentro de la fase. Al cambiar de fase la pizarra se limpia, así que el
-   * desarrollo nunca crece más allá del ejercicio en curso.
+   * El enunciado llega en su propia prop y se compone tal cual: no se deduce de
+   * los pasos ni espera a que haya ninguno. Aquí sólo se decide cómo
+   * presentar el desarrollo, que en las fases sin ejercicio se reduce al último
+   * paso escrito.
    */
-  const { enunciado, desarrollo, pasoSuelto } = useMemo((): ContenidoPizarra => {
-    const vacio: ContenidoPizarra = { enunciado: null, desarrollo: [], pasoSuelto: null };
-    if (!actual) return vacio;
+  const { pasos, pasoSuelto } = useMemo((): ContenidoPizarra => {
+    if (!actual) return { pasos: [], pasoSuelto: null };
 
-    // Concepto y Reglas no plantean un ejercicio: se compone el paso actual.
-    if (!actual.ejercicio) {
-      const pasos = actual.pasos;
-      return { ...vacio, pasoSuelto: pasos.length > 0 ? pasos[pasos.length - 1] : null };
+    // Concepto y Reglas no plantean ejercicio: se compone el paso actual.
+    if (!planteaEjercicio) {
+      return {
+        pasos: [],
+        pasoSuelto: desarrollo.length > 0 ? desarrollo[desarrollo.length - 1] : null,
+      };
     }
 
-    const pasos = [...actual.pasos];
+    const pasos: PasoCompuesto[] = desarrollo.map((linea) => ({ linea }));
 
-    // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
-    // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
-    // hallar, que es justo lo que la ramificación pedagógica evita.
-    if (esFaseDeEjemplo(actual.id)) {
-      const intermedio = pasoIntermedioDerivada(actual.ejercicio.texto);
+    // Estos dos añadidos son del EJEMPLO y sólo del ejemplo: en la práctica
+    // revelarían la respuesta que el alumno tiene que hallar, que es justo lo
+    // que la ramificación pedagógica evita.
+    if (ejercicio && esFaseDeEjemplo(actual.id) && desarrollo.length > 0) {
+      // Paso intermedio de la derivada, donde se ve APLICADA la regla.
+      const intermedio = pasoIntermedioDerivada(ejercicio.texto);
       if (intermedio) {
-        pasos.unshift({ id: -actual.ejercicio.id - 1, texto: intermedio, clase: "formula" });
+        return {
+          pasos: [{ linea: { id: -ejercicio.id - 1, texto: intermedio, clase: "formula" } }, ...pasos],
+          pasoSuelto: null,
+        };
+      }
+
+      // La operación resuelta en columna, con sus llevadas y el total. El
+      // desarrollo narra las columnas una a una ("unidades: 4 + 7 = 11"); esto
+      // es la cuenta entera, que es donde se ve el resultado en su sitio.
+      //
+      // Se espera a que estén narradas TODAS las columnas: aparecer antes sería
+      // dar el total mientras el tutor va por las unidades.
+      const columnas = columnasDeOperacion(ejercicio.texto);
+      if (columnas > 0 && desarrollo.length >= columnas) {
+        return {
+          pasos: [...pasos, { linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
+          pasoSuelto: null,
+        };
       }
     }
 
-    return { enunciado: actual.ejercicio, desarrollo: pasos, pasoSuelto: null };
-  }, [actual]);
+    return { pasos, pasoSuelto: null };
+  }, [actual, planteaEjercicio, ejercicio, desarrollo]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [actual?.pasos.length, actual?.ejercicio?.id, actual?.id]);
+  }, [desarrollo.length, ejercicio?.id, actual?.id]);
 
   return (
     <div className={cn("space-y-3", className)}>
-      <Fases escenas={escenas} />
+      <Fases fases={fases} />
 
       {/* ALTURA FIJA, no mínima. Con una altura que crecía según el contenido,
           la pizarra cambiaba de tamaño en cada paso y los botones de abajo
@@ -232,27 +275,38 @@ export function Pizarra({
 
                 {/* Fases con ejercicio: el enunciado anclado arriba y su
                     desarrollo debajo, para que el alumno pueda contrastar el
-                    planteamiento con el procedimiento. */}
-                {enunciado && (
+                    planteamiento con el procedimiento.
+
+                    La tarjeta de ARRIBA no depende de que haya desarrollo: se
+                    pinta en cuanto se entra en la fase, con el enunciado que se
+                    adelantó al recibir la lección. La de ABAJO sólo aparece
+                    cuando hay pasos que mostrar. Atar la primera a la segunda
+                    dejaba la pizarra en blanco durante toda la locución. */}
+                {(ejercicio || planteaEjercicio) && (
                   <div className="rounded-md border-2 border-primary/40 bg-primary/5 p-3">
                     <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-primary">
                       Ejercicio
                     </p>
-                    <LineaRenderizada
-                      linea={enunciado}
-                      resaltada={resaltado != null && enunciado.texto.includes(resaltado)}
-                      reglas={[]}
-                    />
+                    {ejercicio ? (
+                      <LineaRenderizada
+                        linea={ejercicio}
+                        columna="planteamiento"
+                        resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
+                        reglas={[]}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Preparando el ejercicio…</p>
+                    )}
                   </div>
                 )}
 
-                {desarrollo.length > 0 && (
+                {pasos.length > 0 && (
                   <div className="space-y-2 rounded-md border bg-muted/20 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                       Desarrollo
                     </p>
                     <AnimatePresence initial={false}>
-                      {desarrollo.map((linea) => (
+                      {pasos.map(({ linea, columna }) => (
                         <motion.div
                           key={linea.id}
                           initial={{ opacity: 0, y: 8 }}
@@ -261,6 +315,7 @@ export function Pizarra({
                         >
                           <LineaRenderizada
                             linea={linea}
+                            columna={columna}
                             resaltada={resaltado != null && linea.texto.includes(resaltado)}
                             reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
                           />
@@ -300,17 +355,17 @@ export function Pizarra({
 }
 
 /** Indicador de en qué fase de la lección va el alumno. */
-function Fases({ escenas }: { escenas: Escena[] }) {
-  if (escenas.length === 0) return null;
-  const indiceActual = escenas.length - 1;
+function Fases({ fases }: { fases: FaseAbierta[] }) {
+  if (fases.length === 0) return null;
+  const indiceActual = fases.length - 1;
 
   return (
     <ol className="flex flex-wrap items-center gap-1.5" aria-label="Fases de la lección">
-      {escenas.map((escena, i) => {
+      {fases.map((fase, i) => {
         const completada = i < indiceActual;
         const activa = i === indiceActual;
         return (
-          <li key={escena.id}>
+          <li key={fase.id}>
             <span
               className={cn(
                 "flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
@@ -321,7 +376,7 @@ function Fases({ escenas }: { escenas: Escena[] }) {
               aria-current={activa ? "step" : undefined}
             >
               {completada && <Check className="h-3 w-3" />}
-              {escena.titulo}
+              {fase.titulo}
             </span>
           </li>
         );
@@ -405,10 +460,16 @@ function Formula({ latex, display = false }: { latex: string; display?: boolean 
 function LineaRenderizada({
   linea,
   resaltada,
+  columna,
   reglas = [],
 }: {
   linea: LineaPizarra;
   resaltada: boolean;
+  /**
+   * Compone la línea como una cuenta en columna. Sólo tiene efecto si la
+   * línea es de verdad una suma o una resta de dos naturales.
+   */
+  columna?: ModoColumna;
   /** Si se pasan, se etiqueta qué regla aplica este paso. */
   reglas?: ReglaPizarra[];
 }) {
@@ -426,7 +487,13 @@ function LineaRenderizada({
     // Se reescriben en notación formal; si no encajan en ningún patrón, sólo se
     // componen enteras cuando NO llevan palabras, porque KaTeX tipografiaría
     // cada letra como una variable y el texto saldría pegado y en cursiva.
-    const latex = notacionFormal(linea.texto)
+    // Las sumas y restas se disponen en COLUMNA, como se enseñan en clase: las
+    // unidades bajo las unidades y la raya debajo. En horizontal el alumno ve
+    // una expresión que aún no sabe leer y se pierde lo que se le está
+    // enseñando, que es alinear las cifras por su valor posicional.
+    const latex =
+      (columna ? columnaDeLinea(linea.texto, { conResultado: columna === "resuelta" }) : null)
+      ?? notacionFormal(linea.texto)
       ?? (pareceMatematica(linea.texto) ? planoALatex(linea.texto) : null);
     if (!latex) return null;
 
@@ -440,7 +507,7 @@ function LineaRenderizada({
     } catch {
       return null;
     }
-  }, [linea.texto, linea.clase]);
+  }, [linea.texto, linea.clase, columna]);
 
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.

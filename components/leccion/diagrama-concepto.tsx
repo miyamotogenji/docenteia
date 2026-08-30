@@ -77,7 +77,7 @@ function CurvaYTangente() {
       viewBox={`0 0 ${g.ancho} ${g.alto}`}
       className="h-auto w-full max-w-sm"
       role="img"
-      aria-label="Una parábola con su recta tangente en un punto: la pendiente de esa recta es la derivada."
+      aria-label="La parábola y = x al cuadrado con su recta tangente en el punto x = 1: la pendiente de esa recta, que vale 2, es la derivada en ese punto."
     >
       {/* Ejes */}
       <line x1="20" y1="130" x2="230" y2="130" className="stroke-muted-foreground/40" strokeWidth="1" />
@@ -103,7 +103,18 @@ function CurvaYTangente() {
         strokeDasharray="5 3"
       />
 
-      {/* El punto de tangencia */}
+      {/* El punto de tangencia, y su abscisa marcada hasta el eje: la pendiente
+          vale 2 AHÍ, no en toda la curva, y sin señalar dónde el número parece
+          arbitrario. */}
+      <line
+        x1={aX(1)}
+        y1={aY(1)}
+        x2={aX(1)}
+        y2={aY(0)}
+        className="stroke-amber-500/50"
+        strokeWidth="1"
+        strokeDasharray="2 2"
+      />
       <circle cx={aX(1)} cy={aY(1)} r="4" className="fill-amber-500" />
 
       <Etiquetas geometria={g} />

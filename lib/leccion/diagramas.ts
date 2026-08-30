@@ -83,17 +83,25 @@ export function etiquetaCabe(e: EtiquetaDiagrama, g: GeometriaDiagrama): boolean
 }
 
 /**
- * El pie del diagrama de derivadas dice la pendiente con todas las letras.
+ * El pie del diagrama de derivadas dice la pendiente con todas las letras, y
+ * dice DÓNDE.
  *
- * Centrado abajo, como en los otros dos diagramas: es la única banda del
- * lienzo que está libre de curva, tangente y ejes, así que la frase cabe
- * entera por larga que sea sin pisar el dibujo ni salirse por el lado.
+ * La derivada de y = x² no vale 2: vale 2 EN x = 1. Sin nombrar el punto, el
+ * número parece sacado de la nada, y en la fase que introduce el concepto eso
+ * es justo lo contrario de lo que hay que enseñar. El punto se nombra dos
+ * veces: junto al punto de tangencia, sobre el dibujo, y en el pie.
+ *
+ * El pie va centrado abajo, como en los otros dos diagramas: es la única banda
+ * del lienzo libre de curva, tangente y ejes, así que la frase cabe entera sin
+ * pisar el dibujo. A nueve unidades no cabía; a ocho, sí, y la suite lo
+ * comprueba.
  */
 export const GEOMETRIA_DERIVADAS: GeometriaDiagrama = {
   ancho: 240,
   alto: 155,
   etiquetas: [
-    { texto: "la pendiente de la tangente es 2", x: 120, y: 148, anclaje: "middle", tamano: 9, tono: "acento" },
+    { texto: "En x = 1, la pendiente de la tangente es 2", x: 120, y: 148, anclaje: "middle", tamano: 8, tono: "acento" },
+    { texto: "x = 1", x: 176, y: 116, anclaje: "start", tamano: 8, tono: "acento" },
     { texto: "y = x²", x: 126, y: 24, anclaje: "start", tamano: 9, tono: "tenue" },
   ],
 };

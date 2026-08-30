@@ -2,7 +2,7 @@
 // devolverlo. El LSG es la salida estructurada que el PRE Light valida y que en
 // la Fase 2 el PSE Light reproducirá sincronizando voz + revelación visual.
 
-import { solveLinearSteps, computeDerivative, computeFactorization, monomioLimpio, normDashes } from "./preLight.js";
+import { solveLinearSteps, computeDerivative, computeFactorization, factorizacionPasos, monomioLimpio, normDashes } from "./preLight.js";
 //
 // Dos formas según la intención:
 //   - resolver / explicar → escena SECUENCIAL con `directivas: [...]`
@@ -1652,6 +1652,53 @@ function explicaDifCuadrados(expr) {
   }
   return null;
 }
+/**
+ * Qué técnica de factorización pide una expresión.
+ *
+ * La escalera de dificultad ya no repite diferencia de cuadrados con números
+ * más grandes: cambia de técnica. Anunciar "es una diferencia de cuadrados"
+ * ante un trinomio sería enseñar la regla equivocada, así que el tutor nombra
+ * la que toca.
+ */
+function tecnicaDeFactorizacion(expr) {
+  const pasos = factorizacionPasos(`factoriza ${expr}`);
+  if (pasos) return "diferencia";
+  const factor = computeFactorization(`factoriza ${expr}`);
+  if (!factor) return null;
+  return /^\d*[a-z]\(/.test(String(factor).replace(/\s+/g, "")) ? "comun" : "trinomio";
+}
+
+/** Cómo se le pide la respuesta al alumno, según la técnica que toca. */
+function comoEscribirla(expr) {
+  return tecnicaDeFactorizacion(expr) === "comun"
+    ? "Saca el factor común."
+    : "Escríbelo como producto de dos paréntesis.";
+}
+
+/** La regla que el tutor enuncia antes de resolver. */
+function reglaDeFactorizacion(expr) {
+  switch (tecnicaDeFactorizacion(expr)) {
+    case "comun":
+      return 'Aquí los dos términos comparten un factor: se saca fuera del paréntesis. La regla es ab + ac = a(b + c).';
+    case "trinomio":
+      return 'Es un trinomio: buscamos dos números que sumen el coeficiente del término de en medio y multiplicados den el último. La regla es x² + (p+q)x + pq = (x + p)(x + q).';
+    default:
+      return 'Es una "diferencia de cuadrados": un cuadrado menos otro cuadrado. La regla es a² - b² = (a - b)(a + b).';
+  }
+}
+
+/** Cómo se aplica esa regla a esta expresión concreta. */
+function explicaFactorizacion(expr) {
+  switch (tecnicaDeFactorizacion(expr)) {
+    case "comun":
+      return "Miramos qué hay en los dos términos: ese factor común sale fuera y dentro queda lo que sobra de cada uno.";
+    case "trinomio":
+      return "Buscamos dos números cuya suma sea el coeficiente del término de en medio y cuyo producto sea el último término.";
+    default:
+      return "Identificamos a y b (las raíces de cada cuadrado) y aplicamos la regla.";
+  }
+}
+
 export function factorizacionResueltaLSG(opts = {}) {
   let { ejemplo, practica } = elegirBoton(FACTORIZ, opts, "factorizacion");
   const lista = listaNivel(FACTORIZ, opts.nivel);
@@ -1664,8 +1711,8 @@ export function factorizacionResueltaLSG(opts = {}) {
   const facP = computeFactorization(practica);
   if (opts.practica) return practicaLSG("factorizacion_resuelta", {
     cursores: opts.cursores,
-    reto1: ejemplo, preg: `¿Cómo se factoriza ${ejemplo}? Escríbelo como producto de dos paréntesis.`, resp: facE,
-    reto2: practica, preg2: `¿Cómo se factoriza ${practica}? Escríbelo como producto de dos paréntesis.`, resp2: computeFactorization(practica) || "",
+    reto1: ejemplo, preg: `¿Cómo se factoriza ${ejemplo}? ${comoEscribirla(ejemplo)}`, resp: facE,
+    reto2: practica, preg2: `¿Cómo se factoriza ${practica}? ${comoEscribirla(practica)}`, resp2: computeFactorization(practica) || "",
   });
   const dir = [{ tipo: "avatar", accion: "sonreir" }];
   // ENSEÑAR el tema ("enséñame factorización"): primero el CONCEPTO (qué es factorizar) y la REGLA, y
@@ -1674,16 +1721,16 @@ export function factorizacionResueltaLSG(opts = {}) {
     for (const d of dirsConcepto(varianteConcepto(opts.evitar, CONCEPTO_FACTORIZ))) dir.push(d);
     dir.push({ tipo: "hablar", texto: `Vamos a factorizar ${ejemplo}.`, _mod: "ejemplo_guiado" });
   } else {
-    dir.push({ tipo: "hablar", texto: `Vamos a factorizar ${ejemplo}. Es una "diferencia de cuadrados": un cuadrado menos otro cuadrado. La regla es a² - b² = (a - b)(a + b).` });
+    dir.push({ tipo: "hablar", texto: `Vamos a factorizar ${ejemplo}. ${reglaDeFactorizacion(ejemplo)}` });
   }
   dir.push(
     { tipo: "pizarra", accion: "escribir", contenido: ejemplo },
     { tipo: "esperar", segundos: 1 },
-    { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || "Identificamos a y b (las raíces de cada cuadrado) y aplicamos la regla." },
+    { tipo: "hablar", texto: explicaDifCuadrados(ejemplo) || explicaFactorizacion(ejemplo) },
     { tipo: "pizarra", accion: "escribir", contenido: `${ejemplo} = ${facE}` },
     { tipo: "hablar", texto: `Así, ${ejemplo} se factoriza como ${facE}. Ahora te toca a ti con otra parecida.` },
     { tipo: "pizarra", accion: "escribir", contenido: practica },
-    { tipo: "preguntar", texto: `¿Cómo se factoriza ${practica}? Escríbelo como producto de dos paréntesis.`, respuesta: facP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
+    { tipo: "preguntar", texto: `¿Cómo se factoriza ${practica}? ${comoEscribirla(practica)}`, respuesta: facP, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },
   );
   if (opts.seguimiento && !opts.practica) aperturaEjemplo(dir, `Vamos con otra expresión: ${ejemplo}.`, ejemplo);
   if (opts.mantener) aperturaReexplicacion(dir, SIMPLE_FACTORIZ, opts.simplificacion);
@@ -2871,9 +2918,43 @@ function generarLineal(k, i) {
 
 /** Diferencia de dos cuadrados perfectos, cada vez más grandes. */
 function generarFactorizacion(k, i) {
-  const raizA = 2 + ((i + k) % 7);           // coeficiente de x²
-  const raizB = 3 + ((i * 2 + k) % 9);       // término independiente
-  return `${raizA * raizA}x² - ${raizB * raizB}`;
+  // La escalera cambia de TÉCNICA, no sólo de números: repetir diferencia de
+  // cuadrados con cifras más grandes no es un ejercicio más difícil, es el
+  // mismo ejercicio. Cada peldaño pide una factorización distinta, y todas las
+  // cubre el validador determinista con raíces enteras.
+  switch (k % 4) {
+    case 0: {
+      // Diferencia de cuadrados: "16x² - 25". Las raíces se toman primas entre
+      // sí: con factor común ("36x² - 100") la respuesta bonita exige sacarlo
+      // fuera, y eso ya es otro ejercicio distinto del que toca en este peldaño.
+      const mcd = (x, y) => { while (y) { [x, y] = [y, x % y]; } return x; };
+      let raizA = 2 + ((i + k) % 7);
+      let raizB = 3 + ((i * 2 + k) % 9);
+      while (mcd(raizA, raizB) > 1) raizB++;
+      return `${raizA * raizA}x² - ${raizB * raizB}`;
+    }
+    case 1: {
+      // Factor común: "3x² - 12x".
+      const comun = 2 + (i % 5);
+      const resto = 2 + ((i * 3 + k) % 9);
+      const signo = i % 2 === 0 ? "-" : "+";
+      return `${comun}x² ${signo} ${comun * resto}x`;
+    }
+    case 2: {
+      // Trinomio con raíces enteras: "x² + 5x + 6".
+      const p = 1 + (i % 6);
+      const q = 2 + ((i * 2 + k) % 7);
+      return `x² + ${p + q}x + ${p * q}`;
+    }
+    default: {
+      // Trinomio con raíces de distinto signo: "x² - 2x - 15".
+      const p = 2 + (i % 5);          // raíz positiva
+      const q = 3 + ((i + k) % 6);    // raíz negativa
+      const b = p - q;
+      const termino = b === 0 ? "" : ` ${b > 0 ? "+" : "-"} ${Math.abs(b)}x`;
+      return `x²${termino} - ${p * q}`;
+    }
+  }
 }
 
 /** Números cada vez más grandes, sin separadores: el motor parte por espacios. */

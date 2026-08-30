@@ -1,6 +1,7 @@
 // Con extensión explícita: este módulo lo importa también la suite de qa/, que
 // se ejecuta con Node a secas y exige la extensión en los imports relativos.
 import { esFaseDeConcepto, esFaseDeReglas } from "./fases.ts";
+import { expresionPrincipal } from "../matematicas.ts";
 
 /**
  * Cómo hay que presentar la respuesta a un seguimiento.
@@ -50,12 +51,31 @@ export function enunciadosDeLeccion(lsg: LSGConModulos | null | undefined): Map<
   for (const modulo of lsg.modulos) {
     const id = String(modulo?.id ?? "");
     if (!id) continue;
-    const directivas = Array.isArray(modulo?.directivas) ? modulo.directivas : [];
-    for (const d of directivas as Array<{ tipo?: string; contenido?: string }>) {
-      if (d?.tipo !== "pizarra") continue;
-      const texto = String(d.contenido ?? "").trim();
-      if (texto) porFase.set(id, texto);
-      break; // sólo la primera: las demás son el desarrollo
+    const directivas = (
+      Array.isArray(modulo?.directivas) ? modulo.directivas : []
+    ) as Array<{ tipo?: string; contenido?: string }>;
+
+    // Lo normal: el enunciado es la primera pizarra de la fase.
+    const escrita = directivas.find(
+      (d) => d?.tipo === "pizarra" && String(d.contenido ?? "").trim(),
+    );
+    if (escrita) {
+      porFase.set(id, String(escrita.contenido).trim());
+      continue;
+    }
+
+    // Pero el motor no siempre lo escribe. Cuando la lección la redacta el
+    // modelo en vivo, hay fases que sólo lo NARRAN ("vamos a derivar
+    // 3x⁴ - 2x²") o lo dejan dentro de la pregunta al alumno. Como la prosa
+    // no sube al lienzo, la pizarra se quedaba vacía toda la fase teniendo el
+    // ejercicio delante. Se rescata la expresión y se descarta la prosa.
+    for (const d of directivas) {
+      if (d?.tipo !== "hablar" && d?.tipo !== "preguntar") continue;
+      const formula = expresionPrincipal(String(d.contenido ?? ""));
+      if (formula) {
+        porFase.set(id, formula);
+        break;
+      }
     }
   }
   return porFase;
@@ -93,4 +113,34 @@ export function recortarParaSeguimiento<T extends LSGConModulos>(lsg: T): T {
 
   if (utiles.length === 0) return lsg;
   return { ...lsg, modulos: utiles };
+}
+
+/**
+ * Qué enunciado debe quedar en la tarjeta de EJERCICIO tras una petición.
+ *
+ * Toda petición vacía el desarrollo, y ahí es donde la pizarra se quedaba en
+ * blanco al pulsar "Explicar regla": si la tarjeta de arriba todavía no tenía
+ * enunciado —porque el alumno pulsó mientras el tutor narraba—, el vaciado
+ * dejaba la escena sin nada y la aclaración, que es prosa, va al subtítulo y no
+ * al lienzo. Resultado: fase abierta, pizarra vacía y nada que la rellenara.
+ *
+ * El orden de preferencia importa. Manda el enunciado DE ESTA FASE, no el
+ * ejercicio activo de la conversación: el activo es el de la práctica, y usarlo
+ * en la fase de ejemplo cambiaría el enunciado por otro que el alumno no está
+ * viendo. Sólo cuando la fase no declara el suyo se recurre al activo, y si no
+ * hay ninguno se conserva el que hubiera.
+ */
+export function enunciadoTrasPeticion(opciones: {
+  /** El que está pintado ahora mismo, si lo hay. */
+  enTarjeta: string | null;
+  /** El que declara esta fase, leído de la lección al recibirla. */
+  deLaFase?: string | null;
+  /** El que el alumno tiene entre manos según la conversación. */
+  activo?: string | null;
+  /** Falso en Concepto y Reglas, que no plantean ejercicio. */
+  planteaEjercicio: boolean;
+}): string | null {
+  if (!opciones.planteaEjercicio) return opciones.enTarjeta;
+  const objetivo = opciones.deLaFase || opciones.activo || null;
+  return objetivo ?? opciones.enTarjeta;
 }

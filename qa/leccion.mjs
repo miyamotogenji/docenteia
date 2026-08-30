@@ -24,6 +24,7 @@ import { checkAnswer, flattenLSG } from "../public/pseLight.js";
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
   esIdeaFuerza,
+  expresionPrincipal,
   notacionFormal,
   pareceMatematica,
   planoALatex,
@@ -41,12 +42,20 @@ import {
   tieneDiagrama,
   TEMAS_CON_DIAGRAMA,
   GEOMETRIAS,
+  GEOMETRIA_DERIVADAS,
   cajaDeEtiqueta,
   etiquetaCabe,
   MARGEN_ETIQUETA,
 } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
+  columnaDeLinea,
+  leerSumaOResta,
+  marcasDeColumna,
+} from "../lib/leccion/columna.ts";
+import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
+import {
+  enunciadoTrasPeticion,
   enunciadosDeLeccion,
   presentacionDe,
   recortarParaSeguimiento,
@@ -372,13 +381,14 @@ if (catalogo) {
   // desarrollo.
   check(
     "pizarra.tsx ancla el enunciado y compone el desarrollo aparte",
-    /\{enunciado\s*&&/.test(fuentePizarra) && /desarrollo\.length\s*>\s*0/.test(fuentePizarra),
+    /\(ejercicio \|\| planteaEjercicio\)\s*&&/.test(fuentePizarra) &&
+      /pasos\.length\s*>\s*0/.test(fuentePizarra),
   );
   // Y el paso intermedio NO puede aparecer en la práctica: revelaría la
   // respuesta que el alumno tiene que hallar.
   check(
     "el paso intermedio se añade sólo en el ejemplo, no en la práctica",
-    /if\s*\(esFaseDeEjemplo\([^)]*\)\)\s*\{[\s\S]{0,200}pasoIntermedioDerivada/.test(fuentePizarra),
+    /esFaseDeEjemplo\(actual\.id\)[\s\S]{0,160}pasoIntermedioDerivada/.test(fuentePizarra),
   );
 
   // El enunciado NO puede deducirse por posición. Mientras fue "la primera
@@ -386,8 +396,9 @@ if (catalogo) {
   // para que la tarjeta se quedara anclada al ejercicio anterior y el nuevo
   // cayera al fondo del desarrollo. Ahora es un campo propio de la escena.
   check(
-    "el enunciado sale de su propio campo, no de la primera línea",
-    /actual\.ejercicio/.test(fuentePizarra) && !/lineas\[0\]|\[primera,\s*\.\.\.resto\]/.test(fuentePizarra),
+    "el enunciado sale de su propia prop, no de la primera línea",
+    /ejercicio: LineaPizarra \| null;/.test(fuentePizarra) &&
+      !/lineas\[0\]|\[primera,\s*\.\.\.resto\]/.test(fuentePizarra),
   );
 
   const fuenteAula = readFileSync(
@@ -398,11 +409,11 @@ if (catalogo) {
   // procedimiento del ejercicio anterior se queda debajo del nuevo.
   check(
     "aula.tsx vacía el desarrollo antes de pintar contenido nuevo",
-    /\.\.\.ultima,[\s\S]{0,240}pasos:\s*\[\]\s*,?\s*\}/.test(fuenteAula),
+    /SUSTITUCIÓN, no concatenación[\s\S]{0,320}setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
   check(
     "aula.tsx retira también el enunciado cuando llega otro ejercicio",
-    /\{\s*\.\.\.ultima,\s*ejercicio:\s*null,\s*pasos:\s*\[\]\s*\}/.test(fuenteAula),
+    /fijarLineaEjercicio\(null\);[\s\S]{0,40}setDesarrollo\(\[\]\);/.test(fuenteAula),
   );
   // El enunciado se adelanta al abrir la fase, sin esperar a la cola de voz.
   check(
@@ -412,7 +423,7 @@ if (catalogo) {
   // Y no se repite abajo cuando el motor lo escribe con su propia directiva.
   check(
     "aula.tsx no repite el enunciado dentro del desarrollo",
-    /ultima\.ejercicio\.texto === limpio/.test(fuenteAula),
+    /ejercicioRef\.current\?\.texto === limpio/.test(fuenteAula),
   );
 }
 
@@ -910,6 +921,17 @@ for (const tema of TEMAS_LECCION) {
     new Set(vistos.filter(Boolean)).size >= 3,
     vistos.join(" | "),
   );
+  // Subir de nivel no puede dejar al alumno sin corrección: si el motor
+  // determinista no resuelve el ejercicio que propone la escalera, el Módulo 9
+  // responde "no puedo calificarlo" y la práctica se queda a medias. Es el
+  // riesgo real del entregable, y se comprueba peldaño a peldaño.
+  for (const propuesto of vistos.filter(Boolean)) {
+    check(
+      `[${tema.clave}] el motor puede calificar «${propuesto}»`,
+      resolverEjercicio(propuesto, tema.clave) != null,
+      "la escalera propone un ejercicio que la corrección no sabe resolver",
+    );
+  }
 
   // Bajar también es un peldaño, no un salto al nivel más fácil.
   const bajada = await consultar({
@@ -1167,6 +1189,15 @@ check(
     }
   }
 
+  // La derivada de y = x² no vale 2: vale 2 EN x = 1. Sin el punto, el número
+  // parece arbitrario, y esta es la fase que introduce el concepto.
+  const dice = GEOMETRIA_DERIVADAS.etiquetas.map((e) => e.texto).join(" · ");
+  check(
+    "el diagrama de derivadas dice EN QUÉ PUNTO vale 2 la pendiente",
+    /x\s*=\s*1/.test(dice),
+    `etiquetas: ${dice}`,
+  );
+
   // El caso exacto que reportó el cliente: la palabra completa, no un recorte.
   const pieDerivadas = GEOMETRIAS.DERIVADAS.etiquetas.find((e) => e.texto.includes("pendiente"));
   check(
@@ -1195,6 +1226,612 @@ check(
   check(
     "el componente toma el viewBox de la geometría comprobada",
     /viewBox=\{`0 0 \$\{g\.ancho\} \$\{g\.alto\}`\}/.test(fuenteDiagrama),
+  );
+}
+
+// ── La pizarra nunca arranca en blanco ───────────────────────────────────────
+// El cliente entraba en Práctica, oía "vamos a derivar 3x⁴ - 2x²" y veía el
+// lienzo vacío hasta que terminaba la locución. La tarjeta de EJERCICIO no
+// puede esperar a que el motor emita una directiva de pizarra: hay fases que
+// sólo NARRAN el enunciado, o lo llevan dentro de la pregunta al alumno.
+console.log("\n · La tarjeta de ejercicio no espera a la locución");
+
+{
+  const casos = [
+    { frase: "Vamos a derivar 3x⁴ - 2x²", esperado: "3x⁴ - 2x²" },
+    { frase: "Ahora resuelve tú: 2x + 5 = 15", esperado: "2x + 5 = 15" },
+    { frase: "¿Cuánto vale la derivada de 5x²?", esperado: "5x²" },
+    { frase: "Muy bien, sigamos con el siguiente apartado", esperado: null },
+    { frase: "Lo haremos en 2 pasos", esperado: null },
+  ];
+  for (const c of casos) {
+    const obtenido = expresionPrincipal(c.frase);
+    check(
+      `de «${c.frase}» se rescata ${c.esperado ? `«${c.esperado}»` : "nada"}`,
+      obtenido === c.esperado,
+      `obtenido: ${obtenido === null ? "null" : `«${obtenido}»`}`,
+    );
+  }
+
+  // Una fase que sólo narra el enunciado también lo adelanta a la pizarra.
+  const soloHablada = enunciadosDeLeccion({
+    modulos: [
+      {
+        id: "practica",
+        directivas: [
+          { tipo: "hablar", contenido: "Vamos a derivar 3x⁴ - 2x². Tómate tu tiempo." },
+          { tipo: "preguntar", contenido: "¿Cuál es la derivada?" },
+        ],
+      },
+    ],
+  });
+  check(
+    "una fase que sólo narra el enunciado igualmente lo adelanta",
+    soloHablada.get("practica") === "3x⁴ - 2x²",
+    `obtenido: ${soloHablada.get("practica") ?? "ninguno"}`,
+  );
+
+  // Y la prosa sigue sin subir al lienzo: una fase sin matemáticas no aporta
+  // enunciado, porque no lo tiene.
+  const soloProsa = enunciadosDeLeccion({
+    modulos: [{ id: "concepto", directivas: [{ tipo: "hablar", contenido: "Una derivada mide el cambio" }] }],
+  });
+  check(
+    "la prosa sin fórmula no se cuela como enunciado",
+    soloProsa.get("concepto") === undefined,
+    `obtenido: ${soloProsa.get("concepto") ?? "ninguno"}`,
+  );
+
+}
+
+{
+  const fuentePizarra2 = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const fuenteAula2 = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+
+  // La tarjeta de arriba se pinta por entrar en la fase, no por haber pasos.
+  check(
+    "la tarjeta de EJERCICIO no está condicionada al desarrollo",
+    /\{\(ejercicio \|\| planteaEjercicio\) && \(/.test(fuentePizarra2),
+  );
+  // Y la de abajo sigue oculta mientras no haya nada que desarrollar.
+  check(
+    "la tarjeta de DESARROLLO permanece oculta hasta que hay pasos",
+    /\{pasos\.length > 0 && \(/.test(fuentePizarra2),
+  );
+  // El orden importa: el planteamiento arriba, el procedimiento debajo.
+  check(
+    "el enunciado se compone por encima del desarrollo",
+    fuentePizarra2.indexOf("(ejercicio || planteaEjercicio)") <
+      fuentePizarra2.indexOf("{pasos.length > 0"),
+  );
+  // En una fase con ejercicio los pasos no se degradan a "paso suelto".
+  check(
+    "en una fase con ejercicio los pasos van al desarrollo, no sueltos",
+    /if \(!planteaEjercicio\) \{[\s\S]{0,200}pasoSuelto: desarrollo\.length > 0/.test(fuentePizarra2),
+  );
+  // Último recurso: el enunciado que viaja dentro de la pregunta.
+  check(
+    "aula.tsx rescata el enunciado de la pregunta al alumno",
+    /askAnswer:[\s\S]{0,320}fijarEjercicio\(String\(textoPregunta/.test(fuenteAula2),
+  );
+  // Y si la fase no trae enunciado, se usa el que el alumno tiene entre manos.
+  check(
+    "al abrir una fase con ejercicio se recurre al ejercicio activo",
+    /enunciadoPorFase\.current\.get\(clave\) \|\| conversacion\.current\.ejercicio/.test(fuenteAula2),
+  );
+}
+
+// ── "Explicar regla" no puede vaciar la pizarra ──────────────────────────────
+// Toda petición borra el desarrollo. Si el alumno pulsaba el botón mientras el
+// tutor narraba —con la tarjeta de enunciado todavía sin rellenar—, ese borrado
+// dejaba la escena sin nada, y la aclaración es prosa: va al subtítulo, no al
+// lienzo. La fase quedaba abierta y la pizarra en blanco hasta el final.
+console.log("\n · Los botones de apoyo no dejan la pizarra vacía");
+
+{
+  const casos = [
+    {
+      nombre: "con la tarjeta vacía, la práctica recupera su enunciado",
+      entrada: { enTarjeta: null, deLaFase: "3x⁴ - 2x²", activo: "3x⁴ - 2x²", planteaEjercicio: true },
+      esperado: "3x⁴ - 2x²",
+    },
+    {
+      nombre: "sin enunciado de fase, vale el ejercicio activo",
+      entrada: { enTarjeta: null, deLaFase: null, activo: "5x²", planteaEjercicio: true },
+      esperado: "5x²",
+    },
+    {
+      // El activo es el de la práctica: usarlo en el ejemplo cambiaría el
+      // enunciado por otro que el alumno no tiene delante.
+      nombre: "el ejemplo conserva el suyo, no toma el de la práctica",
+      entrada: { enTarjeta: "x²", deLaFase: "x²", activo: "5x²", planteaEjercicio: true },
+      esperado: "x²",
+    },
+    {
+      nombre: "una tarjeta desfasada se refresca",
+      entrada: { enTarjeta: "2x", deLaFase: "5x²", activo: "5x²", planteaEjercicio: true },
+      esperado: "5x²",
+    },
+    {
+      nombre: "sin nada conocido, se conserva lo que hubiera",
+      entrada: { enTarjeta: "x²", deLaFase: null, activo: null, planteaEjercicio: true },
+      esperado: "x²",
+    },
+    {
+      nombre: "Concepto y Reglas siguen sin tarjeta de ejercicio",
+      entrada: { enTarjeta: null, deLaFase: "x²", activo: "x²", planteaEjercicio: false },
+      esperado: null,
+    },
+  ];
+  for (const c of casos) {
+    const obtenido = enunciadoTrasPeticion(c.entrada);
+    check(c.nombre, obtenido === c.esperado, `obtenido: ${obtenido} · esperado: ${c.esperado}`);
+  }
+
+  // "Explicar regla" es un seguimiento que sólo aclara: se anexa a la escena en
+  // curso. Si se tratara como lección nueva, borraría la pizarra entera.
+  check(
+    "«Explicar regla» se anexa a la fase en curso, no la reinicia",
+    presentacionDe({ modulos: [{ id: "regla" }] }, { esSeguimiento: true, soloExplicacion: true }) ===
+      "anexar",
+  );
+
+  const fuenteAula3 = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  // El enunciado que sobrevive al vaciado lo decide la función comprobada
+  // arriba, no una condición escrita a mano en el componente.
+  check(
+    "aula.tsx decide el enunciado con la regla verificada",
+    /enunciadoTrasPeticion\(\{[\s\S]{0,320}planteaEjercicio:/.test(fuenteAula3),
+  );
+  // Y con la pizarra vacía no se suprime la apertura de fases: si no, una
+  // aclaración anexaría a una pizarra que no existe y nada volvería a abrirla.
+  check(
+    "con la pizarra vacía, una aclaración no bloquea la apertura de fase",
+    /esAyuda\.current = presentacion !== "reiniciar" && fasesRef\.current\.length > 0;/.test(
+      fuenteAula3,
+    ),
+  );
+}
+
+// ── Estado del ejercicio, desacoplado del ciclo de desarrollo ────────────────
+// El ejercicio y el desarrollo son estados INDEPENDIENTES del aula y llegan a
+// la pizarra en props separadas. Mientras el enunciado colgaba de la fase,
+// cualquier cambio en el desarrollo pasaba por la misma estructura que la
+// tarjeta de arriba: bastaba con no vaciarla a tiempo para que el enunciado se
+// quedara anclado al ejercicio anterior o desapareciera con los pasos.
+console.log("\n · El ejercicio no depende del ciclo de desarrollo");
+
+{
+  const fuenteP = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const fuenteA = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+
+  check(
+    "la pizarra recibe el ejercicio y el desarrollo en props separadas",
+    /ejercicio: LineaPizarra \| null;/.test(fuenteP) && /desarrollo: LineaPizarra\[\];/.test(fuenteP),
+  );
+  // La fase es sólo identidad: si volviera a llevar contenido dentro, el
+  // desacoplamiento se deshace sin que ninguna prueba de comportamiento lo note.
+  const fase = fuenteP.match(/export interface FaseAbierta \{[\s\S]*?\}/);
+  check(
+    "una fase abierta es sólo identidad, sin contenido dentro",
+    Boolean(fase) && !/ejercicio|pasos/.test(fase[0]),
+    `obtenido: ${fase?.[0].replace(/\s+/g, " ") ?? "no declarada"}`,
+  );
+  check(
+    "el aula gobierna los tres estados por separado",
+    /useState<FaseAbierta\[\]>\(\[\]\)/.test(fuenteA) &&
+      /useState<LineaPizarra \| null>\(null\)/.test(fuenteA) &&
+      /useState<LineaPizarra\[\]>\(\[\]\)/.test(fuenteA),
+  );
+  // Al entrar en la fase, el ejercicio queda puesto y el desarrollo a cero, en
+  // el mismo instante: la tarjeta de arriba no espera a ninguna directiva.
+  check(
+    "al abrir la fase se fija el ejercicio y se vacía el desarrollo",
+    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,200}setDesarrollo\(\[\]\);/.test(
+      fuenteA,
+    ),
+  );
+  // Sustitución, no concatenación: entre peticiones el array se reemplaza.
+  const concatenaciones = (fuenteA.match(/setDesarrollo\(\(prev\) => \[\.\.\.prev/g) ?? []).length;
+  check(
+    "el desarrollo sólo se concatena al escribir un paso, nunca entre peticiones",
+    concatenaciones === 1,
+    `concatenaciones encontradas: ${concatenaciones}`,
+  );
+  const reemplazos = (fuenteA.match(/setDesarrollo\(\[\]\)/g) ?? []).length;
+  check(
+    "el desarrollo se reemplaza al abrir fase, al pedir y al cambiar de ejercicio",
+    reemplazos >= 3,
+    `reemplazos encontrados: ${reemplazos}`,
+  );
+}
+
+// ── Módulo 5 · alcance del validador determinista ────────────────────────────
+// El motor sólo cubría la diferencia de cuadrados, así que un trinomio —el
+// ejercicio de factorización más común, y lo que genera el modelo en vivo— se
+// devolvía como "no verificable" y la práctica se quedaba sin calificar. Se
+// amplía a factor común y trinomios con raíces enteras, sin aflojar la regla de
+// no calificar lo que no se puede calcular.
+console.log("\n · Factorización: alcance del motor determinista");
+
+{
+  const factorizaciones = [
+    // Diferencia de cuadrados: lo que ya estaba, intacto.
+    { entrada: "x² - 9", esperado: "(x - 3)(x + 3)" },
+    { entrada: "4x² - 25", esperado: "(2x - 5)(2x + 5)" },
+    { entrada: "2x² - 8", esperado: "2(x - 2)(x + 2)" },
+    // Factor común.
+    { entrada: "x² + 7x", esperado: "x(x + 7)" },
+    { entrada: "3x² - 6x", esperado: "3x(x - 2)" },
+    // Trinomios con raíces enteras.
+    { entrada: "x² + 5x + 6", esperado: "(x + 2)(x + 3)" },
+    { entrada: "x² - 5x + 6", esperado: "(x - 3)(x - 2)" },
+    { entrada: "2x² + 10x + 12", esperado: "2(x + 2)(x + 3)" },
+    // Raíz doble: se compone como cuadrado, que es como se enseña.
+    { entrada: "x² - 10x + 25", esperado: "(x - 5)²" },
+  ];
+  for (const c of factorizaciones) {
+    const obtenido = resolverEjercicio(c.entrada, "factorizacion");
+    check(
+      `factoriza «${c.entrada}» → ${c.esperado}`,
+      obtenido === c.esperado,
+      `obtenido: ${obtenido}`,
+    );
+  }
+
+  // Y lo que NO tiene solución entera sigue sin calificarse: inventar una
+  // factorización aproximada es justo la alucinación que este módulo evita.
+  for (const fuera of ["x² + 2x + 5", "x³ + 1", "x² + x + 1"]) {
+    check(
+      `«${fuera}» queda sin calificar, no se inventa`,
+      resolverEjercicio(fuera, "factorizacion") == null,
+      `obtenido: ${resolverEjercicio(fuera, "factorizacion")}`,
+    );
+  }
+}
+
+// ── Módulo 9 · el alumno no pierde por la forma de escribirlo ────────────────
+// Un falso negativo —marcar mal una respuesta correcta— es peor que no
+// calificar: el alumno pierde la confianza en el corrector.
+console.log("\n · Corrección: formas equivalentes de una factorización");
+
+{
+  const equivalentes = [
+    ["(x + 3)(x + 2)", "(x + 2)(x + 3)", "el orden de los factores no cuenta"],
+    ["(x - 5)(x - 5)", "(x - 5)²", "el cuadrado y el producto repetido son lo mismo"],
+    ["(x - 5)^2", "(x - 5)²", "da igual el acento circunflejo que el superíndice"],
+    ["(x + 7)x", "x(x + 7)", "el factor común puede ir delante o detrás"],
+    ["x·(x + 7)", "x(x + 7)", "el punto de multiplicar es opcional"],
+    ["(2x - 4)(2x + 4)", "4(x - 2)(x + 2)", "el factor común sacado o dentro"],
+  ];
+  for (const [alumno, esperada, motivo] of equivalentes) {
+    check(
+      `«${alumno}» se acepta para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === true,
+    );
+  }
+
+  const distintas = [
+    ["(x + 7)", "x(x + 7)", "falta el factor común"],
+    ["(x + 2)(x + 4)", "(x + 2)(x + 3)", "un factor equivocado"],
+    ["x² - 10x + 25", "(x - 5)²", "sin factorizar no es la respuesta"],
+    ["(x - 2)(x + 2)", "2(x - 2)(x + 2)", "falta el coeficiente"],
+  ];
+  for (const [alumno, esperada, motivo] of distintas) {
+    check(
+      `«${alumno}» se rechaza para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === false,
+    );
+  }
+}
+
+// ── El motor lee la expresión entera, nunca un trozo ─────────────────────────
+// "x² - 4x - 21" empezaba por "x² - 4" y la búsqueda parcial lo daba por una
+// diferencia de cuadrados: se calificaba con (x - 2)(x + 2), la respuesta de
+// otro ejercicio. Un veredicto inventado con toda la apariencia de correcto,
+// que es exactamente lo que el validador determinista existe para evitar.
+console.log("\n · Factorización: la expresión se lee entera");
+
+{
+  const trampas = [
+    { entrada: "x² - 4x - 21", esperado: "(x - 7)(x + 3)" },
+    { entrada: "x² - 4x - 32", esperado: "(x - 8)(x + 4)" },
+    { entrada: "x² - 9x + 20", esperado: "(x - 5)(x - 4)" },
+    { entrada: "4x² - 16x", esperado: "4x(x - 4)" },
+  ];
+  for (const t of trampas) {
+    const obtenido = resolverEjercicio(t.entrada, "factorizacion");
+    check(
+      `«${t.entrada}» no se confunde con su principio`,
+      obtenido === t.esperado,
+      `obtenido: ${obtenido} · esperado: ${t.esperado}`,
+    );
+  }
+  // La forma completamente factorizada: "(6x - 10)(6x + 10)" es cierta pero
+  // deja un factor común dentro, y en una clase de factorización eso es media
+  // respuesta.
+  check(
+    "la diferencia de cuadrados se devuelve del todo factorizada",
+    resolverEjercicio("36x² - 100", "factorizacion") === "4(3x - 5)(3x + 5)",
+    `obtenido: ${resolverEjercicio("36x² - 100", "factorizacion")}`,
+  );
+}
+
+// ── La pista no sobrevive al acierto ─────────────────────────────────────────
+// Al responder bien, el alumno veía el "¡Correcto! Continuemos." en verde y,
+// justo encima, la caja roja con la pista del intento anterior. Llega por dos
+// caminos y hay que cerrar los dos: la corrección del servidor puede no llegar
+// —sesión caducada, un 401, un fallo de red— y dejar el veredicto viejo tal
+// cual, o llegar después de que el motor local haya cantado el acierto.
+console.log("\n · Retroalimentación: la pista no sobrevive al acierto");
+
+{
+  const conPista = {
+    correcto: false,
+    verificable: true,
+    pista: "Para derivar una potencia, baja el exponente y réstale uno.",
+  };
+  check(
+    "al acertar se retira la pista del intento anterior",
+    veredictoTrasAcierto(conPista) === null,
+  );
+  check(
+    "la caja de ayuda no se compone sobre un veredicto correcto",
+    hayQueMostrarAyuda({ correcto: true, verificable: true }) === false,
+  );
+  // Pero la confirmación del servidor SÍ se conserva: es la que dice que el
+  // acierto está comprobado contra la solución recalculada, no sólo cantado
+  // por el motor local.
+  const acierto = { correcto: true, verificable: true };
+  check(
+    "el veredicto correcto del servidor se conserva",
+    veredictoTrasAcierto(acierto) === acierto,
+  );
+  check(
+    "sin nada que decir no se compone caja de ayuda",
+    hayQueMostrarAyuda({ correcto: false, verificable: true }) === false,
+  );
+  check(
+    "con pista y sin acierto, la ayuda sí se compone",
+    hayQueMostrarAyuda(conPista) === true,
+  );
+  // Un ejercicio que el motor no cubre no es un fallo del alumno: se explica,
+  // sin pintarlo como error.
+  check(
+    "un ejercicio no verificable muestra su mensaje",
+    hayQueMostrarAyuda({ correcto: null, verificable: false, mensaje: "Fuera de alcance." }) === true,
+  );
+
+  const fuenteAulaR = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "aula.tsx limpia la pista en cuanto el motor canta el acierto",
+    /if \(ok\) setVeredicto\(veredictoTrasAcierto\);/.test(fuenteAulaR),
+  );
+  check(
+    "aula.tsx retira la pista antes de mandar el intento siguiente",
+    /pertenece al intento que la provoc[\s\S]{0,160}setVeredicto\(null\);/.test(fuenteAulaR),
+  );
+  // Y la cara opuesta: el mensaje del tutor tampoco acompaña al ejercicio
+  // siguiente. Un "¡Correcto!" bajo un enunciado nuevo es el mismo fallo.
+  check(
+    "aula.tsx limpia el mensaje del tutor al plantear la pregunta siguiente",
+    /setVeredicto\(null\);\s*\n\s*setFeedback\(null\);\s*\n\s*resolverRespuesta\.current = resolve;/.test(
+      fuenteAulaR,
+    ),
+  );
+}
+
+// ── Aritmética en columna ────────────────────────────────────────────────────
+// En primaria una suma no se escribe "24 + 17": se escribe en vertical, con las
+// unidades bajo las unidades y la llevada encima. En horizontal el alumno ve
+// una expresión que todavía no sabe leer y se pierde justo lo que se le está
+// enseñando, que es alinear las cifras por su valor posicional.
+console.log("\n · Sumas y restas dispuestas en columna");
+
+{
+  // Lo que SÍ se dispone en columna, y lo que no.
+  const seDispone = ["24 + 17", "19 + 45 = ?", "147 + 285", "52 - 27", "152 - 87", "845 - 210"];
+  for (const linea of seDispone) {
+    check(
+      `«${linea}» se dispone en columna`,
+      columnaDeLinea(linea, { conResultado: false }) != null,
+    );
+  }
+
+  const noSeDispone = [
+    ["unidades: 4 + 7 = 11", "es el relato de UNA columna, no la operación"],
+    ["decenas: 2 + 1 + 1 = 4", "ídem"],
+    ["24 + 17 = 40", "el resultado declarado no cuadra"],
+    ["12 - 30", "una resta negativa no se enseña así"],
+    ["3 · 4", "la multiplicación no es una suma en columna"],
+    ["1/2 + 1/4", "fracciones, no naturales"],
+    ["2x + 5 = 15", "una ecuación no es una cuenta"],
+    ["3x⁴ - 2x²", "un polinomio tampoco"],
+  ];
+  for (const [linea, motivo] of noSeDispone) {
+    check(
+      `«${linea}» se deja como está: ${motivo}`,
+      columnaDeLinea(linea, { conResultado: false }) == null,
+      `obtenido: ${columnaDeLinea(linea, { conResultado: false })}`,
+    );
+  }
+
+  // Las llevadas, que son el motivo de disponerlo así.
+  const llevadas = [
+    { linea: "24 + 17", esperado: ["1", ""] },
+    { linea: "147 + 285", esperado: ["1", "1", ""] },
+    { linea: "31 + 46", esperado: ["", ""] },
+    // En la resta, la marca es la cifra del minuendo ya rebajada por el
+    // préstamo: lo mismo que narra el tutor ("decenas: 4 - 2 = 2").
+    { linea: "52 - 27", esperado: ["4", ""] },
+    { linea: "152 - 87", esperado: ["0", "4", ""] },
+    { linea: "845 - 210", esperado: ["", "", ""] },
+  ];
+  for (const caso of llevadas) {
+    const op = leerSumaOResta(caso.linea);
+    const marcas = marcasDeColumna(op, caso.esperado.length);
+    check(
+      `«${caso.linea}» lleva [${caso.esperado.map((m) => m || "·").join(" ")}]`,
+      marcas.join("|") === caso.esperado.join("|"),
+      `obtenido: [${marcas.map((m) => m || "·").join(" ")}]`,
+    );
+  }
+
+  // Y lo importante: que KaTeX lo componga de verdad. Un LaTeX que no compila
+  // no se ve como un error, se ve como un hueco en la pizarra.
+  for (const linea of seDispone) {
+    for (const conResultado of [false, true]) {
+      const tex = columnaDeLinea(linea, { conResultado });
+      let compone = true;
+      try {
+        katex.renderToString(tex, { throwOnError: true, strict: false });
+      } catch (e) {
+        compone = false;
+        console.log(`      KaTeX: ${e.message}`);
+      }
+      check(
+        `KaTeX compone «${linea}»${conResultado ? " resuelta" : " planteada"}`,
+        compone,
+        tex,
+      );
+    }
+  }
+
+  // El planteamiento NO lleva el total: es lo que el alumno tiene delante
+  // cuando le toca resolverla, y con el resultado puesto no habría ejercicio.
+  const planteada = columnaDeLinea("19 + 45 = ?", { conResultado: false });
+  check(
+    "la operación planteada no adelanta el resultado",
+    !planteada.includes("6") || !planteada.includes("4 \\\\ \\hline  & 6"),
+    planteada,
+  );
+  check(
+    "la operación planteada lleva su raya, para saber dónde escribir",
+    planteada.includes("\\hline"),
+  );
+  const resuelta = columnaDeLinea("24 + 17", { conResultado: true });
+  check(
+    "la operación resuelta lleva el total bajo la raya",
+    /\\hline\s+&\s+4\s+&\s+1\s+\\end\{array\}/.test(resuelta),
+    resuelta,
+  );
+  check(
+    "la operación resuelta lleva la llevada encima",
+    resuelta.includes("\\scriptstyle 1"),
+    resuelta,
+  );
+
+  // Una columna por cifra: es lo que permite poner la llevada justo encima de
+  // la columna que la genera. Con el número entero en una celda, la llevada
+  // queda al lado y no encima.
+  check(
+    "hay una columna por cifra, más la del signo",
+    columnaDeLinea("147 + 285", { conResultado: true }).startsWith("\\begin{array}{rccc}"),
+    columnaDeLinea("147 + 285", { conResultado: true }),
+  );
+
+  // Fuente: la pizarra tiene que pedir la disposición en los dos sitios.
+  const fuenteP2 = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la tarjeta de EJERCICIO compone la operación planteada",
+    /columna="planteamiento"/.test(fuenteP2),
+  );
+  check(
+    "el desarrollo compone la cuenta resuelta",
+    /columna: "resuelta"/.test(fuenteP2),
+  );
+  // Y sólo en el ejemplo: en la práctica, el total es la respuesta.
+  check(
+    "la cuenta resuelta sólo se compone en el ejemplo",
+    /esFaseDeEjemplo\(actual\.id\) && desarrollo\.length > 0[\s\S]{0,1500}columna: "resuelta"/.test(
+      fuenteP2,
+    ),
+  );
+  check(
+    "la cuenta resuelta espera a que estén narradas todas las columnas",
+    /desarrollo\.length >= columnas/.test(fuenteP2),
+  );
+}
+
+// ── Punta a punta: toda línea de pizarra se compone ──────────────────────────
+// La queja recurrente es "errores de renderizado en cada iteración". Aquí se
+// recorre la lección REAL de los cinco temas y se compone cada línea por el
+// MISMO camino que sigue la interfaz: primero la disposición en columna, luego
+// la notación formal, y si no, la traducción a LaTeX cuando la línea no lleva
+// palabras. Lo que la pizarra vaya a componer, se compone aquí antes.
+console.log("\n · Punta a punta: cada línea de la pizarra se compone");
+
+{
+  /** La misma decisión que toma LineaRenderizada, sin montar React. */
+  const latexDeLinea = (texto, columna) =>
+    (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
+    ?? notacionFormal(texto)
+    ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
+
+  let compuestas = 0;
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const modulos = datos?.lsg?.modulos ?? [];
+
+    check(`[${tema.clave}] la lección llega con sus fases`, modulos.length > 0);
+
+    for (const modulo of modulos) {
+      const id = String(modulo.id ?? "");
+      const pizarras = (modulo.directivas ?? [])
+        .filter((d) => d.tipo === "pizarra")
+        .map((d) => String(d.contenido ?? "").trim())
+        .filter(Boolean);
+
+      for (const [indice, texto] of pizarras.entries()) {
+        // La primera línea de una fase con ejercicio va a la tarjeta de
+        // EJERCICIO, que la compone en columna cuando es una cuenta.
+        const enTarjeta = indice === 0 && /ejemplo|practica/.test(id);
+        const latex = latexDeLinea(texto, enTarjeta ? "planteamiento" : undefined);
+        if (!latex) continue; // es prosa: se compone como texto, no como fórmula
+
+        compuestas++;
+        let bien = true;
+        let motivo = "";
+        try {
+          katex.renderToString(latex, { throwOnError: true, strict: false });
+        } catch (e) {
+          bien = false;
+          motivo = String(e.message).slice(0, 120);
+        }
+        check(
+          `[${tema.clave}] «${texto}» se compone`,
+          bien,
+          `${motivo} · latex: ${latex}`,
+        );
+      }
+    }
+  }
+
+  check(
+    "el recorrido ha compuesto fórmulas de verdad, no cero",
+    compuestas >= 15,
+    `compuestas: ${compuestas}`,
   );
 }
 
