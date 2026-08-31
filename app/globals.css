@@ -134,3 +134,29 @@
   overflow-y: hidden;
   padding: 0.25rem 0;
 }
+
+/* Coeficiente y exponente resaltados en el ejemplo paso a paso.
+
+   El tutor los nombra al hablar —"el coeficiente 5, el exponente 2"— y sin
+   marcarlos el alumno no sabe a cuál de las cifras se refiere. El color vive
+   aquí, y no escrito dentro de la fórmula, para que siga al tema: un color fijo
+   elegido para fondo claro se pierde sobre el oscuro.
+
+   Las clases las pone KaTeX con \htmlClass desde lib/leccion/destacar.ts. */
+.pz-coeficiente {
+  color: hsl(221 83% 45%);
+  font-weight: 700;
+}
+
+.pz-exponente {
+  color: hsl(25 95% 40%);
+  font-weight: 700;
+}
+
+.dark .pz-coeficiente {
+  color: hsl(213 94% 72%);
+}
+
+.dark .pz-exponente {
+  color: hsl(38 96% 60%);
+}

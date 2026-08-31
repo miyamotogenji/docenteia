@@ -186,6 +186,18 @@ export function Aula({
   const [fases, setFases] = useState<FaseAbierta[]>([]);
   const [ejercicio, setEjercicio] = useState<LineaPizarra | null>(null);
   const [desarrollo, setDesarrollo] = useState<LineaPizarra[]>([]);
+  /**
+   * De qué fase es el contenido que hay ahora mismo en el ejercicio y en el
+   * desarrollo.
+   *
+   * Al cambiar de fase, la vista saliente y la entrante conviven durante la
+   * transición. Sin decir a quién pertenece cada cosa, el contenido nuevo podía
+   * pintarse un instante bajo el rótulo de la fase vieja —o al revés— y eso es
+   * el parpadeo: un recuadro que aparece un milisegundo y desaparece de golpe.
+   * Con la marca, la pizarra sólo compone el contenido de la fase que está
+   * pintando.
+   */
+  const [faseDelContenido, setFaseDelContenido] = useState("");
   const [resaltado, setResaltado] = useState<string | null>(null);
   const [subtitulo, setSubtitulo] = useState("");
   const [controles, setControles] = useState<EstadoControles>({
@@ -213,6 +225,7 @@ export function Aula({
     setFases([]);
     setEjercicio(null);
     setDesarrollo([]);
+    setFaseDelContenido("");
   }, []);
 
   /** Abre una fase genérica cuando el motor escribe sin haber anunciado ninguna. */
@@ -220,6 +233,7 @@ export function Aula({
     if (fasesRef.current.length > 0) return;
     fasesRef.current = [{ id: "leccion", titulo: "Lección" }];
     setFases(fasesRef.current);
+    setFaseDelContenido("leccion");
   }, []);
 
   /** ¿La fase abierta plantea un ejercicio al alumno? */
@@ -314,6 +328,9 @@ export function Aula({
 
       fasesRef.current = [...abiertas, { id: clave, titulo: tituloDeFase(clave) }];
       setFases(fasesRef.current);
+      // En el mismo lote que la fase: el contenido que viene a continuación es
+      // suyo, y el de la fase anterior deja de pintarse en el mismo instante.
+      setFaseDelContenido(clave);
 
       // El enunciado se conoce desde que llegó la lección; y si esta fase no lo
       // trae, vale el que el alumno tiene entre manos. En una fase de ejercicio
@@ -865,6 +882,7 @@ export function Aula({
             fases={fases}
             ejercicio={ejercicio}
             desarrollo={desarrollo}
+            faseDelContenido={faseDelContenido}
             resaltado={resaltado}
             reglas={reglasDelTema}
             reglaDetectada={reglaDetectada}

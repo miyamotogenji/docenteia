@@ -53,6 +53,7 @@ import {
   leerSumaOResta,
   marcasDeColumna,
 } from "../lib/leccion/columna.ts";
+import { lineaResaltada } from "../lib/leccion/destacar.ts";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -1832,6 +1833,151 @@ console.log("\n · Punta a punta: cada línea de la pizarra se compone");
     "el recorrido ha compuesto fórmulas de verdad, no cero",
     compuestas >= 15,
     `compuestas: ${compuestas}`,
+  );
+}
+
+// ── El contenido no se pinta bajo otra fase ──────────────────────────────────
+// Al cambiar de fase, la vista saliente y la entrante conviven durante la
+// transición. Sin decir a quién pertenece cada cosa, el contenido de una podía
+// componerse un instante bajo el rótulo de la otra: eso es el parpadeo, un
+// recuadro que asoma un milisegundo y desaparece de golpe.
+console.log("\n · La transición de fase no deja recuadros residuales");
+
+{
+  const fuentePz = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const fuenteAu = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+
+  check(
+    "el contenido viaja marcado con la fase a la que pertenece",
+    /faseDelContenido: string;/.test(fuentePz) && /faseDelContenido=\{faseDelContenido\}/.test(fuenteAu),
+  );
+  check(
+    "la pizarra sólo compone el contenido de la fase que pinta",
+    /const propio = actual != null && faseDelContenido === actual\.id;/.test(fuentePz) &&
+      /const ejercicio = propio \? ejercicioRecibido : null;/.test(fuentePz),
+  );
+  // La marca cambia en el MISMO lote que la fase: si fuera después, quedaría un
+  // render intermedio con la fase nueva y el contenido viejo, que es el fallo.
+  check(
+    "la marca se actualiza en el mismo lote que la fase",
+    /setFases\(fasesRef\.current\);[\s\S]{0,260}setFaseDelContenido\(clave\);/.test(fuenteAu),
+  );
+  check(
+    "al limpiar la pizarra no queda contenido con dueño",
+    /setDesarrollo\(\[\]\);\s*\n\s*setFaseDelContenido\(""\);/.test(fuenteAu),
+  );
+  // Una salida anidada dentro de un contenedor que a su vez sale encadena dos
+  // desmontajes, y el de dentro se ve como un recuadro que asoma y desaparece.
+  const presencias = (fuentePz.match(/<AnimatePresence/g) ?? []).length;
+  check(
+    "no hay más AnimatePresence de los necesarios",
+    presencias === 2,
+    `encontrados: ${presencias}`,
+  );
+  check(
+    "el paso suelto ya no lleva su propia animación de salida",
+    !/exit=\{\{ opacity: 0, y: -10 \}\}/.test(fuentePz),
+  );
+}
+
+// ── El coeficiente y el exponente se ven, no sólo se oyen ────────────────────
+// En el ejemplo paso a paso el tutor los nombra uno a uno —"el coeficiente 5,
+// la variable x, el exponente 2"—, pero la expresión se veía plana y el alumno
+// tenía que adivinar a cuál de las tres cifras se refería.
+console.log("\n · Coeficiente y exponente resaltados en el ejemplo");
+
+{
+  const resaltados = [
+    { entrada: "5x²", coeficientes: ["5"], exponentes: ["2"] },
+    { entrada: "x²", coeficientes: [], exponentes: ["2"] },
+    { entrada: "3x⁴ - 2x²", coeficientes: ["3", "2"], exponentes: ["4", "2"] },
+    { entrada: "12x³ - 4x", coeficientes: ["12", "4"], exponentes: ["3"] },
+    { entrada: "5x² = 10x", coeficientes: ["5", "10"], exponentes: ["2"] },
+  ];
+  for (const caso of resaltados) {
+    const latex = lineaResaltada(caso.entrada);
+    const marcados = (patron) => [...(latex ?? "").matchAll(patron)].map((m) => m[1]);
+    const coef = marcados(/\\htmlClass\{pz-coeficiente\}\{([^}]*)\}/g);
+    const exp = marcados(/\\htmlClass\{pz-exponente\}\{([^}]*)\}/g);
+    check(
+      `«${caso.entrada}» marca coeficientes [${caso.coeficientes.join(",")}] y exponentes [${caso.exponentes.join(",")}]`,
+      coef.join("|") === caso.coeficientes.join("|") && exp.join("|") === caso.exponentes.join("|"),
+      `obtenido: coef [${coef.join(",")}] exp [${exp.join(",")}]`,
+    );
+  }
+
+  // El coeficiente implícito NO se marca: en "x²" no hay un 1 escrito, y pintar
+  // uno que no está sería enseñar algo que el alumno no ve.
+  check(
+    "no se inventa el coeficiente implícito",
+    !(lineaResaltada("x²") ?? "").includes("pz-coeficiente"),
+    lineaResaltada("x²"),
+  );
+
+  // Lo que no es un polinomio de una variable se deja como está: marcar de más
+  // deja colores donde no tocan y confunde más que no marcar nada.
+  for (const fuera of ["unidades: 4 + 7 = 11", "Regla de la potencia", "1/2 + 1/4", "24 + 17", "7"]) {
+    check(
+      `«${fuera}» no se resalta`,
+      lineaResaltada(fuera) == null,
+      `obtenido: ${lineaResaltada(fuera)}`,
+    );
+  }
+
+  // Y KaTeX tiene que componerlo DE VERDAD, con las clases puestas: sin la
+  // opción `trust` el marcado se pierde en silencio y el resaltado no se ve.
+  const opcionesPizarra = { throwOnError: true, strict: false, trust: (c) => c.command === "\\htmlClass" };
+  for (const caso of resaltados) {
+    const latex = lineaResaltada(caso.entrada);
+    let clases = [];
+    let bien = true;
+    try {
+      const html = katex.renderToString(latex, opcionesPizarra);
+      clases = [...html.matchAll(/pz-(coeficiente|exponente)/g)].map((m) => m[1]);
+    } catch (e) {
+      bien = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(
+      `KaTeX compone «${caso.entrada}» con sus marcas`,
+      bien && clases.length > 0,
+      `clases: ${clases.join(",")}`,
+    );
+  }
+
+  // El permiso está acotado a UN comando: el contenido de la lección lo redacta
+  // un modelo, y con `trust: true` a secas podría colar un enlace.
+  const conHref = katex.renderToString("\\href{https://ejemplo.com}{pulsa}", opcionesPizarra);
+  check(
+    "el permiso de KaTeX no deja pasar un enlace",
+    !/<a\s/i.test(conHref),
+  );
+  const fuentePz2 = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la pizarra acota el permiso a \\htmlClass, no lo abre entero",
+    /trust: \(contexto\) => contexto\.command === "\\\\htmlClass"/.test(fuentePz2) &&
+      !/trust: true/.test(fuentePz2),
+  );
+  // Sólo en el ejemplo: es donde el tutor nombra las partes una a una.
+  check(
+    "el resaltado se pide sólo en la fase de ejemplo",
+    /destacarTerminos=\{esFaseDeEjemplo\(actual\.id\)\}/.test(fuentePz2),
+  );
+  // El color vive en la hoja de estilos, para que siga al tema claro y oscuro.
+  const hoja = readFileSync(new URL("../app/globals.css", import.meta.url), "utf8");
+  check(
+    "el color del resaltado responde al tema claro y al oscuro",
+    /\.pz-coeficiente\s*\{/.test(hoja) && /\.dark \.pz-coeficiente\s*\{/.test(hoja) &&
+      /\.pz-exponente\s*\{/.test(hoja) && /\.dark \.pz-exponente\s*\{/.test(hoja),
   );
 }
 
