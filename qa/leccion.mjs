@@ -2164,6 +2164,93 @@ console.log("\n · La cuenta que se redibuja es UNA, y avanza");
   );
 }
 
+// ── La tarjeta de Reglas dice lo que dice la voz ─────────────────────────────
+// El tutor explicaba la suma columna por columna con llevada y en la pizarra
+// aparecía "Jerarquía de operaciones". La causa: en aritmética y en ecuaciones
+// lineales la fase de Reglas no ESCRIBÍA nada, así que la tarjeta caía en la
+// primera regla del catálogo, que no era la que se estaba enseñando.
+console.log("\n · La tarjeta de Reglas concuerda con la locución");
+
+{
+  // La regla que se enseña tiene que existir en el catálogo: si no, no hay
+  // tarjeta que mostrar y el respaldo vuelve a inventarse una.
+  const aritmeticas = (catalogo ?? []).filter((r) => r.tema === "ARITMETICA");
+  for (const nombre of ["Suma llevando", "Resta prestando"]) {
+    check(
+      `el catálogo tiene la regla «${nombre}», que es la que se enseña`,
+      aritmeticas.some((r) => r.nombre === nombre),
+      `catálogo: ${aritmeticas.map((r) => r.nombre).join(", ")}`,
+    );
+  }
+
+  // Y cada tema, en su fase de Reglas, escribe una línea que NOMBRA una regla
+  // suya. Es lo que ata la tarjeta a la locución; sin ella, la pizarra compone
+  // la primera del catálogo y cuenta otra cosa.
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const modulo = (datos?.lsg?.modulos ?? []).find((m) => esFaseDeReglas(String(m.id ?? "")));
+    if (!modulo) continue;
+
+    const escritas = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? "").trim())
+      .filter(Boolean);
+    const delTema = (catalogo ?? []).filter((r) => r.tema === tema.tema);
+    const nombrada = escritas.map((l) => identificarRegla(l, delTema)).find(Boolean);
+
+    check(
+      `[${tema.clave}] la fase de Reglas escribe algo en la pizarra`,
+      escritas.length > 0,
+      "sin línea propia, la tarjeta cae en la primera del catálogo",
+    );
+    check(
+      `[${tema.clave}] lo escrito nombra una regla del tema: ${nombrada?.nombre ?? "ninguna"}`,
+      Boolean(nombrada),
+      `escrito: ${escritas.join(" | ")}`,
+    );
+    // Y lo escrito cabe en la pizarra: pasarse de largo lo manda al subtítulo,
+    // y la fase se queda otra vez sin tarjeta propia.
+    for (const linea of escritas) {
+      check(`[${tema.clave}] «${linea}» cabe en la pizarra`, esIdeaFuerza(linea));
+    }
+  }
+}
+
+// ── Varias líneas en una directiva son varios pasos ─────────────────────────
+// Compuestas de una vez, los saltos se pierden y las líneas se pegan:
+// "19 + 45 = ?" seguido de "9 + 5 = 14" salía como "19 + 45 =?9 + 5 = 14".
+console.log("\n · Una directiva con varias líneas no se pega");
+
+{
+  const salto = String.fromCharCode(10);
+  const fuenteAuD = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "cada línea de una directiva se escribe por separado",
+    /contenido\.split\(\/\\r\?\\n\/\)\.map\(\(l\) => l\.trim\(\)\)\.filter\(Boolean\)/.test(fuenteAuD),
+  );
+  // Salvo la cuenta dibujada: ahí las varias líneas son una sola cosa.
+  check(
+    "la cuenta dibujada NO se parte en líneas sueltas",
+    /leerOperacionDibujada\(contenido\)\s*\n\s*\? \[contenido\]/.test(fuenteAuD),
+  );
+
+  // El dibujo sigue reconociéndose como una unidad.
+  const dibujada = ["19", "+ 45", "---", " 64"].join(salto);
+  check(
+    "un dibujo en columna se reconoce entero",
+    leerOperacionDibujada(dibujada) != null,
+  );
+  // Y un par de pasos sueltos NO se toma por un dibujo, así que se separan.
+  const dosPasos = ["19 + 45 = ?", "9 + 5 = 14"].join(salto);
+  check(
+    "dos pasos sueltos no se toman por un dibujo",
+    leerOperacionDibujada(dosPasos) == null,
+  );
+}
+
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` Aprobadas: ${ok} · Fallidas: ${fallos.length}`);

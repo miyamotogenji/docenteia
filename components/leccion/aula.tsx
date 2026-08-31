@@ -46,7 +46,11 @@ import {
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
-import { esLaMismaCuenta, leerSumaOResta } from "@/lib/leccion/columna";
+import {
+  esLaMismaCuenta,
+  leerOperacionDibujada,
+  leerSumaOResta,
+} from "@/lib/leccion/columna";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -393,10 +397,24 @@ export function Aula({
       // llegue por una directiva de pizarra: desde que las aclaraciones las
       // redacta el modelo en vivo, eso puede pasar.
       writeBoard: (texto) => {
-        const linea = String(texto ?? "").trim();
-        if (!linea) return;
-        if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
-        else setSubtitulo(linea);
+        const contenido = String(texto ?? "").trim();
+        if (!contenido) return;
+
+        // Una directiva puede traer VARIAS líneas. Compuestas de una vez, los
+        // saltos se pierden y las líneas se pegan: "19 + 45 = ?" seguido de
+        // "9 + 5 = 14" salía como "19 + 45 =?9 + 5 = 14". Cada línea es un paso
+        // y se escribe por separado.
+        //
+        // Salvo cuando el motor DIBUJA la cuenta en columna: ahí las varias
+        // líneas son una sola cosa, y separarlas la destruiría.
+        const lineas = leerOperacionDibujada(contenido)
+          ? [contenido]
+          : contenido.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+        for (const linea of lineas) {
+          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
+          else setSubtitulo(linea);
+        }
       },
       // La explicación hablada NO va a la pizarra. El motor la escribía además
       // de narrarla, así que el mismo párrafo aparecía dos veces: en el lienzo
