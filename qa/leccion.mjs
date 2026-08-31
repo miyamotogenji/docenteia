@@ -58,7 +58,12 @@ import {
   sinRayasDibujadas,
   tieneRayaDibujada,
 } from "../lib/leccion/columna.ts";
-import { lineaResaltada } from "../lib/leccion/destacar.ts";
+import {
+  CLASE_COEFICIENTE,
+  CLASE_EXPONENTE,
+  lineaResaltada,
+} from "../lib/leccion/destacar.ts";
+import { rotulosALatex } from "../lib/leccion/rotulos.ts";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -2175,7 +2180,7 @@ console.log("\n · La tarjeta de Reglas concuerda con la locución");
   // La regla que se enseña tiene que existir en el catálogo: si no, no hay
   // tarjeta que mostrar y el respaldo vuelve a inventarse una.
   const aritmeticas = (catalogo ?? []).filter((r) => r.tema === "ARITMETICA");
-  for (const nombre of ["Suma llevando", "Resta prestando"]) {
+  for (const nombre of ["Suma con llevada", "Resta con préstamo"]) {
     check(
       `el catálogo tiene la regla «${nombre}», que es la que se enseña`,
       aritmeticas.some((r) => r.nombre === nombre),
@@ -2249,6 +2254,106 @@ console.log("\n · Una directiva con varias líneas no se pega");
     "dos pasos sueltos no se toman por un dibujo",
     leerOperacionDibujada(dosPasos) == null,
   );
+}
+
+// ── La leyenda de color sólo aparece si hay algo marcado ────────────────────
+// En aritmética, bajo la suma en columna, se componía "coeficiente · exponente".
+// Una suma no tiene ni lo uno ni lo otro: el alumno leía dos palabras que no
+// señalaban nada. La leyenda no depende del tema sino de lo que hay marcado.
+console.log("\n · La leyenda de color sólo nombra lo que se marca");
+
+{
+  const casos = [
+    { entrada: "24 + 17", coeficiente: false, exponente: false, motivo: "una suma no tiene ni coeficiente ni exponente" },
+    { entrada: "5x²", coeficiente: true, exponente: true, motivo: "los tiene los dos" },
+    { entrada: "x²", coeficiente: false, exponente: true, motivo: "el coeficiente implícito no se marca" },
+    { entrada: "10x", coeficiente: true, exponente: false, motivo: "sin exponente escrito" },
+  ];
+  for (const caso of casos) {
+    const latex = lineaResaltada(caso.entrada) ?? "";
+    check(
+      `«${caso.entrada}»: ${caso.motivo}`,
+      latex.includes(CLASE_COEFICIENTE) === caso.coeficiente &&
+        latex.includes(CLASE_EXPONENTE) === caso.exponente,
+      `latex: ${latex || "(sin resaltar)"}`,
+    );
+  }
+
+  const fuentePzL = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la leyenda se compone por lo marcado, no por la fase",
+    /\{\(marcado\.coeficiente \|\| marcado\.exponente\) && \(/.test(fuentePzL),
+  );
+  check(
+    "cada palabra de la leyenda depende de su propia marca",
+    /\{marcado\.coeficiente && \(/.test(fuentePzL) && /\{marcado\.exponente && \(/.test(fuentePzL),
+  );
+}
+
+// ── Los números llevan su nombre debajo ─────────────────────────────────────
+// El tutor dice "24 y 17 son los SUMANDOS, y 41 es la SUMA", pero la pizarra
+// mostraba el esquema abstracto "sumando + sumando = suma", sin los números que
+// el alumno estaba oyendo: tenía que emparejarlos de memoria.
+console.log("\n · Cada número con su nombre debajo");
+
+{
+  const rotulados = [
+    { entrada: "24 [sumando] + 17 [sumando] = 41 [suma o total]", nombres: ["sumando", "sumando", "suma o total"] },
+    { entrada: "52 [minuendo] - 27 [sustraendo] = 25 [diferencia]", nombres: ["minuendo", "sustraendo", "diferencia"] },
+    { entrada: "6 [factor] × 7 [factor] = 42 [producto]", nombres: ["factor", "factor", "producto"] },
+  ];
+  for (const caso of rotulados) {
+    const latex = rotulosALatex(caso.entrada);
+    const puestos = [...(latex ?? "").matchAll(/\\text\{([^}]*)\}/g)].map((m) => m[1].replace(/\\ /g, " "));
+    check(
+      `«${caso.entrada}» rotula [${caso.nombres.join(", ")}]`,
+      puestos.join("|") === caso.nombres.join("|"),
+      `obtenido: [${puestos.join(", ")}]`,
+    );
+    let compone = true;
+    try {
+      katex.renderToString(latex, { throwOnError: true, strict: false });
+    } catch (e) {
+      compone = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(`KaTeX compone los rótulos de «${caso.entrada}»`, compone, latex ?? "sin latex");
+  }
+
+  // Y lo que no lleva rótulos se compone como siempre.
+  for (const sinMarcas of ["24 + 17 = 41", "partes: sumando + sumando = suma", "5x²"]) {
+    check(`«${sinMarcas}» no se toma por una línea rotulada`, rotulosALatex(sinMarcas) == null);
+  }
+  // Una frase con un corchete suelto tampoco: pasada por KaTeX saldría en
+  // cursiva y con las letras separadas.
+  check(
+    "una frase con corchetes no se compone como fórmula",
+    rotulosALatex("Cuando los números tienen varias cifras [nota] sumamos") == null,
+  );
+
+  // Contra el motor real: la fase de Concepto de las cuatro operaciones rotula
+  // los números del ejemplo que se está resolviendo, no unos genéricos.
+  for (const consulta of ["Enséñame a sumar", "Enséñame a restar"]) {
+    const datos = await consultar({ query: consulta });
+    const pizarras = (datos?.lsg?.modulos ?? [])
+      .flatMap((m) => m.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? ""));
+    const rotulada = pizarras.find((p) => rotulosALatex(p) != null);
+    check(
+      `[${consulta}] la pizarra rotula las partes sobre números reales`,
+      Boolean(rotulada) && /\d/.test(rotulada),
+      `pizarras: ${pizarras.join(" | ")}`,
+    );
+    check(
+      `[${consulta}] la línea rotulada cabe en la pizarra`,
+      rotulada != null && esIdeaFuerza(rotulada),
+      `linea: ${rotulada}`,
+    );
+  }
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────

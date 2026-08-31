@@ -748,6 +748,12 @@ const canonExpr = (s) => normDashes(String(s || "").toLowerCase())
 const cursorClave = (nombre, nivel) => (nombre ? `${nombre}:${NIVELES.includes(nivel) ? nivel : "normal"}` : "");
 const cursorMapa = (c) => (c && typeof c === "object" && !Array.isArray(c) ? c : null);
 // Siguiente posición: cursor+1 si hay cursor; si no, la deducida del texto (`fallback`).
+/** Dónde está el cursor AHORA, sin moverlo. Null si aún no hay ninguno. */
+function cursorActual(cursores, clave) {
+  const m = cursorMapa(cursores);
+  if (!m || !clave || !Number.isInteger(m[clave])) return null;
+  return m[clave];
+}
 function cursorSiguiente(cursores, clave, n, fallback) {
   const m = cursorMapa(cursores);
   if (!m || !clave || !Number.isInteger(m[clave])) return fallback;
@@ -827,9 +833,25 @@ const listaNivel = (listas, nivel) => listas[NIVELES.includes(nivel) ? nivel : "
 // ("otro ejemplo", "más fácil", "más difícil") rota dentro de la lista de ESE nivel con `evitar`.
 // `nombre` identifica el tema para el CURSOR de rotación (clave "tema:nivel"). Cada tema y cada nivel
 // llevan su propia posición, así que alternar entre temas o pedir "más difícil" no descoloca al otro.
-function elegirBoton(listas, { evitar, instancia, seguimiento, nivel, cursores } = {}, nombre = "", forma = null) {
+function elegirBoton(listas, { evitar, instancia, seguimiento, nivel, cursores, mantener, simplificacion } = {}, nombre = "", forma = null) {
   const lista = listaNivel(listas, nivel);
   const clave = cursorClave(nombre, nivel);
+
+  // El PRIMER "no entendí" mantiene el ejercicio. El alumno lo dice sobre el que
+  // tiene delante, y devolverle otro no responde a su duda: le cambia el
+  // problema. Se lee el cursor SIN avanzarlo, así que la lección se cuenta otra
+  // vez, más despacio, con las mismas cifras.
+  //
+  // Si INSISTE, sí cambia: a partir del segundo escalón el tutor baja a un
+  // ejercicio más sencillo, que es lo que se pidió con "bajar a un problema más
+  // fácil". Repetir cuatro veces lo mismo era el bucle del que ya se quejó.
+  if (mantener && cursores && !simplificacion) {
+    const idx = cursorActual(cursores, clave);
+    if (Number.isInteger(idx)) {
+      const i = ((idx % lista.length) + lista.length) % lista.length;
+      return { ejemplo: lista[i], practica: lista[practicaAcorde(lista, i, forma)] };
+    }
+  }
   if (!seguimiento && instancia) {
     // La práctica debe ser DISTINTA del ejemplo y VARIAR según la instancia. Antes se tomaba SIEMPRE el
     // primer preset (find → lista[0]), así que consultas concretas distintas ("resuelve 3x-7=8",
@@ -1068,30 +1090,30 @@ const ARIT = {
   suma: { escena: "suma_resuelta", lista: SUMAS, verbo: "sumar", pasos: pasosSuma,
     simple: ["Hazlo con los dedos o con objetos: si tienes 4 lápices y te dan 3 más, los cuentas todos y son 7. Sumar es solo eso, juntar y contar cuántos hay.", "Con números grandes es lo mismo, solo que por partes: primero juntas las unidades, luego las decenas. Si al juntar unidades te pasas de 9, esa decena que sobra la pasas a la columna de al lado. Nada más."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} y ${b} son los SUMANDOS, y ${r} es la SUMA o total.`,
-    rotuloPartes: "partes:  sumando + sumando = suma",
-    regla: "Suma llevando: si pasa de 9, llevo 1",
+    rotuloPartes: (a, b, r) => `${a} [sumando] + ${b} [sumando] = ${r} [suma o total]`,
+    regla: "Suma con llevada: si pasa de 9, llevo 1",
     rec: "suma columna por columna de derecha a izquierda; si una columna pasa de 9, escribes las unidades y llevas 1.", concepto: [
     "Sumar es JUNTAR cantidades para saber cuántas hay en total.", "Suma:  juntar cantidades → total",
     "Cuando los números tienen varias cifras, sumamos columna por columna, de derecha a izquierda (primero las unidades, luego las decenas…). Si una columna pasa de 9, escribimos la cifra de las unidades y LLEVAMOS 1 a la siguiente. Veámoslo con un ejemplo."] },
   resta: { escena: "resta_resuelta", lista: RESTAS, verbo: "restar", pasos: pasosResta,
     simple: ["Piénsalo como quitar: tienes 9 caramelos, te comes 5, ¿cuántos quedan? 4. Restar es solo eso, ver qué queda al quitar una parte.", "Con números grandes vas por columnas. Y si arriba tienes menos que abajo, le pides 1 a la columna de la izquierda, que vale 10 y te saca del apuro. Es como cambiar un billete de 10 en monedas para poder pagar."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} es el MINUENDO (de donde se quita), ${b} es el SUSTRAENDO (lo que se quita) y ${r} es la DIFERENCIA (lo que queda).`,
-    rotuloPartes: "partes:  minuendo − sustraendo = diferencia",
-    regla: "Resta prestando: si falta, pido 1 prestada",
+    rotuloPartes: (a, b, r) => `${a} [minuendo] - ${b} [sustraendo] = ${r} [diferencia]`,
+    regla: "Resta con préstamo: si falta, pido 1 a la izquierda",
     rec: "resta columna por columna de derecha a izquierda; si arriba hay menos que abajo, pides prestada una unidad (vale 10) a la columna de la izquierda.", concepto: [
     "Restar es QUITAR una cantidad de otra: cuánto queda al sacar una parte.", "Resta:  quitar una cantidad de otra",
     "Restamos columna por columna, de derecha a izquierda. Si arriba hay menos que abajo, pedimos PRESTADA una unidad a la columna de la izquierda, que vale 10. Veámoslo con un ejemplo."] },
   multiplicacion: { escena: "multiplicacion_resuelta", lista: MULTIS, verbo: "multiplicar", pasos: pasosMult,
     simple: ["Multiplicar es sumar lo mismo varias veces: 3 × 4 es 4 + 4 + 4, o sea 12. Si te bloqueas, súmalo y saldrá igual.", "Con un número de dos cifras, pártelo: 12 × 4 es 10 × 4 más 2 × 4, o sea 40 + 8 = 48. Partir el número en decenas y unidades lo vuelve fácil."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} y ${b} son los FACTORES, y ${r} es el PRODUCTO.`,
-    rotuloPartes: "partes:  factor × factor = producto",
+    rotuloPartes: (a, b, r) => `${a} [factor] × ${b} [factor] = ${r} [producto]`,
     rec: "descompón el número de dos cifras en decenas y unidades, multiplica cada parte y suma los resultados.", concepto: [
     "Multiplicar es SUMAR el mismo número varias veces: una forma rápida de sumar repetido.", "Multiplicar:  sumar el mismo número varias veces",
     "Para multiplicar por un número de dos cifras, lo descomponemos en decenas y unidades, multiplicamos por cada parte y sumamos. Veámoslo con un ejemplo."] },
   division: { escena: "division_resuelta", lista: DIVIS, verbo: "dividir", pasos: pasosDiv,
     simple: ["Dividir es repartir: 12 caramelos entre 3 niños, ¿cuántos a cada uno? 4. Reparte de uno en uno y cuenta cuántos le tocan a cada uno.", "Y hay un truco: la división es la multiplicación al revés. Para 84 ÷ 4, pregúntate qué número por 4 da 84. Si sabes multiplicar, ya sabes dividir."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} es el DIVIDENDO (lo que se reparte), ${b} es el DIVISOR (entre cuántos) y ${r} es el COCIENTE (lo que toca a cada uno).`,
-    rotuloPartes: "partes:  dividendo ÷ divisor = cociente",
+    rotuloPartes: (a, b, r) => `${a} [dividendo] ÷ ${b} [divisor] = ${r} [cociente]`,
     rec: "busca el número que, multiplicado por el divisor, da el total (la división es la inversa de multiplicar).", concepto: [
     "Dividir es REPARTIR una cantidad en partes iguales, o ver cuántas veces cabe un número en otro.", "Dividir:  repartir en partes iguales",
     "Dividir es la operación INVERSA de multiplicar: buscamos el número que, multiplicado por el divisor, da el total. Veámoslo con un ejemplo."] },
@@ -1187,7 +1209,12 @@ function aritmeticaLSG(opts, cfg) {
     // (minuendo, sustraendo y diferencia)". Es vocabulario básico del tema y no se enseñaba en
     // ninguna de las cuatro operaciones. Se dice sobre el ejemplo concreto que se va a resolver,
     // para que el nombre quede pegado a un número que el alumno está viendo.
-    if (cfg.rotuloPartes) dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes });
+    // Los nombres van sobre los NÚMEROS que el tutor acaba de decir, no sobre un
+    // esquema abstracto: el alumno oye "24 y 17 son los sumandos" y ve el 24 y
+    // el 17 rotulados, en vez de tener que emparejarlos de memoria.
+    if (cfg.rotuloPartes) {
+      dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes(...parseAB(E.texto), E.answer) });
+    }
     if (cfg.partes) dir.push({ tipo: "hablar", texto: cfg.partes(...parseAB(E.texto), E.answer) });
     dir.push({ tipo: "hablar", texto: cfg.concepto[2], _mod: "regla" });
     // La fase de Reglas ESCRIBE la regla que está explicando, como ya hacen
@@ -2293,8 +2320,7 @@ export function partesLSG(tema, opts = {}) {
     const [pregTxt, resp] = PREG_PARTES[tema](a, b);
     dir.push(
       { tipo: "hablar", texto: `Vamos a ver cómo se llama cada parte de una ${NOMBRE_PARTE[tema]}. Lo miramos sobre ${E.texto}.` },
-      { tipo: "pizarra", accion: "escribir", contenido: `${E.texto} ${eq} ${E.answer}` },
-      { tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes },
+      { tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes(a, b, E.answer) },
       { tipo: "hablar", texto: cfg.partes(a, b, E.answer) },
       { tipo: "hablar", texto: "Saber cómo se llama cada número te sirve para entender los enunciados: cuando te pidan «halla la diferencia» o «halla el producto», ya sabrás qué operación te están pidiendo." },
       { tipo: "preguntar", texto: pregTxt, respuesta: resp, esperar_respuesta: true, si_correcto: "felicitar", si_incorrecto: "mostrar_otro_ejemplo" },

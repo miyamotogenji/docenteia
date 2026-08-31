@@ -13,8 +13,13 @@ import {
   columnasDeOperacion,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
-import { lineaResaltada } from "@/lib/leccion/destacar";
+import {
+  CLASE_COEFICIENTE,
+  CLASE_EXPONENTE,
+  lineaResaltada,
+} from "@/lib/leccion/destacar";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
+import { rotulosALatex } from "@/lib/leccion/rotulos";
 import {
   esFaseDeConcepto,
   esFaseDeEjemplo,
@@ -193,6 +198,26 @@ export function Pizarra({
     return porPizarra ?? reglas[0];
   }, [actual, ejercicio, desarrollo, reglas, reglaDetectada]);
 
+  /**
+   * Qué partes se han marcado de verdad en el ejercicio.
+   *
+   * La leyenda no depende del tema sino de lo que hay marcado. En aritmética no
+   * se marca nada —una suma en columna no tiene coeficiente ni exponente— así
+   * que no se compone leyenda: la leyó el alumno bajo "24 + 17" y no
+   * significaba nada. Y en "x²" sólo se marca el exponente, así que sólo se
+   * nombra el exponente.
+   */
+  const marcado = useMemo(() => {
+    if (!actual || !esFaseDeEjemplo(actual.id) || !ejercicio) {
+      return { coeficiente: false, exponente: false };
+    }
+    const latex = lineaResaltada(ejercicio.texto) ?? "";
+    return {
+      coeficiente: latex.includes(CLASE_COEFICIENTE),
+      exponente: latex.includes(CLASE_EXPONENTE),
+    };
+  }, [actual, ejercicio]);
+
   /** ¿La fase en curso plantea un ejercicio al alumno? */
   const planteaEjercicio =
     actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
@@ -333,14 +358,18 @@ export function Pizarra({
                 {/* Qué significa cada color. Sin la leyenda, el resaltado es
                     decoración; con ella, el alumno ata lo que oye —"el
                     coeficiente 5, el exponente 2"— a lo que ve marcado. */}
-                {esFaseDeEjemplo(actual.id) && ejercicio && (
+                {(marcado.coeficiente || marcado.exponente) && (
                   <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-                    <span>
-                      <span className="pz-coeficiente">●</span> coeficiente
-                    </span>
-                    <span>
-                      <span className="pz-exponente">●</span> exponente
-                    </span>
+                    {marcado.coeficiente && (
+                      <span>
+                        <span className="pz-coeficiente">●</span> coeficiente
+                      </span>
+                    )}
+                    {marcado.exponente && (
+                      <span>
+                        <span className="pz-exponente">●</span> exponente
+                      </span>
+                    )}
                   </p>
                 )}
 
@@ -554,6 +583,10 @@ function LineaRenderizada({
     const texto = sinRayasDibujadas(linea.texto);
     const latex =
       columnaDeCuentaDibujada(linea.texto)
+      // Números con su nombre debajo: "24 [sumando] + 17 [sumando] = 41 [suma]".
+      // El tutor los nombra sobre los números concretos, y así la pizarra
+      // enseña lo mismo en vez del esquema abstracto.
+      ?? rotulosALatex(linea.texto)
       ?? (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
       // El coeficiente y el exponente marcados, para que se vea lo que se oye.
       ?? (destacarTerminos ? lineaResaltada(texto) : null)
