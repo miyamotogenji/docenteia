@@ -556,6 +556,7 @@ export function fraccionResueltaLSG(opts) {
     for (const d of dirsConcepto(varianteConcepto(o.previoTexto || o.evitar, CONCEPTO_FRACCION))) dir.push(d);
     // (El QUÉ ES —numerador, denominador, la pizza en partes, 2/4 = 1/2— va en las redacciones de
     // CONCEPTO_FRACCION, que rotan. Aquí solo queda el puente hacia OPERAR con ellas.)
+    dir.push({ _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Fracciones equivalentes: 2/4 = 1/2" });
     dir.push({ tipo: "hablar", texto: "Con la idea clara, veamos cómo se OPERA con fracciones: para SUMARLAS con el mismo denominador, se suman los numeradores y se mantiene el denominador; si son distintos, primero se igualan. Veámoslo con un ejemplo." });
   }
   if (!dificil) {
@@ -1068,6 +1069,7 @@ const ARIT = {
     simple: ["Hazlo con los dedos o con objetos: si tienes 4 lápices y te dan 3 más, los cuentas todos y son 7. Sumar es solo eso, juntar y contar cuántos hay.", "Con números grandes es lo mismo, solo que por partes: primero juntas las unidades, luego las decenas. Si al juntar unidades te pasas de 9, esa decena que sobra la pasas a la columna de al lado. Nada más."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} y ${b} son los SUMANDOS, y ${r} es la SUMA o total.`,
     rotuloPartes: "partes:  sumando + sumando = suma",
+    regla: "Suma llevando: si pasa de 9, llevo 1",
     rec: "suma columna por columna de derecha a izquierda; si una columna pasa de 9, escribes las unidades y llevas 1.", concepto: [
     "Sumar es JUNTAR cantidades para saber cuántas hay en total.", "Suma:  juntar cantidades → total",
     "Cuando los números tienen varias cifras, sumamos columna por columna, de derecha a izquierda (primero las unidades, luego las decenas…). Si una columna pasa de 9, escribimos la cifra de las unidades y LLEVAMOS 1 a la siguiente. Veámoslo con un ejemplo."] },
@@ -1075,6 +1077,7 @@ const ARIT = {
     simple: ["Piénsalo como quitar: tienes 9 caramelos, te comes 5, ¿cuántos quedan? 4. Restar es solo eso, ver qué queda al quitar una parte.", "Con números grandes vas por columnas. Y si arriba tienes menos que abajo, le pides 1 a la columna de la izquierda, que vale 10 y te saca del apuro. Es como cambiar un billete de 10 en monedas para poder pagar."],
     partes: (a, b, r) => `Cada número tiene su nombre: ${a} es el MINUENDO (de donde se quita), ${b} es el SUSTRAENDO (lo que se quita) y ${r} es la DIFERENCIA (lo que queda).`,
     rotuloPartes: "partes:  minuendo − sustraendo = diferencia",
+    regla: "Resta prestando: si falta, pido 1 prestada",
     rec: "resta columna por columna de derecha a izquierda; si arriba hay menos que abajo, pides prestada una unidad (vale 10) a la columna de la izquierda.", concepto: [
     "Restar es QUITAR una cantidad de otra: cuánto queda al sacar una parte.", "Resta:  quitar una cantidad de otra",
     "Restamos columna por columna, de derecha a izquierda. Si arriba hay menos que abajo, pedimos PRESTADA una unidad a la columna de la izquierda, que vale 10. Veámoslo con un ejemplo."] },
@@ -1187,6 +1190,11 @@ function aritmeticaLSG(opts, cfg) {
     if (cfg.rotuloPartes) dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.rotuloPartes });
     if (cfg.partes) dir.push({ tipo: "hablar", texto: cfg.partes(...parseAB(E.texto), E.answer) });
     dir.push({ tipo: "hablar", texto: cfg.concepto[2], _mod: "regla" });
+    // La fase de Reglas ESCRIBE la regla que está explicando, como ya hacen
+    // derivadas y factorización. Sin esta línea la pizarra no tenía nada del
+    // tema y componía la primera tarjeta del catálogo: el tutor explicaba la
+    // suma llevando y en pantalla aparecía "Jerarquía de operaciones".
+    if (cfg.regla) dir.push({ tipo: "pizarra", accion: "escribir", contenido: cfg.regla, _mod: "regla" });
   }
   dir.push(
     { tipo: "hablar", texto: `Vamos a ${cfg.verbo} ${E.texto} paso a paso.`, _mod: opts.concepto ? "ejemplo_guiado" : undefined },
@@ -1259,6 +1267,10 @@ export function linealResueltaLSG(opts = {}) {
   if (opts.concepto) {
     dir.push({ tipo: "hablar", texto: "Una ecuación lineal, o de primer grado, es una igualdad donde la incógnita (la x) está elevada solo a la 1: no tiene x² ni raíces. Resolverla significa encontrar el valor de x que hace verdadera la igualdad.", _mod: "concepto" });
     dir.push({ tipo: "pizarra", accion: "escribir", contenido: "Ecuación lineal:  a·x + b = c" });
+    // Y la ESCRIBE, nombrando la propiedad del catálogo que se está aplicando:
+    // sin esta línea la pizarra componía la primera tarjeta del tema, que no
+    // era la que el tutor estaba explicando.
+    dir.push({ _mod: "regla", tipo: "pizarra", accion: "escribir", contenido: "Propiedad uniforme de la suma: lo mismo a los dos lados" });
     dir.push({ _mod: "regla", tipo: "hablar", texto: "La regla para hallar la x es despejarla: los números que la acompañan pasan al otro lado con la operación inversa (lo que suma, resta; lo que resta, suma; lo que multiplica, divide), hasta dejar la x sola. Veámoslo con un ejemplo." });
   }
   dir.push(
