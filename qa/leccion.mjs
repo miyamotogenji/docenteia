@@ -2687,6 +2687,79 @@ console.log("\n · El desarrollo de aritmética es UNA matriz resuelta");
   );
 }
 
+// ── La tarjeta de regla: nombre y notación, sin prosa ───────────────────────
+// Dentro de la tarjeta se componía la descripción en prosa, palabra por palabra
+// lo que el tutor narra y lo que se lee en el subtítulo: el mismo texto por
+// tercera vez. La pizarra es para la notación; la prosa, para la voz.
+console.log("\n · La tarjeta de regla no compone prosa");
+
+{
+  const fuentePzI = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  const tarjeta = fuentePzI.slice(
+    fuentePzI.indexOf("function TarjetaRegla"),
+    fuentePzI.indexOf("function TarjetaRegla") + 1800,
+  );
+
+  check(
+    "la tarjeta compone el nombre de la regla",
+    /\{regla\.nombre\}/.test(tarjeta),
+  );
+  check(
+    "y su notación",
+    /latex=\{regla\.enunciado\}/.test(tarjeta),
+  );
+  check(
+    "pero NO su descripción en prosa",
+    !/\{regla\.descripcion\}/.test(tarjeta),
+    "esa prosa es la misma que narra el tutor y la que se lee en el subtítulo",
+  );
+
+  // El ejemplo sobra cuando el enunciado ya ES una operación dispuesta: en
+  // "Suma con llevada" el enunciado es la cuenta en columna con su total, y
+  // debajo quedaba un "19 + 45 = 64" horizontal que desdice el formato.
+  check(
+    "el ejemplo no se compone bajo una operación ya dispuesta",
+    /regla\.ejemplo && !esOperacionDispuesta\(regla\.enunciado\)/.test(tarjeta),
+  );
+
+  const dispuesta = (enunciado) => String(enunciado ?? "").includes("\\begin{array}");
+  const aritmeticas = (catalogo ?? []).filter((r) => r.tema === "ARITMETICA");
+  for (const nombre of ["Suma con llevada", "Resta con préstamo"]) {
+    const regla = aritmeticas.find((r) => r.nombre === nombre);
+    check(
+      `«${nombre}»: su enunciado ES la cuenta en columna`,
+      Boolean(regla) && dispuesta(regla.enunciado),
+      `enunciado: ${regla?.enunciado ?? "no está en el catálogo"}`,
+    );
+  }
+  // Y las demás conservan su ejemplo, que es donde se ve aplicada la fórmula.
+  const conFormulaGeneral = (catalogo ?? []).filter((r) => !dispuesta(r.enunciado));
+  check(
+    "las reglas con fórmula general conservan su ejemplo",
+    conFormulaGeneral.length > 0 && conFormulaGeneral.every((r) => Boolean(r.ejemplo)),
+    `sin ejemplo: ${conFormulaGeneral.filter((r) => !r.ejemplo).map((r) => r.nombre).join(", ")}`,
+  );
+
+  // Todo lo que la tarjeta compone tiene que compilar en KaTeX: un enunciado
+  // roto no se ve como un error, se ve como un hueco en la tarjeta.
+  for (const regla of catalogo ?? []) {
+    let compone = true;
+    try {
+      katex.renderToString(regla.enunciado, { throwOnError: true, strict: false });
+      if (regla.ejemplo && !dispuesta(regla.enunciado)) {
+        katex.renderToString(regla.ejemplo, { throwOnError: true, strict: false });
+      }
+    } catch (e) {
+      compone = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(`«${regla.nombre}» se compone en la tarjeta`, compone);
+  }
+}
+
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` Aprobadas: ${ok} · Fallidas: ${fallos.length}`);

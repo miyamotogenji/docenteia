@@ -488,6 +488,19 @@ function Fases({ fases }: { fases: FaseAbierta[] }) {
  * fuera—, y conviene enseñarlas igualmente: lo que no se puede es ofrecer una
  * práctica que después no se podría corregir con garantía.
  */
+/**
+ * ¿El enunciado de la regla es ya una operación DISPUESTA —una cuenta en
+ * columna— y no una fórmula general?
+ *
+ * Cuando lo es, enseña por sí misma el formato y trae su propio resultado:
+ * añadirle debajo un ejemplo horizontal no aporta y contradice lo que se está
+ * enseñando. Con una fórmula general —"a² - b² = (a - b)(a + b)"— el ejemplo
+ * sí hace falta: es donde se ve aplicada.
+ */
+function esOperacionDispuesta(enunciado: string): boolean {
+  return String(enunciado ?? "").includes("\\begin{array}");
+}
+
 function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
   return (
     <motion.div
@@ -505,15 +518,20 @@ function TarjetaRegla({ regla }: { regla: ReglaPizarra }) {
         )}
       </div>
 
+      {/* La tarjeta lleva el nombre de la regla y su notación. Nada más.
+          La descripción en prosa NO se compone: es palabra por palabra lo que
+          el tutor está narrando y lo que se lee en el subtítulo, así que en el
+          lienzo era el mismo texto por tercera vez. La pizarra es para la
+          notación; la prosa, para la voz. */}
       <div className="overflow-x-auto py-1">
         <Formula latex={regla.enunciado} display />
       </div>
 
-      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-        {regla.descripcion}
-      </p>
-
-      {regla.ejemplo && (
+      {/* Y el ejemplo sólo cuando el enunciado NO es ya una operación resuelta.
+          En "Suma con llevada" el enunciado es la propia cuenta en columna, con
+          su llevada y su total: debajo quedaba un "19 + 45 = 64" horizontal que
+          no añade nada y desdice el formato que se está enseñando. */}
+      {regla.ejemplo && !esOperacionDispuesta(regla.enunciado) && (
         <div className="mt-2 overflow-x-auto border-t pt-2">
           <Formula latex={regla.ejemplo} />
         </div>
