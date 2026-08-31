@@ -51,6 +51,7 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
+  esFragmentoDeCuenta,
   esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
@@ -69,6 +70,7 @@ import {
   enunciadoTrasPeticion,
   enunciadosDeLeccion,
   presentacionDe,
+  sinPreguntas,
   recortarParaSeguimiento,
 } from "../lib/leccion/seguimiento-lsg.ts";
 import { adaptarCatalogo, identificarRegla, reglaActiva } from "../lib/leccion/reglas.ts";
@@ -2393,6 +2395,104 @@ console.log("\n · Ninguna fase abre con la pizarra en blanco");
   check(
     "y no la escribe dos veces cuando el motor llega a ella",
     /if \(ultima && ultima\.texto === limpio\) return prev;/.test(fuenteAuE),
+  );
+}
+
+// ── "Explicar regla" en aritmética: una cuenta, no una pila de trozos ───────
+// Al explicar una suma, el motor la escribe por partes: "27 + 38 =", luego
+// "15", luego "+1", luego "6". Cada trozo abría su propia tarjeta: cinco
+// apiladas, con barra de desplazamiento y sin rastro de la columna.
+console.log("\n · La explicación de una suma se compone como cuenta");
+
+{
+  const ejercicio = "27 + 38";
+  const trozos = [
+    ["27 + 38 =", "la operación sin su resultado"],
+    ["15", "una cifra suelta"],
+    ["+1", "la llevada suelta"],
+    ["6", "otra cifra suelta"],
+    ["65", "el total suelto"],
+  ];
+  for (const [linea, motivo] of trozos) {
+    check(
+      `«${linea}» se absorbe en la cuenta: ${motivo}`,
+      esFragmentoDeCuenta(linea, ejercicio),
+    );
+  }
+
+  // Un paso NARRADO sí se conserva: explica algo por sí mismo.
+  const narrados = [
+    "unidades: 7 + 8 = 15 (se escribe 5, se lleva 1)",
+    "decenas: 2 + 3 + 1 = 6",
+    "7 + 8 = 15",
+  ];
+  for (const linea of narrados) {
+    check(`«${linea}» se conserva como paso`, !esFragmentoDeCuenta(linea, ejercicio));
+  }
+
+  // Y la cuenta que se compone es la del ejercicio, con su llevada y su total.
+  const cuenta = columnaDeLinea(ejercicio, { conResultado: true });
+  check(
+    "la cuenta resuelta lleva la llevada y el total",
+    /\\scriptstyle 1/.test(cuenta ?? "") && /\\hline\s+&\s+6\s+&\s+5/.test(cuenta ?? ""),
+    cuenta ?? "sin latex",
+  );
+
+  const fuentePzF = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "en aritmética con desarrollo se compone la cuenta, no los trozos",
+    /esFragmentoDeCuenta\(linea\.texto, ejercicio\.texto\)/.test(fuentePzF) &&
+      /columna: "resuelta"/.test(fuentePzF),
+  );
+}
+
+// ── Una aclaración explica; no pregunta ─────────────────────────────────────
+// El alumno está resolviendo un ejercicio y pulsa "Explicar regla": quiere que
+// le expliquen, no que le pregunten otra cosa. La aclaración traía su propia
+// pregunta —"¿Entendiste la explicación?"— que ocupaba la caja de respuesta y
+// le quitaba de delante el ejercicio que estaba haciendo.
+console.log("\n · Una aclaración no ocupa la caja de respuesta");
+
+{
+  const conPregunta = {
+    directivas: [
+      { tipo: "hablar", texto: "Se suman las unidades." },
+      { tipo: "preguntar", texto: "¿Entendiste la explicación?" },
+    ],
+    modulos: [
+      {
+        id: "practica",
+        directivas: [
+          { tipo: "pizarra", contenido: "27 + 38" },
+          { tipo: "preguntar", texto: "¿Cuánto es 27 + 38?" },
+        ],
+      },
+    ],
+  };
+  const limpia = sinPreguntas(conPregunta);
+  const preguntas = (l) =>
+    [...(l.directivas ?? []), ...(l.modulos ?? []).flatMap((m) => m.directivas ?? [])].filter(
+      (d) => d.tipo === "preguntar",
+    ).length;
+
+  check("la aclaración se queda sin preguntas", preguntas(limpia) === 0, `quedan: ${preguntas(limpia)}`);
+  check("lo demás se conserva", (limpia.directivas ?? []).some((d) => d.tipo === "hablar"));
+  check(
+    "la pizarra de sus módulos se conserva",
+    (limpia.modulos ?? [])[0].directivas.some((d) => d.tipo === "pizarra"),
+  );
+  check("no se toca el original", preguntas(conPregunta) === 2);
+
+  const fuenteAuF = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el aula quita las preguntas SÓLO de las aclaraciones",
+    /opciones\.soloExplicacion \? sinPreguntas\(recortada\) : recortada/.test(fuenteAuF),
   );
 }
 

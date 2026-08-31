@@ -144,3 +144,31 @@ export function enunciadoTrasPeticion(opciones: {
   const objetivo = opciones.deLaFase || opciones.activo || null;
   return objetivo ?? opciones.enTarjeta;
 }
+
+/**
+ * Quita las preguntas de una ACLARACIÓN.
+ *
+ * El alumno está resolviendo un ejercicio y pulsa "Explicar regla": quiere que
+ * le expliquen, no que le pregunten otra cosa. La aclaración llegaba con su
+ * propia pregunta —"¿Entendiste la explicación?"— que ocupaba la caja de
+ * respuesta y le quitaba de delante el ejercicio que estaba haciendo.
+ *
+ * La explicación se cuenta con la voz y con la pizarra, y el alumno sigue con
+ * lo suyo. Se recorren también los módulos, porque una aclaración puede venir
+ * con ellos.
+ */
+export function sinPreguntas<T extends LSGConModulos>(lsg: T): T {
+  if (!lsg || typeof lsg !== "object") return lsg;
+
+  const limpiar = (directivas: unknown): unknown[] =>
+    Array.isArray(directivas)
+      ? directivas.filter((d) => (d as { tipo?: string })?.tipo !== "preguntar")
+      : [];
+
+  const copia: LSGConModulos = { ...lsg };
+  if (Array.isArray(lsg.directivas)) copia.directivas = limpiar(lsg.directivas);
+  if (Array.isArray(lsg.modulos)) {
+    copia.modulos = lsg.modulos.map((m) => ({ ...m, directivas: limpiar(m?.directivas) }));
+  }
+  return copia as T;
+}

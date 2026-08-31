@@ -13,6 +13,8 @@
 // sin navegador, y se dice en lugar de fingir que se cubre.
 //
 //   node qa/paso1.mjs
+import { readFileSync } from "node:fs";
+
 import {
   clasificarNivel,
   ETIQUETA_NIVEL,
@@ -215,6 +217,75 @@ check(
   TOTAL_PREGUNTAS === 5,
   `TOTAL_PREGUNTAS=${TOTAL_PREGUNTAS}`,
 );
+
+
+// ── El despliegue se actualiza solo ──────────────────────────────────────────
+// El catálogo de reglas viaja en la SEMILLA. Un despliegue con código nuevo y
+// semilla vieja se ve perfecto por fuera y enseña la regla equivocada por
+// dentro: la fase de "Reglas y propiedades" compone una tarjeta que no es la
+// que se está narrando. Por eso la semilla tiene que correr en cada despliegue,
+// y el estado tiene que poder comprobarse sin consola.
+console.log("\n · La base de datos se actualiza en cada despliegue");
+
+{
+  const paquete = JSON.parse(
+    readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const construccionVercel = paquete.scripts?.["vercel-build"] ?? "";
+
+  check(
+    "el build de despliegue aplica las migraciones",
+    /prisma migrate deploy/.test(construccionVercel),
+    `vercel-build: ${construccionVercel}`,
+  );
+  check(
+    "el build de despliegue siembra la base",
+    /prisma\/seed\.ts/.test(construccionVercel),
+    `vercel-build: ${construccionVercel}`,
+  );
+  // El orden importa: sembrar antes de migrar fallaría, y compilar antes de
+  // sembrar dejaría el primer arranque sin datos.
+  check(
+    "migra, siembra y luego compila, en ese orden",
+    construccionVercel.indexOf("migrate deploy") < construccionVercel.indexOf("seed.ts") &&
+      construccionVercel.indexOf("seed.ts") < construccionVercel.indexOf("next build"),
+    `vercel-build: ${construccionVercel}`,
+  );
+
+  // Y que Vercel use ESE script, y no el `build` de siempre: el ajuste del
+  // panel no se ve desde el repositorio, así que se fija aquí.
+  let vercel = null;
+  try {
+    vercel = JSON.parse(readFileSync(new URL("../vercel.json", import.meta.url), "utf8"));
+  } catch {
+    vercel = null;
+  }
+  check(
+    "vercel.json fija el comando de construcción",
+    vercel?.buildCommand === "npm run vercel-build",
+    `buildCommand: ${vercel?.buildCommand ?? "(sin vercel.json)"}`,
+  );
+
+  // La semilla ACTUALIZA lo que ya existe: si sólo creara, una regla que cambia
+  // de nombre o de enunciado se quedaría con el texto viejo para siempre.
+  const semilla = readFileSync(new URL("../prisma/seed.ts", import.meta.url), "utf8");
+  check(
+    "la semilla actualiza las reglas que ya existen, no sólo las crea",
+    /reglaMatematica\.upsert\(\{[\s\S]{0,120}where: \{ clave: r\.clave \}[\s\S]{0,60}update:/.test(semilla),
+  );
+
+  // Y el estado se puede comprobar desde el navegador, sin consola: la salud
+  // dice cuántas reglas hay y cuántas trae el código.
+  const salud = readFileSync(new URL("../app/api/health/route.ts", import.meta.url), "utf8");
+  check(
+    "la salud informa del catálogo de reglas",
+    /reglas_en_base:/.test(salud) && /reglas_esperadas:/.test(salud),
+  );
+  check(
+    "un catálogo desfasado se declara sin sembrar, no ok",
+    /reglasEnBase < reglasEsperadas/.test(salud) && /estado = "sin_sembrar"/.test(salud),
+  );
+}
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");
