@@ -46,6 +46,11 @@ import {
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
+import {
+  esLaMismaCuenta,
+  leerOperacionDibujada,
+  leerSumaOResta,
+} from "@/lib/leccion/columna";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -279,8 +284,32 @@ export function Aula({
       // llegaría aquí y lo pintaría por segunda vez.
       if (ejercicioRef.current?.texto === limpio) return;
 
+      // Y tampoco lo replantea con otras palabras: la tarjeta muestra
+      // "19 + 45 = ?" y el motor abre el desarrollo escribiendo "19 + 45", que
+      // es la misma cuenta sin resolver. Un dibujo con su desarrollo sí entra:
+      // eso ya no es el enunciado, es el procedimiento.
+      const replanteaElEnunciado =
+        ejercicioRef.current != null &&
+        leerSumaOResta(limpio) != null &&
+        esLaMismaCuenta(ejercicioRef.current.texto, limpio);
+      if (replanteaElEnunciado) return;
+
       escrito.current = [...escrito.current, limpio].slice(-60);
-      setDesarrollo((prev) => [...prev, linea]);
+      setDesarrollo((prev) => {
+        // El motor REDIBUJA la misma cuenta en cada paso: primero los dos
+        // números, luego con la cifra de las unidades bajo la raya, y al final
+        // con la llevada y el total. Apiladas, en la pizarra se veían tres
+        // sumas distintas. Es una sola, que avanza: la nueva sustituye a la
+        // anterior en lugar de añadirse.
+        const ultima = prev[prev.length - 1];
+        // La línea adelantada al abrir la fase no se escribe dos veces cuando el
+        // motor llega a ella.
+        if (ultima && ultima.texto === limpio) return prev;
+        if (ultima && esLaMismaCuenta(ultima.texto, limpio)) {
+          return [...prev.slice(0, -1), linea];
+        }
+        return [...prev, linea];
+      });
     },
     [asegurarFase, faseConEjercicio, fijarLineaEjercicio],
   );
@@ -340,8 +369,15 @@ export function Aula({
       fijarLineaEjercicio(
         plantea && texto ? { id: idLinea.current++, texto, clase: "formula" } : null,
       );
-      // Desarrollo a cero: el lienzo empieza limpio en cada fase.
-      setDesarrollo([]);
+      // Y en las fases que NO plantean ejercicio —Concepto y Reglas— se adelanta
+      // igual su primera línea. El tutor entra en Reglas y habla varios segundos
+      // antes de escribir nada: hasta entonces el lienzo se quedaba vacío, con
+      // la fase abierta y la voz explicando. La línea se conoce desde que llegó
+      // la lección, así que no hay razón para esperarla.
+      const adelantada = !plantea ? enunciadoPorFase.current.get(clave) : null;
+      setDesarrollo(
+        adelantada ? [{ id: idLinea.current++, texto: adelantada, clase: "formula" }] : [],
+      );
     },
     [fijarLineaEjercicio],
   );
@@ -371,10 +407,24 @@ export function Aula({
       // llegue por una directiva de pizarra: desde que las aclaraciones las
       // redacta el modelo en vivo, eso puede pasar.
       writeBoard: (texto) => {
-        const linea = String(texto ?? "").trim();
-        if (!linea) return;
-        if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
-        else setSubtitulo(linea);
+        const contenido = String(texto ?? "").trim();
+        if (!contenido) return;
+
+        // Una directiva puede traer VARIAS líneas. Compuestas de una vez, los
+        // saltos se pierden y las líneas se pegan: "19 + 45 = ?" seguido de
+        // "9 + 5 = 14" salía como "19 + 45 =?9 + 5 = 14". Cada línea es un paso
+        // y se escribe por separado.
+        //
+        // Salvo cuando el motor DIBUJA la cuenta en columna: ahí las varias
+        // líneas son una sola cosa, y separarlas la destruiría.
+        const lineas = leerOperacionDibujada(contenido)
+          ? [contenido]
+          : contenido.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+        for (const linea of lineas) {
+          if (esIdeaFuerza(linea)) anadirLinea(linea, "formula");
+          else setSubtitulo(linea);
+        }
       },
       // La explicación hablada NO va a la pizarra. El motor la escribía además
       // de narrarla, así que el mismo párrafo aparecía dos veces: en el lienzo

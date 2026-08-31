@@ -51,13 +51,19 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
+  esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
   marcasDeColumna,
   sinRayasDibujadas,
   tieneRayaDibujada,
 } from "../lib/leccion/columna.ts";
-import { lineaResaltada } from "../lib/leccion/destacar.ts";
+import {
+  CLASE_COEFICIENTE,
+  CLASE_EXPONENTE,
+  lineaResaltada,
+} from "../lib/leccion/destacar.ts";
+import { rotulosALatex } from "../lib/leccion/rotulos.ts";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -1446,13 +1452,15 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
   // Al entrar en la fase, el ejercicio queda puesto y el desarrollo a cero, en
   // el mismo instante: la tarjeta de arriba no espera a ninguna directiva.
   check(
-    "al abrir la fase se fija el ejercicio y se vacía el desarrollo",
-    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,200}setDesarrollo\(\[\]\);/.test(
+    // Al abrir, el desarrollo se REEMPLAZA: vacío, o con la línea que la fase ya
+    // trae. Lo que no puede es arrastrar el de la fase anterior.
+    "al abrir la fase se fija el ejercicio y se renueva el desarrollo",
+    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,600}setDesarrollo\([\s\S]{0,20}adelantada \?/.test(
       fuenteA,
     ),
   );
   // Sustitución, no concatenación: entre peticiones el array se reemplaza.
-  const concatenaciones = (fuenteA.match(/setDesarrollo\(\(prev\) => \[\.\.\.prev/g) ?? []).length;
+  const concatenaciones = (fuenteA.match(/return \[\.\.\.prev, linea\];/g) ?? []).length;
   check(
     "el desarrollo sólo se concatena al escribir un paso, nunca entre peticiones",
     concatenaciones === 1,
@@ -2034,9 +2042,15 @@ console.log("\n · Cuentas dibujadas con guiones");
 
   // Y un total que no cuadra NO se compone: darle aspecto de cuenta correcta
   // es peor que dejar el texto como estaba.
+  // Un total que no cuadra es un dibujo A MEDIAS —el motor lleva escrita sólo
+  // una columna—, no una cuenta equivocada: se compone sin total, nunca con el
+  // número suelto que había debajo de la raya.
+  const aMediasDibujo = dibujo(" 19", "+ 45", "-----", " 4");
   check(
-    "un total equivocado no se compone como cuenta",
-    leerOperacionDibujada(dibujo(" 19", "+ 45", "-----", " 4")) == null,
+    "un total que no cuadra no se compone como si fuera el resultado",
+    leerOperacionDibujada(aMediasDibujo)?.completa === false &&
+      !/\hline\s+&/.test(columnaDeCuentaDibujada(aMediasDibujo) ?? ""),
+    columnaDeCuentaDibujada(aMediasDibujo) ?? "sin latex",
   );
   for (const noEsCuenta of ["Suma: juntar cantidades", "19 + 45", dibujo(" 19", "+ 45", " 64")]) {
     check(
@@ -2101,6 +2115,285 @@ console.log("\n · Los pasos de aritmética dicen la llevada");
       esIdeaFuerza(paso),
     );
   }
+}
+
+// ── Una cuenta que avanza, no tres cuentas apiladas ─────────────────────────
+// El motor REDIBUJA la misma suma en cada paso: primero los dos números, luego
+// con la cifra de las unidades bajo la raya, y al final con la llevada y el
+// total. Apiladas, en la pizarra se veían tres sumas distintas —"19 + 45",
+// "19 + 45 - - - 4", "119 + 45 - - - 64"— como si fueran tres ejercicios.
+console.log("\n · La cuenta que se redibuja es UNA, y avanza");
+
+{
+  const salto = String.fromCharCode(10);
+  const dibujo = (...filas) => filas.join(salto);
+
+  const planteada = "19 + 45";
+  const aMedias = dibujo("19", "+ 45", "---", " 4");
+  const terminada = dibujo(" 1", "19", "+ 45", "---", " 64");
+  const otra = "24 + 17";
+
+  check("el planteamiento y el dibujo a medias son la misma cuenta", esLaMismaCuenta(planteada, aMedias));
+  check("el dibujo a medias y el terminado son la misma cuenta", esLaMismaCuenta(aMedias, terminada));
+  check("una suma distinta no se confunde con ella", !esLaMismaCuenta(terminada, otra));
+  check("una línea que no es cuenta no se empareja", !esLaMismaCuenta("Regla de la potencia", planteada));
+
+  // Mientras el dibujo está a medias, la columna se compone SIN total: poner el
+  // resultado antes de que el tutor llegue ahí sería adelantarle el final.
+  const medias = leerOperacionDibujada(aMedias);
+  const fin = leerOperacionDibujada(terminada);
+  check("un dibujo a medias se reconoce como incompleto", medias != null && medias.completa === false);
+  check("un dibujo con su total se reconoce como completo", fin != null && fin.completa === true);
+  check(
+    "la cuenta a medias se compone sin el total",
+    !/\\hline\s+&/.test(columnaDeCuentaDibujada(aMedias) ?? ""),
+    columnaDeCuentaDibujada(aMedias) ?? "sin latex",
+  );
+  check(
+    "la cuenta terminada sí lleva su total",
+    /\\hline\s+&\s+6\s+&\s+4/.test(columnaDeCuentaDibujada(terminada) ?? ""),
+    columnaDeCuentaDibujada(terminada) ?? "sin latex",
+  );
+
+  const fuenteAuC = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el aula sustituye el redibujo en lugar de apilarlo",
+    /esLaMismaCuenta\(ultima\.texto, limpio\)\)\s*\{\s*\n\s*return \[\.\.\.prev\.slice\(0, -1\), linea\];/.test(
+      fuenteAuC,
+    ),
+  );
+  check(
+    "el desarrollo no replantea el enunciado que ya está en la tarjeta",
+    /replanteaElEnunciado/.test(fuenteAuC),
+  );
+}
+
+// ── La tarjeta de Reglas dice lo que dice la voz ─────────────────────────────
+// El tutor explicaba la suma columna por columna con llevada y en la pizarra
+// aparecía "Jerarquía de operaciones". La causa: en aritmética y en ecuaciones
+// lineales la fase de Reglas no ESCRIBÍA nada, así que la tarjeta caía en la
+// primera regla del catálogo, que no era la que se estaba enseñando.
+console.log("\n · La tarjeta de Reglas concuerda con la locución");
+
+{
+  // La regla que se enseña tiene que existir en el catálogo: si no, no hay
+  // tarjeta que mostrar y el respaldo vuelve a inventarse una.
+  const aritmeticas = (catalogo ?? []).filter((r) => r.tema === "ARITMETICA");
+  for (const nombre of ["Suma con llevada", "Resta con préstamo"]) {
+    check(
+      `el catálogo tiene la regla «${nombre}», que es la que se enseña`,
+      aritmeticas.some((r) => r.nombre === nombre),
+      `catálogo: ${aritmeticas.map((r) => r.nombre).join(", ")}`,
+    );
+  }
+
+  // Y cada tema, en su fase de Reglas, escribe una línea que NOMBRA una regla
+  // suya. Es lo que ata la tarjeta a la locución; sin ella, la pizarra compone
+  // la primera del catálogo y cuenta otra cosa.
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const modulo = (datos?.lsg?.modulos ?? []).find((m) => esFaseDeReglas(String(m.id ?? "")));
+    if (!modulo) continue;
+
+    const escritas = (modulo.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? "").trim())
+      .filter(Boolean);
+    const delTema = (catalogo ?? []).filter((r) => r.tema === tema.tema);
+    const nombrada = escritas.map((l) => identificarRegla(l, delTema)).find(Boolean);
+
+    check(
+      `[${tema.clave}] la fase de Reglas escribe algo en la pizarra`,
+      escritas.length > 0,
+      "sin línea propia, la tarjeta cae en la primera del catálogo",
+    );
+    check(
+      `[${tema.clave}] lo escrito nombra una regla del tema: ${nombrada?.nombre ?? "ninguna"}`,
+      Boolean(nombrada),
+      `escrito: ${escritas.join(" | ")}`,
+    );
+    // Y lo escrito cabe en la pizarra: pasarse de largo lo manda al subtítulo,
+    // y la fase se queda otra vez sin tarjeta propia.
+    for (const linea of escritas) {
+      check(`[${tema.clave}] «${linea}» cabe en la pizarra`, esIdeaFuerza(linea));
+    }
+  }
+}
+
+// ── Varias líneas en una directiva son varios pasos ─────────────────────────
+// Compuestas de una vez, los saltos se pierden y las líneas se pegan:
+// "19 + 45 = ?" seguido de "9 + 5 = 14" salía como "19 + 45 =?9 + 5 = 14".
+console.log("\n · Una directiva con varias líneas no se pega");
+
+{
+  const salto = String.fromCharCode(10);
+  const fuenteAuD = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "cada línea de una directiva se escribe por separado",
+    /contenido\.split\(\/\\r\?\\n\/\)\.map\(\(l\) => l\.trim\(\)\)\.filter\(Boolean\)/.test(fuenteAuD),
+  );
+  // Salvo la cuenta dibujada: ahí las varias líneas son una sola cosa.
+  check(
+    "la cuenta dibujada NO se parte en líneas sueltas",
+    /leerOperacionDibujada\(contenido\)\s*\n\s*\? \[contenido\]/.test(fuenteAuD),
+  );
+
+  // El dibujo sigue reconociéndose como una unidad.
+  const dibujada = ["19", "+ 45", "---", " 64"].join(salto);
+  check(
+    "un dibujo en columna se reconoce entero",
+    leerOperacionDibujada(dibujada) != null,
+  );
+  // Y un par de pasos sueltos NO se toma por un dibujo, así que se separan.
+  const dosPasos = ["19 + 45 = ?", "9 + 5 = 14"].join(salto);
+  check(
+    "dos pasos sueltos no se toman por un dibujo",
+    leerOperacionDibujada(dosPasos) == null,
+  );
+}
+
+// ── La leyenda de color sólo aparece si hay algo marcado ────────────────────
+// En aritmética, bajo la suma en columna, se componía "coeficiente · exponente".
+// Una suma no tiene ni lo uno ni lo otro: el alumno leía dos palabras que no
+// señalaban nada. La leyenda no depende del tema sino de lo que hay marcado.
+console.log("\n · La leyenda de color sólo nombra lo que se marca");
+
+{
+  const casos = [
+    { entrada: "24 + 17", coeficiente: false, exponente: false, motivo: "una suma no tiene ni coeficiente ni exponente" },
+    { entrada: "5x²", coeficiente: true, exponente: true, motivo: "los tiene los dos" },
+    { entrada: "x²", coeficiente: false, exponente: true, motivo: "el coeficiente implícito no se marca" },
+    { entrada: "10x", coeficiente: true, exponente: false, motivo: "sin exponente escrito" },
+  ];
+  for (const caso of casos) {
+    const latex = lineaResaltada(caso.entrada) ?? "";
+    check(
+      `«${caso.entrada}»: ${caso.motivo}`,
+      latex.includes(CLASE_COEFICIENTE) === caso.coeficiente &&
+        latex.includes(CLASE_EXPONENTE) === caso.exponente,
+      `latex: ${latex || "(sin resaltar)"}`,
+    );
+  }
+
+  const fuentePzL = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la leyenda se compone por lo marcado, no por la fase",
+    /\{\(marcado\.coeficiente \|\| marcado\.exponente\) && \(/.test(fuentePzL),
+  );
+  check(
+    "cada palabra de la leyenda depende de su propia marca",
+    /\{marcado\.coeficiente && \(/.test(fuentePzL) && /\{marcado\.exponente && \(/.test(fuentePzL),
+  );
+}
+
+// ── Los números llevan su nombre debajo ─────────────────────────────────────
+// El tutor dice "24 y 17 son los SUMANDOS, y 41 es la SUMA", pero la pizarra
+// mostraba el esquema abstracto "sumando + sumando = suma", sin los números que
+// el alumno estaba oyendo: tenía que emparejarlos de memoria.
+console.log("\n · Cada número con su nombre debajo");
+
+{
+  const rotulados = [
+    { entrada: "24 [sumando] + 17 [sumando] = 41 [suma o total]", nombres: ["sumando", "sumando", "suma o total"] },
+    { entrada: "52 [minuendo] - 27 [sustraendo] = 25 [diferencia]", nombres: ["minuendo", "sustraendo", "diferencia"] },
+    { entrada: "6 [factor] × 7 [factor] = 42 [producto]", nombres: ["factor", "factor", "producto"] },
+  ];
+  for (const caso of rotulados) {
+    const latex = rotulosALatex(caso.entrada);
+    const puestos = [...(latex ?? "").matchAll(/\\text\{([^}]*)\}/g)].map((m) => m[1].replace(/\\ /g, " "));
+    check(
+      `«${caso.entrada}» rotula [${caso.nombres.join(", ")}]`,
+      puestos.join("|") === caso.nombres.join("|"),
+      `obtenido: [${puestos.join(", ")}]`,
+    );
+    let compone = true;
+    try {
+      katex.renderToString(latex, { throwOnError: true, strict: false });
+    } catch (e) {
+      compone = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(`KaTeX compone los rótulos de «${caso.entrada}»`, compone, latex ?? "sin latex");
+  }
+
+  // Y lo que no lleva rótulos se compone como siempre.
+  for (const sinMarcas of ["24 + 17 = 41", "partes: sumando + sumando = suma", "5x²"]) {
+    check(`«${sinMarcas}» no se toma por una línea rotulada`, rotulosALatex(sinMarcas) == null);
+  }
+  // Una frase con un corchete suelto tampoco: pasada por KaTeX saldría en
+  // cursiva y con las letras separadas.
+  check(
+    "una frase con corchetes no se compone como fórmula",
+    rotulosALatex("Cuando los números tienen varias cifras [nota] sumamos") == null,
+  );
+
+  // Contra el motor real: la fase de Concepto de las cuatro operaciones rotula
+  // los números del ejemplo que se está resolviendo, no unos genéricos.
+  for (const consulta of ["Enséñame a sumar", "Enséñame a restar"]) {
+    const datos = await consultar({ query: consulta });
+    const pizarras = (datos?.lsg?.modulos ?? [])
+      .flatMap((m) => m.directivas ?? [])
+      .filter((d) => d.tipo === "pizarra")
+      .map((d) => String(d.contenido ?? ""));
+    const rotulada = pizarras.find((p) => rotulosALatex(p) != null);
+    check(
+      `[${consulta}] la pizarra rotula las partes sobre números reales`,
+      Boolean(rotulada) && /\d/.test(rotulada),
+      `pizarras: ${pizarras.join(" | ")}`,
+    );
+    check(
+      `[${consulta}] la línea rotulada cabe en la pizarra`,
+      rotulada != null && esIdeaFuerza(rotulada),
+      `linea: ${rotulada}`,
+    );
+  }
+}
+
+// ── Ninguna fase se abre con el lienzo vacío ────────────────────────────────
+// El tutor entraba en "Reglas y propiedades" y hablaba varios segundos antes de
+// escribir nada: la fase abierta, la voz explicando y la pizarra en blanco. Es
+// el mismo patrón que dejaba la Práctica vacía, pero en una fase sin ejercicio.
+// La primera línea de cada fase se conoce desde que llega la lección, así que
+// se adelanta al entrar en ella.
+console.log("\n · Ninguna fase abre con la pizarra en blanco");
+
+{
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const lsg = datos?.lsg ?? datos;
+    const adelantadas = enunciadosDeLeccion(lsg);
+
+    for (const modulo of lsg?.modulos ?? []) {
+      const id = String(modulo.id ?? "");
+      check(
+        `[${tema.clave}] la fase «${tituloDeFase(id)}» tiene línea desde el primer instante`,
+        Boolean(adelantadas.get(id)),
+        "esa fase se abriría con el lienzo en blanco mientras el tutor narra",
+      );
+    }
+  }
+
+  const fuenteAuE = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el aula adelanta la línea de las fases sin ejercicio",
+    /const adelantada = !plantea \? enunciadoPorFase\.current\.get\(clave\) : null;/.test(fuenteAuE),
+  );
+  check(
+    "y no la escribe dos veces cuando el motor llega a ella",
+    /if \(ultima && ultima\.texto === limpio\) return prev;/.test(fuenteAuE),
+  );
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
