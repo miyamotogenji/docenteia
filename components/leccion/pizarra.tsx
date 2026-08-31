@@ -11,6 +11,7 @@ import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
   columnasDeOperacion,
+  esFragmentoDeCuenta,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
 import {
@@ -269,6 +270,21 @@ export function Pizarra({
           pasoSuelto: null,
         };
       }
+    }
+
+    // ARITMÉTICA, con desarrollo: lo que se compone es LA CUENTA, no una pila
+    // de trozos. Al explicar, el motor la escribe por partes —"27 + 38 =",
+    // "15", "+1", "6"— y cada trozo abría su propia tarjeta: cinco tarjetas
+    // apiladas, con barra de desplazamiento y sin rastro de la columna. Los
+    // trozos se absorben y debajo va la cuenta resuelta, con su llevada.
+    if (ejercicio && columnasDeOperacion(ejercicio.texto) > 0 && desarrollo.length > 0) {
+      const narrados = pasos.filter(
+        ({ linea }) => !esFragmentoDeCuenta(linea.texto, ejercicio.texto),
+      );
+      return {
+        pasos: [...narrados, { linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
+        pasoSuelto: null,
+      };
     }
 
     return { pasos, pasoSuelto: null };

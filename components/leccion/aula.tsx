@@ -44,6 +44,7 @@ import {
   enunciadoTrasPeticion,
   presentacionDe,
   recortarParaSeguimiento,
+  sinPreguntas,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
 import {
@@ -611,11 +612,14 @@ export function Aula({
 
         // Una lección de seguimiento repite concepto y reglas tal cual: se
         // recorta para entrar directamente por el ejemplo.
-        const lsg = (
+        const recortada =
           presentacion === "reiniciar" && opciones.seguimiento
             ? recortarParaSeguimiento(datos.lsg)
-            : datos.lsg
-        ) as LSG;
+            : datos.lsg;
+        // Una aclaración explica; no pregunta. Su pregunta ocupaba la caja de
+        // respuesta —"¿Entendiste la explicación?"— y le quitaba al alumno de
+        // delante el ejercicio que estaba resolviendo.
+        const lsg = (opciones.soloExplicacion ? sinPreguntas(recortada) : recortada) as LSG;
 
         // Se anota el enunciado de cada fase antes de reproducir nada, para
         // poder mostrarlo en cuanto se entra en ella.
