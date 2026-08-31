@@ -982,9 +982,13 @@ function pasosSuma(a, b) {
   const n = Math.max(A.length, B.length), steps = []; let carry = 0;
   for (let i = 0; i < n; i++) {
     const x = A[i] || 0, y = B[i] || 0, s = x + y + carry, traia = carry ? ` + ${carry} que llevábamos` : "";
+    // Lo que se ESCRIBE dice también qué cifra queda y cuál se lleva: sin eso,
+    // el alumno ve "4 + 7 = 11" en una columna de una sola cifra y no sabe qué
+    // hacer con el 11. Lo decía la locución y no la pizarra.
+    const cuenta = `${colName(i)}: ${x} + ${y}${carry ? ` + ${carry}` : ""} = ${s}`;
     steps.push(s >= 10
-      ? { explica: `Sumamos las ${colName(i)}: ${x} + ${y}${traia} = ${s}. Como pasa de 9, escribimos ${s % 10} y llevamos 1.`, escribe: `${colName(i)}: ${x} + ${y}${carry ? ` + ${carry}` : ""} = ${s}` }
-      : { explica: `Sumamos las ${colName(i)}: ${x} + ${y}${traia} = ${s}.`, escribe: `${colName(i)}: ${x} + ${y}${carry ? ` + ${carry}` : ""} = ${s}` });
+      ? { explica: `Sumamos las ${colName(i)}: ${x} + ${y}${traia} = ${s}. Como pasa de 9, escribimos ${s % 10} y llevamos 1.`, escribe: `${cuenta} (se escribe ${s % 10}, se lleva 1)` }
+      : { explica: `Sumamos las ${colName(i)}: ${x} + ${y}${traia} = ${s}.`, escribe: cuenta });
     carry = s >= 10 ? 1 : 0;
   }
   if (carry) steps.push({ explica: "Nos llevábamos 1, que va al frente.", escribe: "llevamos 1" });
@@ -995,7 +999,7 @@ function pasosResta(a, b) {
   const steps = []; let borrow = 0;
   for (let i = 0; i < A.length; i++) {
     const x = A[i] - borrow, y = B[i] || 0;
-    if (x < y) { steps.push({ explica: `Restamos las ${colName(i)}: ${x} - ${y} no se puede, así que pedimos prestada una unidad a la columna de la izquierda (vale 10): ${x + 10} - ${y} = ${x + 10 - y}.`, escribe: `${colName(i)}: ${x + 10} - ${y} = ${x + 10 - y}` }); borrow = 1; }
+    if (x < y) { steps.push({ explica: `Restamos las ${colName(i)}: ${x} - ${y} no se puede, así que pedimos prestada una unidad a la columna de la izquierda (vale 10): ${x + 10} - ${y} = ${x + 10 - y}.`, escribe: `${colName(i)}: ${x + 10} - ${y} = ${x + 10 - y} (se pide 1 prestada)` }); borrow = 1; }
     else { steps.push({ explica: `Restamos las ${colName(i)}: ${x} - ${y} = ${x - y}.`, escribe: `${colName(i)}: ${x} - ${y} = ${x - y}` }); borrow = 0; }
   }
   return { texto: `${a} - ${b}`, answer: a - b, steps };

@@ -49,9 +49,13 @@ import {
 } from "../lib/leccion/diagramas.ts";
 import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
+  columnaDeCuentaDibujada,
   columnaDeLinea,
+  leerOperacionDibujada,
   leerSumaOResta,
   marcasDeColumna,
+  sinRayasDibujadas,
+  tieneRayaDibujada,
 } from "../lib/leccion/columna.ts";
 import { lineaResaltada } from "../lib/leccion/destacar.ts";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
@@ -1979,6 +1983,124 @@ console.log("\n · Coeficiente y exponente resaltados en el ejemplo");
     /\.pz-coeficiente\s*\{/.test(hoja) && /\.dark \.pz-coeficiente\s*\{/.test(hoja) &&
       /\.pz-exponente\s*\{/.test(hoja) && /\.dark \.pz-exponente\s*\{/.test(hoja),
   );
+}
+
+// ── La cuenta dibujada con guiones se recompone ──────────────────────────────
+// El motor, al escribir una suma, a veces la DIBUJA como en papel: los dos
+// números, una raya de guiones y el total. Compuesto tal cual, ese dibujo sale
+// como una fila de guiones y cifras sueltas —"119 + 45 - - - - - 64"— que se
+// lee como una cadena de restas desalineadas. Se recompone como columna de
+// verdad, con su llevada calculada aquí.
+console.log("\n · Cuentas dibujadas con guiones");
+
+{
+  const salto = String.fromCharCode(10);
+  const dibujo = (...filas) => filas.join(salto);
+
+  const recomponibles = [
+    { nombre: "dibujo simple", texto: dibujo("  19", "+ 45", "-----", "  64"), a: 19, b: 45, r: 64 },
+    { nombre: "con la llevada dibujada", texto: dibujo(" 1", " 19", "+45", "-----", " 64"), a: 19, b: 45, r: 64 },
+    { nombre: "resta", texto: dibujo(" 52", "- 27", "----", " 25"), a: 52, b: 27, r: 25 },
+    { nombre: "sin total", texto: dibujo(" 19", "+ 45", "-----"), a: 19, b: 45, r: 64 },
+    { nombre: "raya con guion largo", texto: dibujo(" 19", "+ 45", "————", " 64"), a: 19, b: 45, r: 64 },
+    { nombre: "tres cifras", texto: dibujo(" 147", "+ 285", "------", " 432"), a: 147, b: 285, r: 432 },
+  ];
+  for (const caso of recomponibles) {
+    const op = leerOperacionDibujada(caso.texto);
+    check(
+      `se recompone: ${caso.nombre}`,
+      op != null && op.a === caso.a && op.b === caso.b && op.resultado === caso.r,
+      `obtenido: ${op ? `${op.a} ${op.operador} ${op.b} = ${op.resultado}` : "null"}`,
+    );
+    const tex = columnaDeCuentaDibujada(caso.texto);
+    let compone = true;
+    try {
+      katex.renderToString(tex, { throwOnError: true, strict: false });
+    } catch (e) {
+      compone = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(`KaTeX compone la columna de: ${caso.nombre}`, compone, tex ?? "sin latex");
+  }
+
+  // La llevada dibujada se ignora y se recalcula: así la marca y el resultado
+  // no pueden discrepar aunque el dibujo venga con una llevada equivocada.
+  const conLlevadaMala = leerOperacionDibujada(dibujo(" 9", " 19", "+45", "----", " 64"));
+  check(
+    "una llevada dibujada mal no cambia la cuenta",
+    conLlevadaMala != null && conLlevadaMala.resultado === 64,
+    `obtenido: ${conLlevadaMala?.resultado}`,
+  );
+
+  // Y un total que no cuadra NO se compone: darle aspecto de cuenta correcta
+  // es peor que dejar el texto como estaba.
+  check(
+    "un total equivocado no se compone como cuenta",
+    leerOperacionDibujada(dibujo(" 19", "+ 45", "-----", " 4")) == null,
+  );
+  for (const noEsCuenta of ["Suma: juntar cantidades", "19 + 45", dibujo(" 19", "+ 45", " 64")]) {
+    check(
+      `«${noEsCuenta.replace(/\n/g, " ⏎ ")}» no se toma por una cuenta dibujada`,
+      leerOperacionDibujada(noEsCuenta) == null,
+    );
+  }
+
+  // Aunque no se deje recomponer, la raya se quita igual: compuesta como
+  // fórmula se lee como restas y desalinea todo lo demás.
+  check(
+    "la raya de guiones se retira del texto",
+    !tieneRayaDibujada(sinRayasDibujadas(dibujo(" 19", "+ 45", "-----", " 4"))),
+  );
+  check(
+    "un texto sin raya no se toca",
+    sinRayasDibujadas("unidades: 4 + 7 = 11") === "unidades: 4 + 7 = 11",
+  );
+
+  const fuentePzC = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la pizarra recompone la cuenta dibujada antes que nada",
+    /const latex =\s*\n\s*columnaDeCuentaDibujada\(linea\.texto\)/.test(fuentePzC),
+  );
+  check(
+    "la prosa tampoco compone la raya de guiones",
+    /TextoMatematico texto=\{sinRayasDibujadas\(linea\.texto\)\}/.test(fuentePzC),
+  );
+}
+
+// ── Los pasos de la suma dicen qué se escribe y qué se lleva ─────────────────
+// "4 + 7 = 11" en una columna de una sola cifra deja al alumno sin saber qué
+// hacer con el 11. Lo decía la locución y no la pizarra.
+console.log("\n · Los pasos de aritmética dicen la llevada");
+
+{
+  const datos = await consultar({ query: "Enséñame a sumar" });
+  const pasosSuma = (datos?.lsg?.modulos ?? [])
+    .flatMap((m) => m.directivas ?? [])
+    .filter((d) => d.tipo === "pizarra")
+    .map((d) => String(d.contenido ?? ""));
+
+  const conLlevada = pasosSuma.filter((p) => /se lleva 1/.test(p));
+  check(
+    "algún paso de la suma dice qué se escribe y qué se lleva",
+    conLlevada.length > 0,
+    `pasos: ${pasosSuma.join(" | ")}`,
+  );
+  for (const paso of conLlevada) {
+    check(
+      `«${paso}» cabe en la pizarra y no acaba en el subtítulo`,
+      esIdeaFuerza(paso),
+    );
+  }
+  // Y sigue sin ser un párrafo: la pizarra es para ideas fuerza.
+  for (const paso of pasosSuma) {
+    check(
+      `«${paso}» sigue siendo una idea fuerza`,
+      esIdeaFuerza(paso),
+    );
+  }
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────

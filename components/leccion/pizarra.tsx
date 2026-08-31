@@ -7,7 +7,12 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { columnaDeLinea, columnasDeOperacion } from "@/lib/leccion/columna";
+import {
+  columnaDeCuentaDibujada,
+  columnaDeLinea,
+  columnasDeOperacion,
+  sinRayasDibujadas,
+} from "@/lib/leccion/columna";
 import { lineaResaltada } from "@/lib/leccion/destacar";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
 import {
@@ -541,12 +546,19 @@ function LineaRenderizada({
     // unidades bajo las unidades y la raya debajo. En horizontal el alumno ve
     // una expresión que aún no sabe leer y se pierde lo que se le está
     // enseñando, que es alinear las cifras por su valor posicional.
+    //
+    // Y cuando el motor DIBUJA la cuenta con guiones —dos números, una raya y
+    // el total, como en papel— se recompone como columna de verdad. Compuesto
+    // tal cual, ese dibujo sale como una fila de guiones y cifras sueltas que
+    // se lee como una cadena de restas: es lo que reportó el cliente.
+    const texto = sinRayasDibujadas(linea.texto);
     const latex =
-      (columna ? columnaDeLinea(linea.texto, { conResultado: columna === "resuelta" }) : null)
+      columnaDeCuentaDibujada(linea.texto)
+      ?? (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
       // El coeficiente y el exponente marcados, para que se vea lo que se oye.
-      ?? (destacarTerminos ? lineaResaltada(linea.texto) : null)
-      ?? notacionFormal(linea.texto)
-      ?? (pareceMatematica(linea.texto) ? planoALatex(linea.texto) : null);
+      ?? (destacarTerminos ? lineaResaltada(texto) : null)
+      ?? notacionFormal(texto)
+      ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
     if (!latex) return null;
 
     try {
@@ -604,7 +616,10 @@ function LineaRenderizada({
           resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
         )}
       >
-        <TextoMatematico texto={linea.texto} />
+        {/* También aquí sin la raya de guiones: si la cuenta no se ha dejado
+            recomponer, la raya sigue sobrando. Como prosa se lee igual de mal
+            que como fórmula. */}
+        <TextoMatematico texto={sinRayasDibujadas(linea.texto)} />
       </p>
     </div>
   );
