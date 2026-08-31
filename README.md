@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 2.306
+Debe terminar sin fallos. La última ejecución sobre esta versión da 2.345
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -315,12 +315,14 @@ manifiesta como una cascada de fallos de prueba, que es un síntoma engañoso.
 | `qa/frontend.mjs`     | Funciones de decisión del frontend, sin servidor.                    |
 | `qa/sesiones.mjs`     | Continuidad de tema a lo largo de una conversación.                  |
 | `qa/aceptacion.mjs`   | Los casos de aceptación de los cinco temas garantizados.             |
+| `qa/paso1.mjs`        | Contrato del Paso 1: regla de corte, rutas protegidas y registro.    |
 | `qa/barrido.mjs`      | Barrido por propiedades: genera conversaciones y exige invariantes.  |
 
 Resultado de la última ejecución completa sobre esta versión:
 
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
+Paso 1 (fundación)    39 aprobadas · 0 fallidas
 Lección (Paso 2)     570 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
