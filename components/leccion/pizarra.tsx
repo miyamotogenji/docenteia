@@ -10,7 +10,7 @@ import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
-  cuentaEnCurso,
+  columnaDelDesarrollo,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
 import {
@@ -227,7 +227,10 @@ export function Pizarra({
    * resuelta salen de AQUÍ las dos, así que no pueden discrepar.
    */
   const cuenta = useMemo(
-    () => (ejercicio ? cuentaEnCurso(desarrollo.map((l) => l.texto), ejercicio.texto) : null),
+    () =>
+      ejercicio
+        ? columnaDelDesarrollo(desarrollo.map((l) => l.texto), ejercicio.texto)
+        : null,
     [ejercicio, desarrollo],
   );
 
@@ -261,10 +264,10 @@ export function Pizarra({
     // apiladas, con barra de desplazamiento y sin rastro de la alineación. Da
     // igual con qué trozos llegue: se compone la cuenta entera, calculada aquí,
     // y los trozos no se pintan. Lo que el tutor va diciendo sigue oyéndose.
-    if (ejercicio && desarrollo.length > 0 && cuenta) {
+    if (ejercicio && cuenta) {
       return {
         pasos: [
-          { linea: { ...ejercicio, id: -ejercicio.id - 2, texto: cuenta }, columna: "resuelta" },
+          { linea: { ...ejercicio, id: -ejercicio.id - 2, texto: cuenta.texto }, columna: "resuelta" },
         ],
         pasoSuelto: null,
       };
@@ -357,7 +360,7 @@ export function Pizarra({
                     </p>
                     {ejercicio ? (
                       <LineaRenderizada
-                        linea={cuenta ? { ...ejercicio, texto: cuenta } : ejercicio}
+                        linea={cuenta ? { ...ejercicio, texto: cuenta.texto } : ejercicio}
                         columna="planteamiento"
                         destacarTerminos={esFaseDeEjemplo(actual.id)}
                         resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
