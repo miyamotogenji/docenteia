@@ -51,7 +51,6 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
-  esFragmentoDeCuenta,
   esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
@@ -2398,54 +2397,74 @@ console.log("\n · Ninguna fase abre con la pizarra en blanco");
   );
 }
 
-// ── "Explicar regla" en aritmética: una cuenta, no una pila de trozos ───────
-// Al explicar una suma, el motor la escribe por partes: "27 + 38 =", luego
-// "15", luego "+1", luego "6". Cada trozo abría su propia tarjeta: cinco
-// apiladas, con barra de desplazamiento y sin rastro de la columna.
-console.log("\n · La explicación de una suma se compone como cuenta");
+// ── Aritmética: el desarrollo es UNA sola cuenta en columna ────────────
+// El motor escribe la suma por partes mientras la explica —"27 + 38 =", "¹19",
+// "+45", una cifra suelta— y cada parte abría su propia tarjeta: cinco apiladas,
+// con barra de desplazamiento y sin rastro de la alineación. Da igual con qué
+// trozos llegue: se compone la cuenta entera, y sólo la cuenta.
+console.log("\n · El desarrollo de aritmética es una sola matriz");
 
 {
-  const ejercicio = "27 + 38";
-  const trozos = [
-    ["27 + 38 =", "la operación sin su resultado"],
-    ["15", "una cifra suelta"],
-    ["+1", "la llevada suelta"],
-    ["6", "otra cifra suelta"],
-    ["65", "el total suelto"],
-  ];
-  for (const [linea, motivo] of trozos) {
-    check(
-      `«${linea}» se absorbe en la cuenta: ${motivo}`,
-      esFragmentoDeCuenta(linea, ejercicio),
-    );
-  }
+  const cuenta = columnaDeLinea("19 + 45 = ?", { conResultado: true });
+  // La barra invertida, sin pelearse con el escapado del fichero.
+  const B = String.fromCharCode(92);
 
-  // Un paso NARRADO sí se conserva: explica algo por sí mismo.
-  const narrados = [
-    "unidades: 7 + 8 = 15 (se escribe 5, se lleva 1)",
-    "decenas: 2 + 3 + 1 = 6",
-    "7 + 8 = 15",
-  ];
-  for (const linea of narrados) {
-    check(`«${linea}» se conserva como paso`, !esFragmentoDeCuenta(linea, ejercicio));
-  }
-
-  // Y la cuenta que se compone es la del ejercicio, con su llevada y su total.
-  const cuenta = columnaDeLinea(ejercicio, { conResultado: true });
+  // Una sola matriz: ni dos ni una partida.
   check(
-    "la cuenta resuelta lleva la llevada y el total",
-    /\\scriptstyle 1/.test(cuenta ?? "") && /\\hline\s+&\s+6\s+&\s+5/.test(cuenta ?? ""),
-    cuenta ?? "sin latex",
+    "la cuenta se compone en un solo bloque",
+    cuenta.split(B + "begin{array}").length === 2 &&
+      cuenta.split(B + "end{array}").length === 2,
+    cuenta,
   );
+  // Y con la forma exacta que pidió el cliente: una columna por cifra más la
+  // del signo, llevada arriba, raya y resultado abajo.
+  const suya = [
+    B + "begin{array}{rcc}",
+    "& 1 &",
+    B + B,
+    "& 1 & 9",
+    B + B,
+    "+ & 4 & 5",
+    B + B,
+    B + "hline",
+    "& 6 & 4",
+    B + "end{array}",
+  ].join(" ");
+  const norma = (t) => t.split(B + "scriptstyle ").join("").replace(/\s+/g, " ").trim();
+  check(
+    "la cuenta tiene la forma pedida (llevada, sumandos, raya, resultado)",
+    norma(cuenta) === norma(suya),
+    `obtenido: ${norma(cuenta)}`,
+  );
+  // La llevada va en cuerpo pequeño, como se escribe a mano y como aparece en
+  // la muestra del cliente.
+  check("la llevada se compone más pequeña", cuenta.includes(B + "scriptstyle 1"), cuenta);
+
+  let compone = true;
+  try {
+    katex.renderToString(cuenta, { throwOnError: true, strict: false });
+  } catch (e) {
+    compone = false;
+    console.log(`      KaTeX: ${e.message}`);
+  }
+  check("KaTeX compone la cuenta entera", compone, cuenta);
 
   const fuentePzF = readFileSync(
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
+  // En aritmética con desarrollo se compone la cuenta y NADA más: un solo paso.
   check(
-    "en aritmética con desarrollo se compone la cuenta, no los trozos",
-    /esFragmentoDeCuenta\(linea\.texto, ejercicio\.texto\)/.test(fuentePzF) &&
-      /columna: "resuelta"/.test(fuentePzF),
+    "en aritmética el desarrollo se reduce a la cuenta",
+    /columnasDeOperacion\(ejercicio\.texto\) > 0\)[\s\S]{0,90}columna: "resuelta" \}\]/.test(
+      fuentePzF,
+    ),
+  );
+  // Y va ANTES de componer los pasos sueltos, para que no lleguen a pintarse.
+  check(
+    "la cuenta se decide antes que los pasos sueltos",
+    fuentePzF.indexOf('columna: "resuelta" }],') <
+      fuentePzF.indexOf("const pasos: PasoCompuesto[] = desarrollo.map"),
   );
 }
 
