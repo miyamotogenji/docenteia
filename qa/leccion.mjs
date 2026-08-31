@@ -1452,8 +1452,10 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
   // Al entrar en la fase, el ejercicio queda puesto y el desarrollo a cero, en
   // el mismo instante: la tarjeta de arriba no espera a ninguna directiva.
   check(
-    "al abrir la fase se fija el ejercicio y se vacía el desarrollo",
-    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,200}setDesarrollo\(\[\]\);/.test(
+    // Al abrir, el desarrollo se REEMPLAZA: vacío, o con la línea que la fase ya
+    // trae. Lo que no puede es arrastrar el de la fase anterior.
+    "al abrir la fase se fija el ejercicio y se renueva el desarrollo",
+    /abrirEscena = useCallback\([\s\S]{0,1400}fijarLineaEjercicio\([\s\S]{0,600}setDesarrollo\([\s\S]{0,20}adelantada \?/.test(
       fuenteA,
     ),
   );
@@ -2354,6 +2356,44 @@ console.log("\n · Cada número con su nombre debajo");
       `linea: ${rotulada}`,
     );
   }
+}
+
+// ── Ninguna fase se abre con el lienzo vacío ────────────────────────────────
+// El tutor entraba en "Reglas y propiedades" y hablaba varios segundos antes de
+// escribir nada: la fase abierta, la voz explicando y la pizarra en blanco. Es
+// el mismo patrón que dejaba la Práctica vacía, pero en una fase sin ejercicio.
+// La primera línea de cada fase se conoce desde que llega la lección, así que
+// se adelanta al entrar en ella.
+console.log("\n · Ninguna fase abre con la pizarra en blanco");
+
+{
+  for (const tema of TEMAS_LECCION) {
+    const datos = await consultar({ query: tema.consulta });
+    const lsg = datos?.lsg ?? datos;
+    const adelantadas = enunciadosDeLeccion(lsg);
+
+    for (const modulo of lsg?.modulos ?? []) {
+      const id = String(modulo.id ?? "");
+      check(
+        `[${tema.clave}] la fase «${tituloDeFase(id)}» tiene línea desde el primer instante`,
+        Boolean(adelantadas.get(id)),
+        "esa fase se abriría con el lienzo en blanco mientras el tutor narra",
+      );
+    }
+  }
+
+  const fuenteAuE = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el aula adelanta la línea de las fases sin ejercicio",
+    /const adelantada = !plantea \? enunciadoPorFase\.current\.get\(clave\) : null;/.test(fuenteAuE),
+  );
+  check(
+    "y no la escribe dos veces cuando el motor llega a ella",
+    /if \(ultima && ultima\.texto === limpio\) return prev;/.test(fuenteAuE),
+  );
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────

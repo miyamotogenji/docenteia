@@ -302,6 +302,9 @@ export function Aula({
         // sumas distintas. Es una sola, que avanza: la nueva sustituye a la
         // anterior en lugar de añadirse.
         const ultima = prev[prev.length - 1];
+        // La línea adelantada al abrir la fase no se escribe dos veces cuando el
+        // motor llega a ella.
+        if (ultima && ultima.texto === limpio) return prev;
         if (ultima && esLaMismaCuenta(ultima.texto, limpio)) {
           return [...prev.slice(0, -1), linea];
         }
@@ -366,8 +369,15 @@ export function Aula({
       fijarLineaEjercicio(
         plantea && texto ? { id: idLinea.current++, texto, clase: "formula" } : null,
       );
-      // Desarrollo a cero: el lienzo empieza limpio en cada fase.
-      setDesarrollo([]);
+      // Y en las fases que NO plantean ejercicio —Concepto y Reglas— se adelanta
+      // igual su primera línea. El tutor entra en Reglas y habla varios segundos
+      // antes de escribir nada: hasta entonces el lienzo se quedaba vacío, con
+      // la fase abierta y la voz explicando. La línea se conoce desde que llegó
+      // la lección, así que no hay razón para esperarla.
+      const adelantada = !plantea ? enunciadoPorFase.current.get(clave) : null;
+      setDesarrollo(
+        adelantada ? [{ id: idLinea.current++, texto: adelantada, clase: "formula" }] : [],
+      );
     },
     [fijarLineaEjercicio],
   );
