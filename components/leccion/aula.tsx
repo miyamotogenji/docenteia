@@ -46,6 +46,7 @@ import {
   recortarParaSeguimiento,
 } from "@/lib/leccion/seguimiento-lsg";
 import { esIdeaFuerza, expresionPrincipal } from "@/lib/matematicas";
+import { esLaMismaCuenta, leerSumaOResta } from "@/lib/leccion/columna";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "@/lib/leccion/retroalimentacion";
 import { TEMAS_LECCION, type TemaLeccion } from "@/lib/leccion/temas";
 import { cn } from "@/lib/utils";
@@ -279,8 +280,29 @@ export function Aula({
       // llegaría aquí y lo pintaría por segunda vez.
       if (ejercicioRef.current?.texto === limpio) return;
 
+      // Y tampoco lo replantea con otras palabras: la tarjeta muestra
+      // "19 + 45 = ?" y el motor abre el desarrollo escribiendo "19 + 45", que
+      // es la misma cuenta sin resolver. Un dibujo con su desarrollo sí entra:
+      // eso ya no es el enunciado, es el procedimiento.
+      const replanteaElEnunciado =
+        ejercicioRef.current != null &&
+        leerSumaOResta(limpio) != null &&
+        esLaMismaCuenta(ejercicioRef.current.texto, limpio);
+      if (replanteaElEnunciado) return;
+
       escrito.current = [...escrito.current, limpio].slice(-60);
-      setDesarrollo((prev) => [...prev, linea]);
+      setDesarrollo((prev) => {
+        // El motor REDIBUJA la misma cuenta en cada paso: primero los dos
+        // números, luego con la cifra de las unidades bajo la raya, y al final
+        // con la llevada y el total. Apiladas, en la pizarra se veían tres
+        // sumas distintas. Es una sola, que avanza: la nueva sustituye a la
+        // anterior en lugar de añadirse.
+        const ultima = prev[prev.length - 1];
+        if (ultima && esLaMismaCuenta(ultima.texto, limpio)) {
+          return [...prev.slice(0, -1), linea];
+        }
+        return [...prev, linea];
+      });
     },
     [asegurarFase, faseConEjercicio, fijarLineaEjercicio],
   );
