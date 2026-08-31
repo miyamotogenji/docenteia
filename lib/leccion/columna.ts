@@ -327,6 +327,29 @@ export function cuentaEnCurso(
   return propia ? comoTexto(propia) : null;
 }
 
+/**
+ * El desarrollo de un ejercicio de aritmética: UNA sola cuenta resuelta.
+ *
+ * Es la única cosa que se compone debajo del enunciado. Ni el planteamiento
+ * repetido —ya está arriba, en su tarjeta— ni los trozos con que el motor la va
+ * escribiendo, ni dos copias apiladas. Devuelve el LaTeX de esa cuenta, o
+ * `null` si el ejercicio no es una operación de las que se disponen en columna.
+ *
+ * Vive aquí, y no dentro del componente, para que la suite pueda comprobar la
+ * garantía —una matriz, resuelta, la del ejercicio que se explica— sin montar
+ * React.
+ */
+export function columnaDelDesarrollo(
+  lineasDelDesarrollo: readonly string[],
+  ejercicio: string,
+): { texto: string; latex: string } | null {
+  if (lineasDelDesarrollo.length === 0) return null;
+  const texto = cuentaEnCurso(lineasDelDesarrollo, ejercicio);
+  if (!texto) return null;
+  const latex = columnaDeLinea(texto, { conResultado: true });
+  return latex ? { texto, latex } : null;
+}
+
 /** ¿El texto lleva una raya dibujada con guiones? */
 export function tieneRayaDibujada(texto: string): boolean {
   return String(texto ?? "")

@@ -51,6 +51,7 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
+  columnaDelDesarrollo,
   cuentaEnCurso,
   esLaMismaCuenta,
   leerOperacionDibujada,
@@ -1781,12 +1782,14 @@ console.log("\n · Sumas y restas dispuestas en columna");
   // se adelanta; y cuando la pide, la ve resuelta, que es lo que se acordó.
   check(
     "la cuenta resuelta no se compone si no hay desarrollo",
-    /desarrollo\.length > 0 && cuenta\)/.test(fuenteP2),
+    /if \(lineasDelDesarrollo\.length === 0\) return null;/.test(
+      readFileSync(new URL("../lib/leccion/columna.ts", import.meta.url), "utf8"),
+    ),
   );
   // Y compone la operación que se está explicando, no la que hubiera antes.
   check(
     "la cuenta resuelta es la que se está explicando",
-    /texto: cuenta \}, columna: "resuelta"/.test(fuenteP2),
+    /texto: cuenta\.texto \}, columna: "resuelta"/.test(fuenteP2),
   );
 }
 
@@ -2458,7 +2461,7 @@ console.log("\n · El desarrollo de aritmética es una sola matriz");
   // En aritmética con desarrollo se compone la cuenta y NADA más: un solo paso.
   check(
     "en aritmética el desarrollo se reduce a la cuenta",
-    /desarrollo\.length > 0 && cuenta\)[\s\S]{0,180}texto: cuenta \}, columna: "resuelta" \}/.test(
+    /if \(ejercicio && cuenta\)[\s\S]{0,200}texto: cuenta\.texto \}, columna: "resuelta" \}/.test(
       fuentePzG,
     ),
   );
@@ -2596,8 +2599,91 @@ console.log("\n · La cuenta compuesta es la que se explica");
   check(
     "la pizarra decide una sola cuenta para las dos tarjetas",
     /const cuenta = useMemo\(/.test(fuentePzG) &&
-      /linea=\{cuenta \? \{ \.\.\.ejercicio, texto: cuenta \} : ejercicio\}/.test(fuentePzG) &&
-      /texto: cuenta \}, columna: "resuelta"/.test(fuentePzG),
+      /linea=\{cuenta \? \{ \.\.\.ejercicio, texto: cuenta\.texto \} : ejercicio\}/.test(fuentePzG) &&
+      /texto: cuenta\.texto \}, columna: "resuelta"/.test(fuentePzG),
+  );
+}
+
+// ── El desarrollo de aritmética: una matriz, resuelta, y nada más ───────────
+// Dos duplicaciones reportadas: el desarrollo repintaba el planteamiento que ya
+// está arriba en su tarjeta, y al terminar apilaba dos matrices completas
+// idénticas. La composición no acumula: hay una cuenta, y es la resuelta.
+console.log("\n · El desarrollo de aritmética es UNA matriz resuelta");
+
+{
+  const B = String.fromCharCode(92);
+  const matrices = (tex) => tex.split(B + "begin{array}").length - 1;
+
+  const escenarios = [
+    {
+      nombre: "el motor escribe la cuenta por trozos",
+      desarrollo: ["19 + 45", "1", "4", "19 + 45", "64"],
+    },
+    {
+      nombre: "el motor redibuja la cuenta entera dos veces",
+      desarrollo: ["19 + 45", "19 + 45"],
+    },
+    {
+      nombre: "el motor narra las columnas",
+      desarrollo: [
+        "unidades: 9 + 5 = 14 (se escribe 4, se lleva 1)",
+        "decenas: 1 + 4 + 1 = 6",
+      ],
+    },
+  ];
+  for (const caso of escenarios) {
+    const compuesto = columnaDelDesarrollo(caso.desarrollo, "19 + 45 = ?");
+    check(`${caso.nombre}: se compone algo`, compuesto != null);
+    if (!compuesto) continue;
+
+    check(
+      `${caso.nombre}: UNA sola matriz`,
+      matrices(compuesto.latex) === 1,
+      `matrices: ${matrices(compuesto.latex)}`,
+    );
+    // Resuelta: con su llevada y su total. El planteamiento ya está arriba.
+    check(
+      `${caso.nombre}: viene resuelta, no repite el planteamiento`,
+      compuesto.latex.includes(B + "scriptstyle 1") && compuesto.latex.includes("& 6 & 4"),
+      compuesto.latex,
+    );
+    let compone = true;
+    try {
+      katex.renderToString(compuesto.latex, { throwOnError: true, strict: false });
+    } catch (e) {
+      compone = false;
+      console.log(`      KaTeX: ${e.message}`);
+    }
+    check(`${caso.nombre}: KaTeX la compone`, compone, compuesto.latex);
+  }
+
+  // Sin desarrollo no hay cuenta: en la práctica, el alumno ve sólo el
+  // planteamiento hasta que pide ayuda.
+  check(
+    "sin desarrollo no se compone ninguna cuenta",
+    columnaDelDesarrollo([], "19 + 45 = ?") == null,
+  );
+  // Y lo que no es aritmética no pasa por aquí.
+  check(
+    "lo que no es aritmética no compone cuenta",
+    columnaDelDesarrollo(["2x = 10"], "2x + 5 = 15") == null,
+  );
+
+  const fuentePzH = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  // La composición SUSTITUYE: un solo elemento, no un array que crece.
+  check(
+    "el desarrollo se sustituye, no se acumula",
+    /pasos: \[\s*\{ linea: \{ \.\.\.ejercicio, id: -ejercicio\.id - 2, texto: cuenta\.texto \}, columna: "resuelta" \},\s*\]/.test(
+      fuentePzH,
+    ),
+  );
+  // Y la decisión la toma la función que la suite acaba de comprobar.
+  check(
+    "la pizarra usa la misma decisión que se comprueba aquí",
+    /columnaDelDesarrollo\(desarrollo\.map\(\(l\) => l\.texto\), ejercicio\.texto\)/.test(fuentePzH),
   );
 }
 
