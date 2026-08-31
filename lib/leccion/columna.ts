@@ -56,6 +56,73 @@ export function leerSumaOResta(texto: string): OperacionEnColumna | null {
   return { a, b, operador, resultado };
 }
 
+/**
+ * ¿Es una raya dibujada con guiones?
+ *
+ * El modelo, al escribir una suma en la pizarra, la dibuja como se dibuja en
+ * papel: los dos números, una raya de guiones y el total. Esa raya no es
+ * matemática —no es una resta— y compuesta como fórmula se lee como una
+ * cadena de restas desalineadas, que es lo que reportó el cliente.
+ */
+function esRaya(linea: string): boolean {
+  return /^[-–—_=─━－]{2,}$/.test(linea.replace(/\s+/g, ""));
+}
+
+/** Una fila de la cuenta dibujada: su signo, si lo trae, y su número. */
+function leerFila(linea: string): { operador: "+" | "-" | null; n: number } | null {
+  const m = linea.replace(/\s+/g, "").match(/^([+-]?)(\d{1,9})$/);
+  if (!m) return null;
+  return { operador: m[1] === "+" ? "+" : m[1] === "-" ? "-" : null, n: Number(m[2]) };
+}
+
+/**
+ * Lee una cuenta DIBUJADA en varias líneas:
+ *
+ *      19
+ *    + 45
+ *    -----
+ *      64
+ *
+ * Es lo que escribe el modelo cuando intenta pintar la columna con caracteres.
+ * Recomponerla como una cuenta de verdad es preferible a componer el dibujo:
+ * el dibujo, pasado por KaTeX, sale como una fila de guiones y números sueltos.
+ *
+ * La llevada que venga dibujada se ignora: se recalcula aquí, y así la marca
+ * y el resultado no pueden discrepar. Y si el total dibujado no cuadra con la
+ * operación, no se compone nada: pintar una cuenta con un total equivocado y
+ * darle el aspecto de correcta es peor que dejar el texto como estaba.
+ */
+export function leerOperacionDibujada(texto: string): OperacionEnColumna | null {
+  const lineas = String(texto ?? "")
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  if (lineas.length < 2) return null;
+  if (!lineas.some(esRaya)) return null; // sin raya no es una cuenta dibujada
+
+  const filas = lineas.filter((l) => !esRaya(l)).map(leerFila);
+  if (filas.some((f) => f === null) || filas.length < 2 || filas.length > 4) return null;
+
+  const util = filas as Array<{ operador: "+" | "-" | null; n: number }>;
+  const conSigno = util.findIndex((f) => f.operador !== null);
+  if (conSigno < 1) return null; // el signo va con el segundo sumando
+
+  const b = util[conSigno];
+  const a = util[conSigno - 1];
+  if (a.operador !== null) return null;
+
+  const operador = b.operador as "+" | "-";
+  const resultado = operador === "+" ? a.n + b.n : a.n - b.n;
+  if (resultado < 0) return null;
+
+  // Lo que venga después de la raya es el total: tiene que cuadrar.
+  const resto = util.slice(conSigno + 1);
+  if (resto.length > 1) return null;
+  if (resto.length === 1 && resto[0].n !== resultado) return null;
+
+  return { a: a.n, b: b.n, operador, resultado };
+}
+
 /** Las cifras de un número, alineadas a la derecha en `ancho` columnas. */
 function cifras(n: number, ancho: number): string[] {
   const texto = String(n);
@@ -167,4 +234,38 @@ export function columnaDeLinea(
 ): string | null {
   const op = leerSumaOResta(texto);
   return op ? columnaVertical(op, opciones) : null;
+}
+
+/**
+ * La cuenta que el modelo dibujó con guiones, recompuesta como columna de
+ * verdad, con su llevada y su total. `null` si el texto no es eso.
+ *
+ * Se compone SIEMPRE resuelta: el dibujo ya traía el total, así que ocultarlo
+ * ahora sería quitarle al alumno algo que ya tenía delante.
+ */
+export function columnaDeCuentaDibujada(texto: string): string | null {
+  const op = leerOperacionDibujada(texto);
+  return op ? columnaVertical(op, { conResultado: true }) : null;
+}
+
+/**
+ * El texto sin las rayas dibujadas con guiones.
+ *
+ * Último recurso, para cuando la cuenta no se deja recomponer: la raya se
+ * quita igualmente, porque compuesta como fórmula se lee como una cadena de
+ * restas y desalinea todo lo demás.
+ */
+export function sinRayasDibujadas(texto: string): string {
+  return String(texto ?? "")
+    .split(/\r?\n/)
+    .filter((l) => !esRaya(l.trim()))
+    .join("\n")
+    .trim();
+}
+
+/** ¿El texto lleva una raya dibujada con guiones? */
+export function tieneRayaDibujada(texto: string): boolean {
+  return String(texto ?? "")
+    .split(/\r?\n/)
+    .some((l) => esRaya(l.trim()));
 }

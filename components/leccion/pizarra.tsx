@@ -7,7 +7,13 @@ import { Check } from "lucide-react";
 
 import { TextoMatematico } from "@/components/math";
 import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
-import { columnaDeLinea, columnasDeOperacion } from "@/lib/leccion/columna";
+import {
+  columnaDeCuentaDibujada,
+  columnaDeLinea,
+  columnasDeOperacion,
+  sinRayasDibujadas,
+} from "@/lib/leccion/columna";
+import { lineaResaltada } from "@/lib/leccion/destacar";
 import { pasoIntermedioDerivada } from "@/lib/leccion/desarrollo";
 import {
   esFaseDeConcepto,
@@ -80,6 +86,9 @@ export interface FaseAbierta {
   titulo: string;
 }
 
+/** Desarrollo vacío, estable: evita rehacer el array en cada composición. */
+const SIN_DESARROLLO: LineaPizarra[] = [];
+
 /** Una regla del catálogo formal, tal como la muestra la pizarra. */
 export interface ReglaPizarra {
   clave: string;
@@ -105,8 +114,9 @@ export interface ReglaPizarra {
  */
 export function Pizarra({
   fases,
-  ejercicio,
-  desarrollo,
+  ejercicio: ejercicioRecibido,
+  desarrollo: desarrolloRecibido,
+  faseDelContenido,
   resaltado,
   reglas = [],
   reglaDetectada = null,
@@ -126,6 +136,16 @@ export function Pizarra({
    * resolución; el aula lo SUSTITUYE entero en cada petición.
    */
   desarrollo: LineaPizarra[];
+  /**
+   * De qué fase es ese contenido.
+   *
+   * Durante la transición, la vista saliente y la entrante conviven. Sin saber
+   * a quién pertenece cada cosa, el contenido de una podía pintarse un instante
+   * bajo el rótulo de la otra: eso es el parpadeo que se veía, un recuadro que
+   * asoma un milisegundo y desaparece de golpe. Aquí sólo se compone el
+   * contenido de la fase que se está pintando.
+   */
+  faseDelContenido: string;
   /** Texto de la línea que el puntero está señalando, si hay alguno. */
   resaltado: string | null;
   /** Catálogo formal del tema, del que sale la tarjeta de la fase de Reglas. */
@@ -138,6 +158,15 @@ export function Pizarra({
 }) {
   const actual = fases[fases.length - 1] ?? null;
   const finRef = useRef<HTMLDivElement>(null);
+
+  // El contenido sólo se compone bajo SU fase. Lo que venga marcado con otra
+  // no se pinta: es lo que dejaba recuadros residuales al cambiar de fase.
+  const propio = actual != null && faseDelContenido === actual.id;
+  const ejercicio = propio ? ejercicioRecibido : null;
+  const desarrollo = useMemo(
+    () => (propio ? desarrolloRecibido : SIN_DESARROLLO),
+    [propio, desarrolloRecibido],
+  );
 
   // La regla que el tutor está explicando ahora mismo, deducida de las líneas
   // ya reveladas. Cambia al ritmo del diálogo, no de golpe al entrar en la fase.
@@ -291,6 +320,7 @@ export function Pizarra({
                       <LineaRenderizada
                         linea={ejercicio}
                         columna="planteamiento"
+                        destacarTerminos={esFaseDeEjemplo(actual.id)}
                         resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}
                         reglas={[]}
                       />
@@ -298,6 +328,20 @@ export function Pizarra({
                       <p className="text-sm text-muted-foreground">Preparando el ejercicio…</p>
                     )}
                   </div>
+                )}
+
+                {/* Qué significa cada color. Sin la leyenda, el resaltado es
+                    decoración; con ella, el alumno ata lo que oye —"el
+                    coeficiente 5, el exponente 2"— a lo que ve marcado. */}
+                {esFaseDeEjemplo(actual.id) && ejercicio && (
+                  <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+                    <span>
+                      <span className="pz-coeficiente">●</span> coeficiente
+                    </span>
+                    <span>
+                      <span className="pz-exponente">●</span> exponente
+                    </span>
+                  </p>
                 )}
 
                 {pasos.length > 0 && (
@@ -316,6 +360,7 @@ export function Pizarra({
                           <LineaRenderizada
                             linea={linea}
                             columna={columna}
+                            destacarTerminos={esFaseDeEjemplo(actual.id)}
                             resaltada={resaltado != null && linea.texto.includes(resaltado)}
                             reglas={esFaseDeEjemplo(actual.id) ? reglas : []}
                           />
@@ -325,14 +370,18 @@ export function Pizarra({
                   </div>
                 )}
 
-                {/* Concepto y Reglas: no hay ejercicio, se compone el paso en curso. */}
-                <AnimatePresence mode="wait">
-                  {pasoSuelto && (
+                {/* Concepto y Reglas: no hay ejercicio, se compone el paso en curso.
+
+                    Sin AnimatePresence: una salida anidada dentro de un
+                    contenedor que a su vez está saliendo encadena dos
+                    desmontajes, y el de dentro se ve como un recuadro que
+                    asoma y desaparece. La línea nueva entra con su fundido y
+                    la anterior se va con la fase, de una pieza. */}
+                {pasoSuelto && (
                     <motion.div
                       key={pasoSuelto.id}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
                       transition={{ duration: 0.25 }}
                     >
                       <LineaRenderizada
@@ -341,8 +390,7 @@ export function Pizarra({
                         reglas={[]}
                       />
                     </motion.div>
-                  )}
-                </AnimatePresence>
+                )}
 
                 <div ref={finRef} />
               </div>
@@ -461,6 +509,7 @@ function LineaRenderizada({
   linea,
   resaltada,
   columna,
+  destacarTerminos = false,
   reglas = [],
 }: {
   linea: LineaPizarra;
@@ -470,6 +519,12 @@ function LineaRenderizada({
    * línea es de verdad una suma o una resta de dos naturales.
    */
   columna?: ModoColumna;
+  /**
+   * Resalta el coeficiente y el exponente. Sólo en el ejemplo paso a paso: es
+   * donde el tutor los nombra uno a uno, y es ahí donde el alumno necesita ver
+   * cuál de las tres cifras está oyendo.
+   */
+  destacarTerminos?: boolean;
   /** Si se pasan, se etiqueta qué regla aplica este paso. */
   reglas?: ReglaPizarra[];
 }) {
@@ -491,10 +546,19 @@ function LineaRenderizada({
     // unidades bajo las unidades y la raya debajo. En horizontal el alumno ve
     // una expresión que aún no sabe leer y se pierde lo que se le está
     // enseñando, que es alinear las cifras por su valor posicional.
+    //
+    // Y cuando el motor DIBUJA la cuenta con guiones —dos números, una raya y
+    // el total, como en papel— se recompone como columna de verdad. Compuesto
+    // tal cual, ese dibujo sale como una fila de guiones y cifras sueltas que
+    // se lee como una cadena de restas: es lo que reportó el cliente.
+    const texto = sinRayasDibujadas(linea.texto);
     const latex =
-      (columna ? columnaDeLinea(linea.texto, { conResultado: columna === "resuelta" }) : null)
-      ?? notacionFormal(linea.texto)
-      ?? (pareceMatematica(linea.texto) ? planoALatex(linea.texto) : null);
+      columnaDeCuentaDibujada(linea.texto)
+      ?? (columna ? columnaDeLinea(texto, { conResultado: columna === "resuelta" }) : null)
+      // El coeficiente y el exponente marcados, para que se vea lo que se oye.
+      ?? (destacarTerminos ? lineaResaltada(texto) : null)
+      ?? notacionFormal(texto)
+      ?? (pareceMatematica(texto) ? planoALatex(texto) : null);
     if (!latex) return null;
 
     try {
@@ -503,11 +567,17 @@ function LineaRenderizada({
         throwOnError: false,
         errorColor: "hsl(var(--destructive))",
         strict: false,
+        // `trust` acotado a UN comando. El resaltado necesita `\htmlClass`
+        // para que el color viva en la hoja de estilos y siga al tema claro y
+        // al oscuro; abriendo la confianza entera, una línea redactada por el
+        // modelo podría colar un `\href`. Así no: cualquier otro comando de
+        // los que exigen confianza se compone inerte.
+        trust: (contexto) => contexto.command === "\\htmlClass",
       });
     } catch {
       return null;
     }
-  }, [linea.texto, linea.clase, columna]);
+  }, [linea.texto, linea.clase, columna, destacarTerminos]);
 
   // Etiqueta de la regla aplicada: hace explícito, paso a paso, en qué se
   // apoya cada movimiento del ejemplo.
@@ -546,7 +616,10 @@ function LineaRenderizada({
           resaltada && "bg-amber-100 ring-2 ring-amber-400 dark:bg-amber-950/50",
         )}
       >
-        <TextoMatematico texto={linea.texto} />
+        {/* También aquí sin la raya de guiones: si la cuenta no se ha dejado
+            recomponer, la raya sigue sobrando. Como prosa se lee igual de mal
+            que como fórmula. */}
+        <TextoMatematico texto={sinRayasDibujadas(linea.texto)} />
       </p>
     </div>
   );
