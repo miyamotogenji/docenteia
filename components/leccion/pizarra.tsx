@@ -10,7 +10,7 @@ import { DiagramaConcepto } from "@/components/leccion/diagrama-concepto";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
-  columnasDeOperacion,
+  cuentaEnCurso,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
 import {
@@ -218,6 +218,19 @@ export function Pizarra({
     };
   }, [actual, ejercicio]);
 
+  /**
+   * La cuenta de aritmética que se está explicando, si la hay.
+   *
+   * Manda sobre el enunciado de la tarjeta: al pedir ayuda, el tutor puede
+   * pasar a otra operación, y componer la de la tarjeta mientras la voz narra
+   * otra deja al alumno viendo una cosa y oyendo otra. La tarjeta y la cuenta
+   * resuelta salen de AQUÍ las dos, así que no pueden discrepar.
+   */
+  const cuenta = useMemo(
+    () => (ejercicio ? cuentaEnCurso(desarrollo.map((l) => l.texto), ejercicio.texto) : null),
+    [ejercicio, desarrollo],
+  );
+
   /** ¿La fase en curso plantea un ejercicio al alumno? */
   const planteaEjercicio =
     actual != null && (esFaseDeEjemplo(actual.id) || esFaseDePractica(actual.id));
@@ -248,20 +261,21 @@ export function Pizarra({
     // apiladas, con barra de desplazamiento y sin rastro de la alineación. Da
     // igual con qué trozos llegue: se compone la cuenta entera, calculada aquí,
     // y los trozos no se pintan. Lo que el tutor va diciendo sigue oyéndose.
-    if (ejercicio && desarrollo.length > 0 && columnasDeOperacion(ejercicio.texto) > 0) {
+    if (ejercicio && desarrollo.length > 0 && cuenta) {
       return {
-        pasos: [{ linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
+        pasos: [
+          { linea: { ...ejercicio, id: -ejercicio.id - 2, texto: cuenta }, columna: "resuelta" },
+        ],
         pasoSuelto: null,
       };
     }
 
     const pasos: PasoCompuesto[] = desarrollo.map((linea) => ({ linea }));
 
-    // Estos dos añadidos son del EJEMPLO y sólo del ejemplo: en la práctica
-    // revelarían la respuesta que el alumno tiene que hallar, que es justo lo
-    // que la ramificación pedagógica evita.
+    // Paso intermedio de la derivada, donde se ve APLICADA la regla. Sólo en el
+    // EJEMPLO: en la práctica revelaría la respuesta que el alumno tiene que
+    // hallar, que es justo lo que la ramificación pedagógica evita.
     if (ejercicio && esFaseDeEjemplo(actual.id) && desarrollo.length > 0) {
-      // Paso intermedio de la derivada, donde se ve APLICADA la regla.
       const intermedio = pasoIntermedioDerivada(ejercicio.texto);
       if (intermedio) {
         return {
@@ -269,24 +283,10 @@ export function Pizarra({
           pasoSuelto: null,
         };
       }
-
-      // La operación resuelta en columna, con sus llevadas y el total. El
-      // desarrollo narra las columnas una a una ("unidades: 4 + 7 = 11"); esto
-      // es la cuenta entera, que es donde se ve el resultado en su sitio.
-      //
-      // Se espera a que estén narradas TODAS las columnas: aparecer antes sería
-      // dar el total mientras el tutor va por las unidades.
-      const columnas = columnasDeOperacion(ejercicio.texto);
-      if (columnas > 0 && desarrollo.length >= columnas) {
-        return {
-          pasos: [...pasos, { linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
-          pasoSuelto: null,
-        };
-      }
     }
 
     return { pasos, pasoSuelto: null };
-  }, [actual, planteaEjercicio, ejercicio, desarrollo]);
+  }, [actual, planteaEjercicio, ejercicio, desarrollo, cuenta]);
 
   useEffect(() => {
     finRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -357,7 +357,7 @@ export function Pizarra({
                     </p>
                     {ejercicio ? (
                       <LineaRenderizada
-                        linea={ejercicio}
+                        linea={cuenta ? { ...ejercicio, texto: cuenta } : ejercicio}
                         columna="planteamiento"
                         destacarTerminos={esFaseDeEjemplo(actual.id)}
                         resaltada={resaltado != null && ejercicio.texto.includes(resaltado)}

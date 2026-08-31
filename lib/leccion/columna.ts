@@ -301,6 +301,32 @@ export function sinRayasDibujadas(texto: string): string {
     .trim();
 }
 
+/**
+ * La cuenta que se está EXPLICANDO ahora mismo.
+ *
+ * El tutor no siempre explica la que está en la tarjeta: al pedir ayuda, el
+ * modelo puede pasar a la de la práctica. Si la pizarra compone la de la
+ * tarjeta mientras la voz narra otra —"nueve más cinco son catorce" con un
+ * 24 + 17 delante—, el alumno ve una cosa y oye otra.
+ *
+ * Manda lo ÚLTIMO que se ha explicado: se recorre el desarrollo de atrás hacia
+ * adelante y se devuelve la primera operación que aparezca. Si el desarrollo no
+ * nombra ninguna, la de la tarjeta, que es la que el alumno tiene delante.
+ */
+export function cuentaEnCurso(
+  lineasDelDesarrollo: readonly string[],
+  ejercicio: string,
+): string | null {
+  const comoTexto = (op: OperacionEnColumna) => `${op.a} ${op.operador} ${op.b}`;
+
+  for (let i = lineasDelDesarrollo.length - 1; i >= 0; i--) {
+    const op = operacionDeLinea(lineasDelDesarrollo[i]);
+    if (op) return comoTexto(op);
+  }
+  const propia = operacionDeLinea(ejercicio);
+  return propia ? comoTexto(propia) : null;
+}
+
 /** ¿El texto lleva una raya dibujada con guiones? */
 export function tieneRayaDibujada(texto: string): boolean {
   return String(texto ?? "")
