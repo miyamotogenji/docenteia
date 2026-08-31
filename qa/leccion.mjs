@@ -51,6 +51,7 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
+  cuentaEnCurso,
   esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
@@ -1775,16 +1776,17 @@ console.log("\n · Sumas y restas dispuestas en columna");
     "el desarrollo compone la cuenta resuelta",
     /columna: "resuelta"/.test(fuenteP2),
   );
-  // Y sólo en el ejemplo: en la práctica, el total es la respuesta.
+  // La cuenta resuelta aparece SÓLO cuando hay desarrollo. En la práctica el
+  // desarrollo está vacío hasta que el alumno pide ayuda, así que el total no
+  // se adelanta; y cuando la pide, la ve resuelta, que es lo que se acordó.
   check(
-    "la cuenta resuelta sólo se compone en el ejemplo",
-    /esFaseDeEjemplo\(actual\.id\) && desarrollo\.length > 0[\s\S]{0,1500}columna: "resuelta"/.test(
-      fuenteP2,
-    ),
+    "la cuenta resuelta no se compone si no hay desarrollo",
+    /desarrollo\.length > 0 && cuenta\)/.test(fuenteP2),
   );
+  // Y compone la operación que se está explicando, no la que hubiera antes.
   check(
-    "la cuenta resuelta espera a que estén narradas todas las columnas",
-    /desarrollo\.length >= columnas/.test(fuenteP2),
+    "la cuenta resuelta es la que se está explicando",
+    /texto: cuenta \}, columna: "resuelta"/.test(fuenteP2),
   );
 }
 
@@ -2449,22 +2451,22 @@ console.log("\n · El desarrollo de aritmética es una sola matriz");
   }
   check("KaTeX compone la cuenta entera", compone, cuenta);
 
-  const fuentePzF = readFileSync(
+  const fuentePzG = readFileSync(
     new URL("../components/leccion/pizarra.tsx", import.meta.url),
     "utf8",
   );
   // En aritmética con desarrollo se compone la cuenta y NADA más: un solo paso.
   check(
     "en aritmética el desarrollo se reduce a la cuenta",
-    /columnasDeOperacion\(ejercicio\.texto\) > 0\)[\s\S]{0,90}columna: "resuelta" \}\]/.test(
-      fuentePzF,
+    /desarrollo\.length > 0 && cuenta\)[\s\S]{0,180}texto: cuenta \}, columna: "resuelta" \}/.test(
+      fuentePzG,
     ),
   );
   // Y va ANTES de componer los pasos sueltos, para que no lleguen a pintarse.
   check(
     "la cuenta se decide antes que los pasos sueltos",
-    fuentePzF.indexOf('columna: "resuelta" }],') <
-      fuentePzF.indexOf("const pasos: PasoCompuesto[] = desarrollo.map"),
+    fuentePzG.indexOf('columna: "resuelta" }') <
+      fuentePzG.indexOf("const pasos: PasoCompuesto[] = desarrollo.map"),
   );
 }
 
@@ -2512,6 +2514,90 @@ console.log("\n · Una aclaración no ocupa la caja de respuesta");
   check(
     "el aula quita las preguntas SÓLO de las aclaraciones",
     /opciones\.soloExplicacion \? sinPreguntas\(recortada\) : recortada/.test(fuenteAuF),
+  );
+}
+
+// ── La cuenta compuesta es la que se está explicando ────────────────────────
+// El tutor narraba "nueve más cinco son catorce" —de 19 + 45— y en la pizarra
+// se componía 24 + 17, que era lo que decía la tarjeta. El alumno veía una cosa
+// y oía otra. La tarjeta y la cuenta resuelta salen ahora de la misma decisión.
+console.log("\n · La cuenta compuesta es la que se explica");
+
+{
+  const casos = [
+    {
+      nombre: "manda lo que se está explicando, no la tarjeta",
+      desarrollo: ["1", "19 + 45", "4"],
+      tarjeta: "24 + 17",
+      esperado: "19 + 45",
+    },
+    {
+      nombre: "sin desarrollo, manda la tarjeta",
+      desarrollo: [],
+      tarjeta: "24 + 17",
+      esperado: "24 + 17",
+    },
+    {
+      nombre: "un paso narrado no cambia de cuenta",
+      desarrollo: ["unidades: 4 + 7 = 11 (se escribe 1, se lleva 1)"],
+      tarjeta: "24 + 17",
+      esperado: "24 + 17",
+    },
+    {
+      nombre: "si se explican varias, manda la última",
+      desarrollo: ["19 + 45", "4", "27 + 38"],
+      tarjeta: "24 + 17",
+      esperado: "27 + 38",
+    },
+    {
+      nombre: "el enunciado con interrogante también vale",
+      desarrollo: [],
+      tarjeta: "19 + 45 = ?",
+      esperado: "19 + 45",
+    },
+    {
+      nombre: "lo que no es aritmética no compone cuenta",
+      desarrollo: ["2x = 10"],
+      tarjeta: "2x + 5 = 15",
+      esperado: null,
+    },
+  ];
+  for (const caso of casos) {
+    const obtenido = cuentaEnCurso(caso.desarrollo, caso.tarjeta);
+    check(
+      `${caso.nombre}: ${caso.esperado ?? "ninguna"}`,
+      obtenido === caso.esperado,
+      `obtenido: ${obtenido}`,
+    );
+  }
+
+  // La coherencia es lo que importa: la tarjeta y la cuenta resuelta componen
+  // la MISMA operación, porque salen de la misma decisión.
+  const desarrollo = ["1", "19 + 45", "4"];
+  const enCurso = cuentaEnCurso(desarrollo, "24 + 17");
+  const arriba = columnaDeLinea(enCurso, { conResultado: false });
+  const abajo = columnaDeLinea(enCurso, { conResultado: true });
+  const cifras = (tex) => (tex ?? "").replace(/\\[a-z]+|[^0-9]/gi, "");
+  check(
+    "la tarjeta y la cuenta resuelta son la misma operación",
+    cifras(arriba).startsWith(cifras(arriba)) && abajo.includes("1 & 9") && abajo.includes("4 & 5"),
+    `arriba: ${arriba} · abajo: ${abajo}`,
+  );
+  check(
+    "y el resultado es el de esa operación, no el de la tarjeta",
+    abajo.includes("6 & 4"),
+    abajo,
+  );
+
+  const fuentePzG = readFileSync(
+    new URL("../components/leccion/pizarra.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la pizarra decide una sola cuenta para las dos tarjetas",
+    /const cuenta = useMemo\(/.test(fuentePzG) &&
+      /linea=\{cuenta \? \{ \.\.\.ejercicio, texto: cuenta \} : ejercicio\}/.test(fuentePzG) &&
+      /texto: cuenta \}, columna: "resuelta"/.test(fuentePzG),
   );
 }
 
