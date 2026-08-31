@@ -302,30 +302,52 @@ export function sinRayasDibujadas(texto: string): string {
 }
 
 /**
- * ¿Esta línea es un TROZO suelto de la cuenta que ya está en pantalla?
+ * La cuenta que se está EXPLICANDO ahora mismo.
  *
- * Al explicar una suma, el motor la va escribiendo por partes: "27 + 38 =",
- * luego "15", luego "+1", luego "6". Cada trozo llegaba como una línea propia y
- * la pizarra los apilaba en tarjetas sueltas, con barra de desplazamiento y sin
- * rastro de la columna. Por sí solos no dicen nada —un "6" suelto no es un
- * paso—, así que se absorben y lo que se compone es la cuenta entera.
+ * El tutor no siempre explica la que está en la tarjeta: al pedir ayuda, el
+ * modelo puede pasar a la de la práctica. Si la pizarra compone la de la
+ * tarjeta mientras la voz narra otra —"nueve más cinco son catorce" con un
+ * 24 + 17 delante—, el alumno ve una cosa y oye otra.
  *
- * Un paso NARRADO sí se conserva: "unidades: 7 + 8 = 15" lleva palabras y
- * explica algo por sí mismo.
+ * Manda lo ÚLTIMO que se ha explicado: se recorre el desarrollo de atrás hacia
+ * adelante y se devuelve la primera operación que aparezca. Si el desarrollo no
+ * nombra ninguna, la de la tarjeta, que es la que el alumno tiene delante.
  */
-export function esFragmentoDeCuenta(linea: string, ejercicio: string): boolean {
-  const t = String(linea ?? "").trim();
-  if (!t) return false;
-  if (/[a-záéíóúñ]/i.test(t)) return false; // lleva palabras: es un paso, no un trozo
+export function cuentaEnCurso(
+  lineasDelDesarrollo: readonly string[],
+  ejercicio: string,
+): string | null {
+  const comoTexto = (op: OperacionEnColumna) => `${op.a} ${op.operador} ${op.b}`;
 
-  // Una cifra suelta, con o sin signo: "15", "+1", "6".
-  if (/^[+-]?\d{1,9}$/.test(t)) return true;
+  for (let i = lineasDelDesarrollo.length - 1; i >= 0; i--) {
+    const op = operacionDeLinea(lineasDelDesarrollo[i]);
+    if (op) return comoTexto(op);
+  }
+  const propia = operacionDeLinea(ejercicio);
+  return propia ? comoTexto(propia) : null;
+}
 
-  // La operación sin su resultado: "27 + 38 =".
-  const sinIgual = t.replace(/=\s*$/, "").trim();
-  if (sinIgual !== t && esLaMismaCuenta(sinIgual, ejercicio)) return true;
-
-  return false;
+/**
+ * El desarrollo de un ejercicio de aritmética: UNA sola cuenta resuelta.
+ *
+ * Es la única cosa que se compone debajo del enunciado. Ni el planteamiento
+ * repetido —ya está arriba, en su tarjeta— ni los trozos con que el motor la va
+ * escribiendo, ni dos copias apiladas. Devuelve el LaTeX de esa cuenta, o
+ * `null` si el ejercicio no es una operación de las que se disponen en columna.
+ *
+ * Vive aquí, y no dentro del componente, para que la suite pueda comprobar la
+ * garantía —una matriz, resuelta, la del ejercicio que se explica— sin montar
+ * React.
+ */
+export function columnaDelDesarrollo(
+  lineasDelDesarrollo: readonly string[],
+  ejercicio: string,
+): { texto: string; latex: string } | null {
+  if (lineasDelDesarrollo.length === 0) return null;
+  const texto = cuentaEnCurso(lineasDelDesarrollo, ejercicio);
+  if (!texto) return null;
+  const latex = columnaDeLinea(texto, { conResultado: true });
+  return latex ? { texto, latex } : null;
 }
 
 /** ¿El texto lleva una raya dibujada con guiones? */
