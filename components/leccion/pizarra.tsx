@@ -11,7 +11,6 @@ import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
   columnasDeOperacion,
-  esFragmentoDeCuenta,
   sinRayasDibujadas,
 } from "@/lib/leccion/columna";
 import {
@@ -242,6 +241,20 @@ export function Pizarra({
       };
     }
 
+    // ARITMÉTICA: el desarrollo es UNA sola cuenta en columna, y nada más.
+    //
+    // El motor la escribe por partes mientras la explica —"27 + 38 =", "¹19",
+    // "+45", una cifra suelta— y cada parte abría su propia tarjeta: cinco
+    // apiladas, con barra de desplazamiento y sin rastro de la alineación. Da
+    // igual con qué trozos llegue: se compone la cuenta entera, calculada aquí,
+    // y los trozos no se pintan. Lo que el tutor va diciendo sigue oyéndose.
+    if (ejercicio && desarrollo.length > 0 && columnasDeOperacion(ejercicio.texto) > 0) {
+      return {
+        pasos: [{ linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
+        pasoSuelto: null,
+      };
+    }
+
     const pasos: PasoCompuesto[] = desarrollo.map((linea) => ({ linea }));
 
     // Estos dos añadidos son del EJEMPLO y sólo del ejemplo: en la práctica
@@ -270,21 +283,6 @@ export function Pizarra({
           pasoSuelto: null,
         };
       }
-    }
-
-    // ARITMÉTICA, con desarrollo: lo que se compone es LA CUENTA, no una pila
-    // de trozos. Al explicar, el motor la escribe por partes —"27 + 38 =",
-    // "15", "+1", "6"— y cada trozo abría su propia tarjeta: cinco tarjetas
-    // apiladas, con barra de desplazamiento y sin rastro de la columna. Los
-    // trozos se absorben y debajo va la cuenta resuelta, con su llevada.
-    if (ejercicio && columnasDeOperacion(ejercicio.texto) > 0 && desarrollo.length > 0) {
-      const narrados = pasos.filter(
-        ({ linea }) => !esFragmentoDeCuenta(linea.texto, ejercicio.texto),
-      );
-      return {
-        pasos: [...narrados, { linea: { ...ejercicio, id: -ejercicio.id - 2 }, columna: "resuelta" }],
-        pasoSuelto: null,
-      };
     }
 
     return { pasos, pasoSuelto: null };

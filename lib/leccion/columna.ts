@@ -301,33 +301,6 @@ export function sinRayasDibujadas(texto: string): string {
     .trim();
 }
 
-/**
- * ¿Esta línea es un TROZO suelto de la cuenta que ya está en pantalla?
- *
- * Al explicar una suma, el motor la va escribiendo por partes: "27 + 38 =",
- * luego "15", luego "+1", luego "6". Cada trozo llegaba como una línea propia y
- * la pizarra los apilaba en tarjetas sueltas, con barra de desplazamiento y sin
- * rastro de la columna. Por sí solos no dicen nada —un "6" suelto no es un
- * paso—, así que se absorben y lo que se compone es la cuenta entera.
- *
- * Un paso NARRADO sí se conserva: "unidades: 7 + 8 = 15" lleva palabras y
- * explica algo por sí mismo.
- */
-export function esFragmentoDeCuenta(linea: string, ejercicio: string): boolean {
-  const t = String(linea ?? "").trim();
-  if (!t) return false;
-  if (/[a-záéíóúñ]/i.test(t)) return false; // lleva palabras: es un paso, no un trozo
-
-  // Una cifra suelta, con o sin signo: "15", "+1", "6".
-  if (/^[+-]?\d{1,9}$/.test(t)) return true;
-
-  // La operación sin su resultado: "27 + 38 =".
-  const sinIgual = t.replace(/=\s*$/, "").trim();
-  if (sinIgual !== t && esLaMismaCuenta(sinIgual, ejercicio)) return true;
-
-  return false;
-}
-
 /** ¿El texto lleva una raya dibujada con guiones? */
 export function tieneRayaDibujada(texto: string): boolean {
   return String(texto ?? "")
