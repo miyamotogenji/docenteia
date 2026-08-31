@@ -51,6 +51,7 @@ import { pasoIntermedioDerivada } from "../lib/leccion/desarrollo.ts";
 import {
   columnaDeCuentaDibujada,
   columnaDeLinea,
+  esLaMismaCuenta,
   leerOperacionDibujada,
   leerSumaOResta,
   marcasDeColumna,
@@ -1452,7 +1453,7 @@ console.log("\n · El ejercicio no depende del ciclo de desarrollo");
     ),
   );
   // Sustitución, no concatenación: entre peticiones el array se reemplaza.
-  const concatenaciones = (fuenteA.match(/setDesarrollo\(\(prev\) => \[\.\.\.prev/g) ?? []).length;
+  const concatenaciones = (fuenteA.match(/return \[\.\.\.prev, linea\];/g) ?? []).length;
   check(
     "el desarrollo sólo se concatena al escribir un paso, nunca entre peticiones",
     concatenaciones === 1,
@@ -2034,9 +2035,15 @@ console.log("\n · Cuentas dibujadas con guiones");
 
   // Y un total que no cuadra NO se compone: darle aspecto de cuenta correcta
   // es peor que dejar el texto como estaba.
+  // Un total que no cuadra es un dibujo A MEDIAS —el motor lleva escrita sólo
+  // una columna—, no una cuenta equivocada: se compone sin total, nunca con el
+  // número suelto que había debajo de la raya.
+  const aMediasDibujo = dibujo(" 19", "+ 45", "-----", " 4");
   check(
-    "un total equivocado no se compone como cuenta",
-    leerOperacionDibujada(dibujo(" 19", "+ 45", "-----", " 4")) == null,
+    "un total que no cuadra no se compone como si fuera el resultado",
+    leerOperacionDibujada(aMediasDibujo)?.completa === false &&
+      !/\hline\s+&/.test(columnaDeCuentaDibujada(aMediasDibujo) ?? ""),
+    columnaDeCuentaDibujada(aMediasDibujo) ?? "sin latex",
   );
   for (const noEsCuenta of ["Suma: juntar cantidades", "19 + 45", dibujo(" 19", "+ 45", " 64")]) {
     check(
@@ -2101,6 +2108,60 @@ console.log("\n · Los pasos de aritmética dicen la llevada");
       esIdeaFuerza(paso),
     );
   }
+}
+
+// ── Una cuenta que avanza, no tres cuentas apiladas ─────────────────────────
+// El motor REDIBUJA la misma suma en cada paso: primero los dos números, luego
+// con la cifra de las unidades bajo la raya, y al final con la llevada y el
+// total. Apiladas, en la pizarra se veían tres sumas distintas —"19 + 45",
+// "19 + 45 - - - 4", "119 + 45 - - - 64"— como si fueran tres ejercicios.
+console.log("\n · La cuenta que se redibuja es UNA, y avanza");
+
+{
+  const salto = String.fromCharCode(10);
+  const dibujo = (...filas) => filas.join(salto);
+
+  const planteada = "19 + 45";
+  const aMedias = dibujo("19", "+ 45", "---", " 4");
+  const terminada = dibujo(" 1", "19", "+ 45", "---", " 64");
+  const otra = "24 + 17";
+
+  check("el planteamiento y el dibujo a medias son la misma cuenta", esLaMismaCuenta(planteada, aMedias));
+  check("el dibujo a medias y el terminado son la misma cuenta", esLaMismaCuenta(aMedias, terminada));
+  check("una suma distinta no se confunde con ella", !esLaMismaCuenta(terminada, otra));
+  check("una línea que no es cuenta no se empareja", !esLaMismaCuenta("Regla de la potencia", planteada));
+
+  // Mientras el dibujo está a medias, la columna se compone SIN total: poner el
+  // resultado antes de que el tutor llegue ahí sería adelantarle el final.
+  const medias = leerOperacionDibujada(aMedias);
+  const fin = leerOperacionDibujada(terminada);
+  check("un dibujo a medias se reconoce como incompleto", medias != null && medias.completa === false);
+  check("un dibujo con su total se reconoce como completo", fin != null && fin.completa === true);
+  check(
+    "la cuenta a medias se compone sin el total",
+    !/\\hline\s+&/.test(columnaDeCuentaDibujada(aMedias) ?? ""),
+    columnaDeCuentaDibujada(aMedias) ?? "sin latex",
+  );
+  check(
+    "la cuenta terminada sí lleva su total",
+    /\\hline\s+&\s+6\s+&\s+4/.test(columnaDeCuentaDibujada(terminada) ?? ""),
+    columnaDeCuentaDibujada(terminada) ?? "sin latex",
+  );
+
+  const fuenteAuC = readFileSync(
+    new URL("../components/leccion/aula.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el aula sustituye el redibujo en lugar de apilarlo",
+    /esLaMismaCuenta\(ultima\.texto, limpio\)\)\s*\{\s*\n\s*return \[\.\.\.prev\.slice\(0, -1\), linea\];/.test(
+      fuenteAuC,
+    ),
+  );
+  check(
+    "el desarrollo no replantea el enunciado que ya está en la tarjeta",
+    /replanteaElEnunciado/.test(fuenteAuC),
+  );
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────

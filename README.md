@@ -163,7 +163,7 @@ Con la aplicación levantada en otra terminal:
 npm test
 ```
 
-Debe terminar sin fallos. La última ejecución sobre esta versión da 2.373
+Debe terminar sin fallos. La última ejecución sobre esta versión da 2.383
 comprobaciones aprobadas y 1.800 turnos de barrido sin una sola violación; el
 detalle está en [Suite de validación](#suite-de-validación-qa).
 
@@ -323,7 +323,7 @@ Resultado de la última ejecución completa sobre esta versión:
 ```
 Banco de preguntas   124 aprobadas · 0 fallidas
 Paso 1 (fundación)    39 aprobadas · 0 fallidas
-Lección (Paso 2)     598 aprobadas · 0 fallidas
+Lección (Paso 2)     608 aprobadas · 0 fallidas
 qa.mjs              1462 aprobadas · 0 fallidas
 frontend.mjs          10 cargas    · 0 fallidas
 sesiones.mjs         126 aprobadas · 0 fallidas

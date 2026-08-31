@@ -92,7 +92,20 @@ function leerFila(linea: string): { operador: "+" | "-" | null; n: number } | nu
  * operación, no se compone nada: pintar una cuenta con un total equivocado y
  * darle el aspecto de correcta es peor que dejar el texto como estaba.
  */
-export function leerOperacionDibujada(texto: string): OperacionEnColumna | null {
+export interface OperacionDibujada extends OperacionEnColumna {
+  /**
+   * El dibujo ya trae el total correcto.
+   *
+   * El motor va redibujando la MISMA cuenta a medida que la resuelve: primero
+   * los dos números, luego con la cifra de las unidades bajo la raya, y al
+   * final con la llevada y el total. Mientras está a medias, la columna se
+   * compone sin resultado: poner el total antes de que él llegue ahí sería
+   * adelantarle el final al alumno.
+   */
+  completa: boolean;
+}
+
+export function leerOperacionDibujada(texto: string): OperacionDibujada | null {
   const lineas = String(texto ?? "")
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -115,12 +128,36 @@ export function leerOperacionDibujada(texto: string): OperacionEnColumna | null 
   const resultado = operador === "+" ? a.n + b.n : a.n - b.n;
   if (resultado < 0) return null;
 
-  // Lo que venga después de la raya es el total: tiene que cuadrar.
+  // Lo que venga después de la raya es el total. Si no cuadra, el dibujo está
+  // a medias —el motor lleva escrita sólo una columna— y se compone sin él.
   const resto = util.slice(conSigno + 1);
   if (resto.length > 1) return null;
-  if (resto.length === 1 && resto[0].n !== resultado) return null;
+  const completa = resto.length === 1 && resto[0].n === resultado;
 
-  return { a: a.n, b: b.n, operador, resultado };
+  return { a: a.n, b: b.n, operador, resultado, completa };
+}
+
+/**
+ * La operación de una línea de pizarra, venga escrita en una línea ("19 + 45")
+ * o dibujada en varias. `null` si la línea no es una operación.
+ */
+export function operacionDeLinea(texto: string): OperacionEnColumna | null {
+  return leerSumaOResta(texto) ?? leerOperacionDibujada(texto);
+}
+
+/**
+ * ¿Las dos líneas son la MISMA cuenta?
+ *
+ * El motor la redibuja entera en cada paso, así que en la pizarra se apilaban
+ * tres versiones de la misma suma —una vacía, una a medias y una terminada—
+ * como si fueran tres ejercicios. Reconociéndolas, la nueva sustituye a la
+ * anterior y en el lienzo hay una sola cuenta que avanza.
+ */
+export function esLaMismaCuenta(unaLinea: string, otraLinea: string): boolean {
+  const una = operacionDeLinea(unaLinea);
+  const otra = operacionDeLinea(otraLinea);
+  if (!una || !otra) return false;
+  return una.a === otra.a && una.b === otra.b && una.operador === otra.operador;
 }
 
 /** Las cifras de un número, alineadas a la derecha en `ancho` columnas. */
@@ -240,12 +277,13 @@ export function columnaDeLinea(
  * La cuenta que el modelo dibujó con guiones, recompuesta como columna de
  * verdad, con su llevada y su total. `null` si el texto no es eso.
  *
- * Se compone SIEMPRE resuelta: el dibujo ya traía el total, así que ocultarlo
- * ahora sería quitarle al alumno algo que ya tenía delante.
+ * Se compone resuelta sólo si el dibujo ya traía el total correcto. Con el
+ * dibujo a medias se compone el planteamiento: adelantar el resultado sería
+ * darle al alumno el final antes de que el tutor llegue ahí.
  */
 export function columnaDeCuentaDibujada(texto: string): string | null {
   const op = leerOperacionDibujada(texto);
-  return op ? columnaVertical(op, { conResultado: true }) : null;
+  return op ? columnaVertical(op, { conResultado: op.completa }) : null;
 }
 
 /**
