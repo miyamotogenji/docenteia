@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient, type NivelAcademico, type Tema } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
 import {
@@ -23,6 +23,8 @@ import {
   type TemaEnum,
 } from "../lib/diagnostico/banco.ts";
 import { adaptarCatalogo, type ReglaOficial } from "../lib/leccion/reglas.ts";
+import { bancoDeEjercicios } from "../src/lsgPrompt.js";
+import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 
 const prisma = new PrismaClient();
 const aqui = dirname(fileURLToPath(import.meta.url));
@@ -229,6 +231,54 @@ async function main() {
   }
   const temasConReglas = new Set(reglas.map((r) => r.tema)).size;
   console.log(`  ✓ Reglas y propiedades: ${reglas.length} en ${temasConReglas} temas`);
+
+  // 3.6. Banco de ejercicios deterministas
+  //
+  // Las listas viven en el motor, en memoria, y la tabla `ejercicios` estaba
+  // vacía: el catálogo no se podía consultar ni analizar fuera del motor. Se
+  // siembra desde la MISMA fuente que usa la lección —no una copia, que se
+  // desincronizaría— y la respuesta la calcula el validador determinista.
+  //
+  // Sólo entra lo que el validador puede verificar, que es lo que dice el
+  // esquema: un ejercicio sin respuesta comprobable no sirve para calificar.
+  const CLAVE_TEMA: Record<string, string> = {
+    ARITMETICA: "aritmetica",
+    FRACCIONES: "fracciones",
+    ECUACIONES_LINEALES: "lineales",
+    FACTORIZACION: "factorizacion",
+    DERIVADAS: "derivadas",
+  };
+
+  let sembrados = 0;
+  const sinVerificar: string[] = [];
+  for (const e of bancoDeEjercicios()) {
+    const respuesta = resolverEjercicio(e.enunciado, CLAVE_TEMA[e.tema]);
+    if (!respuesta) {
+      sinVerificar.push(`${e.tema}: ${e.enunciado}`);
+      continue;
+    }
+    await prisma.ejercicio.upsert({
+      where: { tema_nivel_enunciado: { tema: e.tema as Tema, nivel: e.nivel as NivelAcademico, enunciado: e.enunciado } },
+      update: { respuestaCorrecta: respuesta, validado: true, metadatos: { nivelMotor: e.nivelMotor } },
+      create: {
+        tema: e.tema as Tema,
+        nivel: e.nivel as NivelAcademico,
+        enunciado: e.enunciado,
+        respuestaCorrecta: respuesta,
+        origen: "DETERMINISTA",
+        validado: true,
+        metadatos: { nivelMotor: e.nivelMotor },
+      },
+    });
+    sembrados++;
+  }
+  console.log(`  ✓ Banco de ejercicios: ${sembrados} verificados por el motor`);
+  if (sinVerificar.length > 0) {
+    // Se DECLARA en lugar de guardarlos sin respuesta: un ejercicio que el
+    // motor no sabe resolver no puede calificarse, y guardarlo daría por
+    // completo un banco que no lo está.
+    console.log(`    (${sinVerificar.length} sin sembrar, el motor no los resuelve: ${sinVerificar.join(" · ")})`);
+  }
 
   // 4. Usuarios que el registro público no crea
   for (const [rol, datosUsuario] of [

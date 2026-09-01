@@ -229,6 +229,9 @@ model Ejercicio {
 
   progreso RegistroProgreso[]
 
+  /// Un mismo enunciado, en su tema y nivel, es UN ejercicio: la semilla lo
+  /// vuelve a sembrar en cada despliegue y sin esto se duplicaría cada vez.
+  @@unique([tema, nivel, enunciado])
   @@index([tema, nivel, validado])
   @@map("ejercicios")
 }
