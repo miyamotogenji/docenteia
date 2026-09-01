@@ -5,6 +5,16 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { clasificarNivel } from "@/lib/diagnostico/clasificar";
 
+/**
+ * Cómo se etiqueta una debilidad detectada por el diagnóstico.
+ *
+ * Se distingue de las que salen de la práctica ("respuesta_incorrecta") para
+ * poder leer de dónde viene cada una: una del diagnóstico dice que el alumno
+ * llegó flojo en ese tema; una de la práctica, que sigue fallando después de
+ * que se lo expliquen.
+ */
+const TIPO_ERROR_DIAGNOSTICO = "diagnostico_inicial";
+
 export const runtime = "nodejs";
 
 /**
@@ -208,6 +218,33 @@ export async function POST(req: Request) {
         where: { id: perfilId },
         data: { nivelActual: nivel, nivelAsignadoEn: new Date() },
       });
+
+      // CATÁLOGO DE DEBILIDADES. Cada fallo del diagnóstico deja constancia en su
+      // tema: es lo primero que se sabe del alumno, y hasta ahora se perdía.
+      // Sin esto, un alumno recién diagnosticado llegaba a su primera lección
+      // sin ninguna debilidad registrada, y el motor no tenía en qué insistir
+      // aunque acabara de fallar justo ese tema.
+      //
+      // Se acumulan por tema: si vuelve a fallar lo mismo en la práctica, sube
+      // la cuenta en lugar de abrir otra entrada.
+      for (const fallo of corregidas.filter((r) => !r.correcta)) {
+        await tx.registroError.upsert({
+          where: {
+            perfilId_tema_tipoError: {
+              perfilId,
+              tema: fallo.tema,
+              tipoError: TIPO_ERROR_DIAGNOSTICO,
+            },
+          },
+          update: { ocurrencias: { increment: 1 }, detalle: fallo.respuestaDada.slice(0, 200) },
+          create: {
+            perfilId,
+            tema: fallo.tema,
+            tipoError: TIPO_ERROR_DIAGNOSTICO,
+            detalle: fallo.respuestaDada.slice(0, 200),
+          },
+        });
+      }
 
       await tx.historialNivel.create({
         data: {
