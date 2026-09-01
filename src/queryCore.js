@@ -175,6 +175,15 @@ export async function manejarConsulta(body, ip = "desconocida") {
   // Resumen de la lección ANTERIOR (memoria): lo ya explicado, para que un "otro ejemplo" no repita.
   const previo = typeof body?.previo === "string" ? body.previo.trim().slice(0, 800) : "";
 
+  // METADATOS ACADÉMICOS del alumno, si hay sesión: ciclo, nivel diagnosticado y
+  // debilidades. Los adjunta la ruta, no el navegador, así que no se pueden
+  // falsear desde fuera. Sin sesión vienen vacíos y todo sigue igual: la lección
+  // determinista no puede depender de quién la pida o dejaría de ser reproducible.
+  const alumno = body?.alumno && typeof body.alumno === "object" ? body.alumno : null;
+  // El nivel del diagnóstico marca el escalón de partida, pero NO pisa el que
+  // venga en la consulta: si el alumno ya ha pulsado "más difícil", manda eso.
+  const nivelDelPerfil = typeof alumno?.nivelMotor === "string" ? alumno.nivelMotor : "";
+
   // CURSOR DE ROTACIÓN: posición ("tema:nivel" → índice) de por dónde va cada lista de ejemplos. El
   // servidor NO guarda sesión, así que el cursor viaja con la conversación. Se saneia entero
   // (claves, tipos y rango) porque viene del cliente. El tope de claves NO es decorativo: si se
@@ -359,7 +368,7 @@ export async function manejarConsulta(body, ip = "desconocida") {
     //      los 4 botones, devuelve null y se sigue el flujo normal con Gemini.
     const boton = explicacionDinamica
       ? null
-      : leccionBotonLSG({ query, seguimiento, contexto, currentTopic, previo, historial, cursores });
+      : leccionBotonLSG({ query, seguimiento, contexto, currentTopic, previo, historial, cursores, nivelDePartida: nivelDelPerfil });
     if (boton) {
       const { lsg, pasos, warnings } = processLSG(boton.lsg, boton.intencion, query);
       return {
@@ -442,6 +451,8 @@ export async function manejarConsulta(body, ip = "desconocida") {
       currentTopic,
       historial,
       previo,
+      // El contexto del alumno, ya resumido en una línea por la ruta.
+      alumno: typeof alumno?.resumen === "string" ? alumno.resumen : "",
       forceDemo: modo === "demo",
       // Una aclaración pide explícitamente al modelo: no vale caer al contenido
       // de demostración, que es otro guion fijo y devolvería el problema al

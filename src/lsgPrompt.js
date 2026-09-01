@@ -2353,7 +2353,7 @@ function pidePartesTema(nq) {
     || /\bterminos\s+de\s+(?:una?|la|el)\b/.test(nq);
 }
 
-export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", currentTopic = "", previo = "", historial = [], cursores = null } = {}) {
+export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", currentTopic = "", previo = "", historial = [], cursores = null, nivelDePartida = "" } = {}) {
   // Normaliza los guiones/menos unicode ("−" U+2212, "–", "—", "‐"…) a "-" ASCII EN EL PUNTO DE ENTRADA, para
   // que TODOS los generadores y clasificadores deterministas (lineal, aritmética, factorización, intención)
   // vean texto ASCII. Sin esto, una ecuación tecleada con "−" resolvía/mostraba la ecuación equivocada.
@@ -2412,8 +2412,14 @@ export function leccionBotonLSG({ query = "", seguimiento = "", contexto = "", c
   } else if ((esSeg || seguimiento) && idxGuardado != null) {
     nivel = NIVELES[idxGuardado] || "normal";              // seguimiento: se mantiene donde estaba
   } else {
-    nivel = "normal";
-    if (mNivel) mNivel[CLAVE_NIVEL] = NIVELES.indexOf("normal");
+    // Tema NUEVO: se empieza en el escalón que le corresponde por su diagnóstico.
+    // Sin diagnóstico —y sin sesión— se empieza en "normal", como siempre. Que un
+    // alumno diagnosticado Avanzado abriera cada tema por el escalón medio
+    // dejaba el diagnóstico en una etiqueta sin consecuencias.
+    const dePerfil = NIVELES.indexOf(nivelDePartida);
+    const inicio = dePerfil >= 0 ? dePerfil : NIVELES.indexOf("normal");
+    nivel = NIVELES[inicio];
+    if (mNivel) mNivel[CLAVE_NIVEL] = inicio;
   }
   // En un seguimiento el tema es el ACTIVO (contexto); en una pulsación nueva, la propia consulta.
   const base = (esSeg && (contexto || currentTopic)) ? (contexto || currentTopic) : query;
@@ -3032,4 +3038,53 @@ for (let k = 0; k < PELDANOS_GENERADOS; k++) {
   LINEALES[clave] = serie(generarLineal);
   DERIVADAS[clave] = serie(generarDerivada);
   FACTORIZ[clave] = serie(generarFactorizacion);
+}
+
+// ── Banco de ejercicios, para sembrarlo en la base ───────────────────────────
+// Las listas de arriba son la fuente de verdad de los ejercicios deterministas,
+// pero viven en memoria: la tabla `ejercicios` de PostgreSQL estaba vacía, así
+// que el catálogo no se podía consultar ni analizar fuera del motor.
+//
+// Esto las expone TAL CUAL, sin copiarlas: si se copiaran, la base y el motor se
+// desincronizarían en cuanto una cambiara. La semilla calcula la respuesta con
+// el validador determinista y sólo guarda lo que puede verificar.
+export function bancoDeEjercicios() {
+  const bancos = [
+    ["ARITMETICA", SUMAS], ["ARITMETICA", RESTAS], ["ARITMETICA", MULTIS], ["ARITMETICA", DIVIS],
+    ["ECUACIONES_LINEALES", LINEALES],
+    ["DERIVADAS", DERIVADAS],
+    ["FACTORIZACION", FACTORIZ],
+  ];
+  const NIVEL_ACADEMICO = { facil: "BASICO", normal: "INTERMEDIO", dificil: "AVANZADO" };
+
+  const salida = [];
+  for (const [tema, banco] of bancos) {
+    for (const [nivel, lista] of Object.entries(banco)) {
+      // Los niveles generados ("experto2"…) son variaciones de los cuatro
+      // básicos; al banco van con el nivel académico más alto.
+      const academico = NIVEL_ACADEMICO[nivel] || "AVANZADO";
+      for (const enunciado of Array.isArray(lista) ? lista : []) {
+        if (typeof enunciado === "string" && enunciado.trim()) {
+          salida.push({ tema, nivel: academico, nivelMotor: nivel, enunciado: enunciado.trim() });
+        }
+      }
+    }
+  }
+
+  // Las fracciones se guardan como [n1, d1, n2, d2]: se escriben como suma.
+  for (const [nivel, lista] of Object.entries(FRACCIONES)) {
+    const academico = NIVEL_ACADEMICO[nivel] || "AVANZADO";
+    for (const f of Array.isArray(lista) ? lista : []) {
+      if (Array.isArray(f) && f.length === 4) {
+        salida.push({
+          tema: "FRACCIONES",
+          nivel: academico,
+          nivelMotor: nivel,
+          enunciado: `${f[0]}/${f[1]} + ${f[2]}/${f[3]}`,
+        });
+      }
+    }
+  }
+
+  return salida;
 }

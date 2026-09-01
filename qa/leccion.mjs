@@ -66,6 +66,13 @@ import {
   lineaResaltada,
 } from "../lib/leccion/destacar.ts";
 import { rotulosALatex } from "../lib/leccion/rotulos.ts";
+import {
+  contextoDeAlumno,
+  contextoParaElModelo,
+  nivelDelMotor,
+  MAX_DEBILIDADES,
+} from "../lib/perfil/contexto.ts";
+import { bancoDeEjercicios, leccionBotonLSG } from "../src/lsgPrompt.js";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -2758,6 +2765,168 @@ console.log("\n · La tarjeta de regla no compone prosa");
     }
     check(`«${regla.nombre}» se compone en la tarjeta`, compone);
   }
+}
+
+// ── Hito 1 · metadatos académicos del alumno ─────────────────────────────────
+// El perfil guardaba el ciclo, el nivel del diagnóstico y las debilidades, pero
+// nada de eso llegaba al motor: la lección salía igual para un alumno de Básico
+// recién diagnosticado que para uno Avanzado con veinte fallos a la espalda.
+console.log("\n · Los metadatos del alumno llegan al motor");
+
+{
+  // El nivel académico se traduce al escalón con el que trabaja el motor.
+  const escalones = [
+    ["BASICO", "facil"],
+    ["INTERMEDIO", "normal"],
+    ["AVANZADO", "dificil"],
+    [null, null],
+    [undefined, null],
+  ];
+  for (const [academico, motor] of escalones) {
+    check(
+      `nivel ${academico ?? "sin diagnosticar"} → escalón ${motor ?? "ninguno"}`,
+      nivelDelMotor(academico) === motor,
+      `obtenido: ${nivelDelMotor(academico)}`,
+    );
+  }
+
+  const perfil = { ciclo: "Secundaria", grado: "3º", nivelActual: "AVANZADO" };
+  const errores = [
+    { tema: "FACTORIZACION", tipoError: "respuesta_incorrecta", ocurrencias: 7 },
+    { tema: "DERIVADAS", tipoError: "respuesta_incorrecta", ocurrencias: 12 },
+    { tema: "FRACCIONES", tipoError: "respuesta_incorrecta", ocurrencias: 2 },
+  ];
+  const contexto = contextoDeAlumno(perfil, errores);
+
+  check("el contexto lleva el ciclo", contexto?.ciclo === "Secundaria");
+  check("el contexto lleva el grado", contexto?.grado === "3º");
+  check("el contexto lleva el nivel asignado", contexto?.nivel === "AVANZADO");
+  check("y su escalón para el motor", contexto?.nivelMotor === "dificil");
+  // Las debilidades, de la más repetida a la menos: es lo que más conviene
+  // reforzar, y el aviso al modelo tiene sitio para unas pocas.
+  check(
+    "las debilidades vienen ordenadas por reincidencia",
+    contexto?.debilidades.map((d) => d.tema).join(",") ===
+      "DERIVADAS,FACTORIZACION,FRACCIONES",
+    `obtenido: ${contexto?.debilidades.map((d) => d.tema).join(",")}`,
+  );
+  check("y no más de las que caben", contexto.debilidades.length <= MAX_DEBILIDADES);
+
+  // Sin sesión no hay contexto, y la lección sigue siendo la de siempre: si
+  // dependiera de quién la pide, dejaría de ser reproducible.
+  check("sin perfil no se inventa contexto", contextoDeAlumno(null) === null);
+
+  // El resumen para el modelo no se escribe con huecos: una frase con "ciclo
+  // null" el modelo se la toma al pie de la letra.
+  const resumen = contextoParaElModelo(contexto);
+  check("el resumen nombra el ciclo y el nivel", /Secundaria/.test(resumen) && /avanzado/.test(resumen));
+  check("y lo que suele fallar", /suele fallar/.test(resumen) && /derivadas/.test(resumen));
+  check("sin nada que decir, no se manda frase", contextoParaElModelo(null) === "");
+  check(
+    "un perfil vacío tampoco genera frase con huecos",
+    contextoParaElModelo(contextoDeAlumno({}, [])) === "",
+    `obtenido: «${contextoParaElModelo(contextoDeAlumno({}, []))}»`,
+  );
+
+  // El nivel diagnosticado marca el escalón de PARTIDA de un tema nuevo.
+  const conNivel = (nivelDePartida) => {
+    const cursores = {};
+    leccionBotonLSG({ query: "Enséñame derivadas", cursores, nivelDePartida });
+    return cursores["nivel:actual"];
+  };
+  check("un alumno de Básico empieza en el escalón bajo", conNivel("facil") === 0);
+  check("uno Avanzado, en el alto", conNivel("dificil") === 2);
+  check("y sin diagnóstico, en el medio, como siempre", conNivel("") === 1);
+
+  // La ruta es quien adjunta el perfil: el navegador no puede falsearlo.
+  const fuenteRutaQuery = readFileSync(
+    new URL("../app/api/query/route.ts", import.meta.url),
+    "utf8",
+  );
+  check(
+    "la ruta lee el perfil de la sesión, no del cuerpo de la petición",
+    /await auth\(\)/.test(fuenteRutaQuery) &&
+      /prisma\.perfilEstudiante\.findUnique/.test(fuenteRutaQuery),
+  );
+  check(
+    "y las debilidades, de la más repetida a la menos",
+    /registroError\.findMany[\s\S]{0,160}ocurrencias: "desc"/.test(fuenteRutaQuery),
+  );
+  check(
+    "un fallo al leerlo no tumba la consulta",
+    /catch \{\s*\n\s*return null;\s*\n\s*\}/.test(fuenteRutaQuery),
+  );
+}
+
+// ── Hito 1 · el catálogo, sembrado y sin campos vacíos ──────────────────────
+// La tabla de ejercicios estaba vacía: las listas viven en el motor, en memoria,
+// y nunca llegaban a PostgreSQL. El catálogo no se podía consultar ni analizar
+// fuera del motor.
+console.log("\n · El catálogo se siembra entero y sin huecos");
+
+{
+  const banco = bancoDeEjercicios();
+  check("el banco de ejercicios no está vacío", banco.length > 300, `ejercicios: ${banco.length}`);
+
+  // Los cinco temas tienen ejercicios: si faltara uno, su práctica saldría de
+  // la nada y no habría con qué contrastarla.
+  const temas = new Set(banco.map((e) => e.tema));
+  for (const tema of ["ARITMETICA", "FRACCIONES", "ECUACIONES_LINEALES", "FACTORIZACION", "DERIVADAS"]) {
+    check(`el banco cubre ${tema}`, temas.has(tema));
+  }
+
+  // Ningún campo vacío: un ejercicio sin enunciado o sin nivel no se puede ni
+  // mostrar ni clasificar.
+  const incompletos = banco.filter(
+    (e) => !e.tema?.trim() || !e.nivel?.trim() || !e.enunciado?.trim() || !e.nivelMotor?.trim(),
+  );
+  check(
+    "ningún ejercicio del banco tiene campos vacíos",
+    incompletos.length === 0,
+    `incompletos: ${incompletos.length}`,
+  );
+
+  // Y TODOS son calificables: el esquema dice que sólo entra al banco lo que el
+  // PRE Light ha podido verificar, así que si alguno no se resuelve, la semilla
+  // lo deja fuera y el motor estaría proponiendo algo que no sabe corregir.
+  const CLAVE = {
+    ARITMETICA: "aritmetica",
+    FRACCIONES: "fracciones",
+    ECUACIONES_LINEALES: "lineales",
+    FACTORIZACION: "factorizacion",
+    DERIVADAS: "derivadas",
+  };
+  const sinResolver = banco.filter((e) => !resolverEjercicio(e.enunciado, CLAVE[e.tema]));
+  check(
+    "el motor sabe resolver todos los ejercicios que propone",
+    sinResolver.length === 0,
+    `sin resolver: ${sinResolver.map((e) => `${e.tema}:${e.enunciado}`).join(" · ")}`,
+  );
+
+  // El catálogo de reglas, igual: ningún campo vacío.
+  const reglasIncompletas = (catalogo ?? []).filter(
+    (r) => !r.clave?.trim() || !r.nombre?.trim() || !r.enunciado?.trim() || !r.descripcion?.trim(),
+  );
+  check(
+    "ninguna regla del catálogo tiene campos vacíos",
+    reglasIncompletas.length === 0,
+    `incompletas: ${reglasIncompletas.map((r) => r.clave).join(", ")}`,
+  );
+
+  // Y la semilla lo siembra: si no, la base queda por detrás del código.
+  const semilla = readFileSync(new URL("../prisma/seed.ts", import.meta.url), "utf8");
+  check(
+    "la semilla siembra el banco de ejercicios",
+    /bancoDeEjercicios\(\)/.test(semilla) && /prisma\.ejercicio\.upsert/.test(semilla),
+  );
+  check(
+    "y calcula la respuesta con el motor, no la copia",
+    /resolverEjercicio\(e\.enunciado/.test(semilla),
+  );
+  check(
+    "sólo entra lo que el motor puede verificar",
+    /if \(!respuesta\)[\s\S]{0,120}continue;/.test(semilla),
+  );
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────

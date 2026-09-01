@@ -149,6 +149,13 @@ export async function generateLSG(query, intent, opts = {}) {
   const ctxLineas = [];
   if (opts.currentTopic) ctxLineas.push(`- Tema activo de la conversación: ${opts.currentTopic}`);
   if (histLista.length) ctxLineas.push(`- Últimas consultas del alumno (de la más antigua a la más reciente): ${histLista.map((s) => `"${s}"`).join(" · ")}`);
+  // METADATOS ACADÉMICOS: ciclo, nivel diagnosticado y debilidades observadas.
+  // Los adjunta el servidor desde el perfil, no el navegador. Sin ellos, la
+  // lección salía igual para un alumno de Básico recién diagnosticado que para
+  // uno Avanzado con veinte fallos de factorización a la espalda.
+  if (typeof opts.alumno === "string" && opts.alumno.trim()) {
+    ctxLineas.push(`- ${opts.alumno.trim()} Ajusta el vocabulario y la dificultad a ese nivel, e insiste en lo que suele fallar.`);
+  }
   const contextoConv = ctxLineas.length
     ? `\n\nCONTEXTO DE LA CONVERSACIÓN (tenlo en cuenta, no lo repitas en voz alta):\n${ctxLineas.join("\n")}\nSi el mensaje actual es un SEGUIMIENTO (p.ej. "otro ejemplo", "con manzanas", "más fácil", "¿eso quiere decir…?", o pide un EJERCICIO/práctica SIN nombrar un tema nuevo como "déjame un ejercicio" u "otro ejercicio"), MANTENTE en el tema activo (usa ese tema para el ejercicio) y NO bajes a un tema más elemental salvo que el alumno lo pida explícitamente. Si el mensaje introduce un tema NUEVO y claro, cambia a ese tema.`
     : "";

@@ -367,6 +367,15 @@ export function computeFactorization(text) {
       const r = Math.sqrt(d / a);
       return `${a === 1 ? "" : String(a)}(${v} - ${r})(${v} + ${r})`;
     }
+    // Caso 3: el factor común no es el coeficiente entero, sino el MÁXIMO COMÚN
+    // DIVISOR de los dos. "18x² - 50" no encaja arriba —50 no es múltiplo de 18—
+    // pero sacando el 2 quedan 9 y 25, que sí son cuadrados: 2(3x - 5)(3x + 5).
+    // El motor proponía ese ejercicio y luego no sabía calificarlo.
+    const comun = mcd(a, d);
+    if (comun > 1 && isSq(a / comun) && isSq(d / comun)) {
+      const sa = Math.sqrt(a / comun), sd = Math.sqrt(d / comun);
+      return `${comun}(${vc(sa)}${v} - ${sd})(${vc(sa)}${v} + ${sd})`;
+    }
     return null; // sin raíces enteras no se arriesga
   }
 
