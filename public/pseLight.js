@@ -101,6 +101,10 @@ function normSym(s) {
     .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, (c) => SUP_A_NUM[c]).replace(/\^/g, "");
   r = r.replace(/([a-z])1$/, "$1");          // exponente 1 implícito: "2x1" (2x¹) → "2x"
   r = r.replace(/^([+-]?)1([a-z])/, "$1$2");  // coeficiente 1 implícito: "1x" → "x"
+  // El coeficiente va DELANTE: "x·2" es "2x". El alumno lo escribe en el orden en
+  // que lo dice —"equis por dos"— y se le marcaba mal una respuesta correcta,
+  // que es el peor error posible: el que le hace desconfiar del corrector.
+  r = r.replace(/^([+-]?)([a-z])(\d+)$/, "$1$3$2");
   return r;
 }
 // Forma CANÓNICA de un polinomio en x ("12x³ - 12x + 9" ↔ "9 - 12x + 12x^3"): suma coeficientes por

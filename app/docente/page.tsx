@@ -10,6 +10,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ETIQUETA_NIVEL } from "@/lib/diagnostico/clasificar";
+import {
+  alumnosDelPanel,
+  dificultadesRecurrentes,
+  metricasDelGrupo,
+  ETIQUETA_ESTADO,
+} from "@/lib/docente/metricas";
 
 export const metadata: Metadata = { title: "Panel docente" };
 
@@ -18,26 +24,59 @@ export const metadata: Metadata = { title: "Panel docente" };
 export const dynamic = "force-dynamic";
 
 /**
- * Panel docente — versión del Paso 1.
+ * Panel docente.
  *
- * El cuadro de mando con métricas, mapa de calor y recomendaciones es el Paso
- * 4. Aquí sólo se muestra lo que el Paso 1 ya persiste: quién se ha registrado
- * y en qué nivel lo situó el diagnóstico. Sirve además como comprobación
- * visible de que el RBAC funciona: esta ruta sólo la abren DOCENTE y ADMIN.
+ * Lee la persistencia REAL: quién se ha registrado, en qué nivel lo situó el
+ * diagnóstico, cuántas sesiones ha terminado, cómo va de aciertos y en qué se
+ * atasca el grupo. Todo sale de las tablas que la lección lleva llenando:
+ * sesiones_aprendizaje, registros_progreso y registros_error.
+ *
+ * Sirve además como comprobación visible de que el RBAC funciona: esta ruta
+ * sólo la abren DOCENTE y ADMIN.
  */
 export default async function PanelDocente() {
-  const perfiles = await prisma.perfilEstudiante.findMany({
-    orderBy: { creadoEn: "desc" },
-    take: 50,
-    include: {
-      usuario: { select: { nombre: true, email: true } },
-      intentosDiagnostico: {
-        orderBy: { iniciadoEn: "desc" },
-        take: 1,
-        select: { aciertos: true, totalPreguntas: true },
+  const [perfiles, intentos, errores] = await Promise.all([
+    prisma.perfilEstudiante.findMany({
+      orderBy: { creadoEn: "desc" },
+      take: 50,
+      include: {
+        usuario: { select: { nombre: true, email: true } },
+        intentosDiagnostico: {
+          orderBy: { iniciadoEn: "desc" },
+          take: 1,
+          select: { aciertos: true, totalPreguntas: true },
+        },
+        // Sesiones TERMINADAS: una empezada y abandonada no es trabajo hecho.
+        sesiones: {
+          where: { finalizadaEn: { not: null } },
+          orderBy: { finalizadaEn: "desc" },
+          select: { finalizadaEn: true },
+        },
       },
-    },
-  });
+    }),
+    // Un registro por intento de práctica calificado.
+    prisma.registroProgreso.findMany({
+      select: { perfilId: true, tema: true, acierto: true },
+    }),
+    // El catálogo de debilidades acumuladas del grupo.
+    prisma.registroError.findMany({
+      select: { tema: true, tipoError: true, ocurrencias: true },
+    }),
+  ]);
+
+  const enBruto = perfiles.map((p) => ({
+    perfilId: p.id,
+    nombre: p.usuario.nombre,
+    email: p.usuario.email,
+    nivel: p.nivelActual as string | null,
+    sesionesCompletadas: p.sesiones.length,
+    ultimaSesion: p.sesiones[0]?.finalizadaEn ?? null,
+  }));
+
+  const alumnos = alumnosDelPanel(enBruto, intentos);
+  const metricas = metricasDelGrupo(enBruto, intentos, errores);
+  const dificultades = dificultadesRecurrentes(errores);
+  const cifraDe = (perfilId: string) => alumnos.find((a) => a.perfilId === perfilId);
 
   return (
     <div className="min-h-screen">
@@ -48,6 +87,43 @@ export default async function PanelDocente() {
           <p className="text-muted-foreground">
             Estudiantes registrados y nivel asignado por el diagnóstico inicial.
           </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            { rotulo: "Estudiantes", valor: String(metricas.totalAlumnos) },
+            {
+              rotulo: "Diagnóstico completado",
+              valor:
+                metricas.diagnosticoCompletado == null
+                  ? "—"
+                  : `${metricas.diagnosticoCompletado}%`,
+              pie: `${metricas.conDiagnostico} de ${metricas.totalAlumnos}`,
+            },
+            {
+              rotulo: "Aciertos del grupo",
+              valor:
+                metricas.tasaAciertosGlobal == null ? "—" : `${metricas.tasaAciertosGlobal}%`,
+              pie: "sobre las prácticas calificadas",
+            },
+            {
+              rotulo: "Sesiones completadas",
+              valor: String(metricas.sesionesCompletadas),
+              pie: metricas.temaMasDificil
+                ? `más difícil: ${metricas.temaMasDificil.toLowerCase().replace(/_/g, " ")}`
+                : undefined,
+            },
+          ].map((m) => (
+            <Card key={m.rotulo}>
+              <CardHeader className="pb-2">
+                <CardDescription>{m.rotulo}</CardDescription>
+                <CardTitle className="text-3xl tabular-nums">{m.valor}</CardTitle>
+              </CardHeader>
+              {m.pie && (
+                <CardContent className="pt-0 text-xs text-muted-foreground">{m.pie}</CardContent>
+              )}
+            </Card>
+          ))}
         </div>
 
         <Card>
@@ -68,6 +144,9 @@ export default async function PanelDocente() {
                     <th className="pb-2 font-medium">Ciclo / grado</th>
                     <th className="pb-2 font-medium">Nivel</th>
                     <th className="pb-2 font-medium">Diagnóstico</th>
+                    <th className="pb-2 font-medium">Sesiones</th>
+                    <th className="pb-2 font-medium">Aciertos</th>
+                    <th className="pb-2 font-medium">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -96,6 +175,19 @@ export default async function PanelDocente() {
                             ? `${intento.aciertos} / ${intento.totalPreguntas}`
                             : "—"}
                         </td>
+                        <td className="py-3 tabular-nums text-muted-foreground">
+                          {cifraDe(p.id)?.sesionesCompletadas ?? 0}
+                        </td>
+                        <td className="py-3 tabular-nums text-muted-foreground">
+                          {cifraDe(p.id)?.tasaAciertos == null
+                            ? "—"
+                            : `${cifraDe(p.id)!.tasaAciertos}% (${cifraDe(p.id)!.aciertos}/${cifraDe(p.id)!.intentos})`}
+                        </td>
+                        <td className="py-3">
+                          <span className="rounded-full border px-2.5 py-1 text-xs font-medium">
+                            {ETIQUETA_ESTADO[cifraDe(p.id)?.estado ?? "sin_empezar"]}
+                          </span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -107,12 +199,41 @@ export default async function PanelDocente() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Métricas y mapa de calor</CardTitle>
+            <CardTitle>Dificultades recurrentes</CardTitle>
             <CardDescription>
-              Corresponden al Paso 4. Las tablas que los alimentan (progreso,
-              sesiones y catálogo de errores) ya están creadas en este paso.
+              {dificultades.length === 0
+                ? "Aún no hay errores registrados: aparecerán en cuanto los estudiantes practiquen."
+                : "En qué se atasca el grupo, de lo más frecuente a lo menos."}
             </CardDescription>
           </CardHeader>
+          {dificultades.length > 0 && (
+            <CardContent className="space-y-3">
+              {dificultades.map((d) => (
+                <div key={`${d.tema}-${d.tipoError}`} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span>
+                      {d.tema.toLowerCase().replace(/_/g, " ")}
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {d.tipoError.replace(/_/g, " ")}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {d.peso}% ({d.ocurrencias})
+                    </span>
+                  </div>
+                  {/* La barra es una lectura de un vistazo; la cifra de al lado
+                      es la que manda, porque la barra se satura al 100%. */}
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(2, Math.min(100, d.peso))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          )}
         </Card>
       </main>
     </div>

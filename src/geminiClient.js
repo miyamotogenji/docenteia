@@ -15,10 +15,21 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 // Google retira modelos concretos cada cierto tiempo (404). Si uno está retirado se
 // prueba el siguiente UNA vez y se recuerda, para no gastar una llamada en él de nuevo.
+/**
+ * Los modelos que fija el pliego del Paso 2.
+ *
+ * Se exportan para poder AVISAR cuando el despliegue está configurado con otro:
+ * `GEMINI_MODEL` manda sobre estos, y un despliegue apuntando a un modelo
+ * distinto funciona igual de bien pero deja de cumplir lo acordado. Desde fuera
+ * no se nota, así que lo dice la página de salud.
+ */
+export const MODELOS_DEL_PLIEGO = ["gemini-2.5-flash-lite", "gemini-2.5-flash"];
+
+// Google retira modelos concretos cada cierto tiempo (404). Si uno está retirado se
+// prueba el siguiente UNA vez y se recuerda, para no gastar una llamada en él de nuevo.
 const MODEL_CANDIDATES = [...new Set([
   process.env.GEMINI_MODEL,
-  "gemini-2.5-flash-lite", // rápido y barato → camino común
-  "gemini-2.5-flash",      // reserva si el anterior está retirado
+  ...MODELOS_DEL_PLIEGO,
 ].filter(Boolean))];
 
 // Límite de tokens de SALIDA según la ruta (blindaje de gasto pedido por el cliente):

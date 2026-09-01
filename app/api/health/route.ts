@@ -4,6 +4,7 @@ import { salud } from "@/src/queryCore.js";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import catalogoOficial from "@/prisma/seed-data/reglas-matematicas.json";
+import { MODELOS_DEL_PLIEGO } from "@/src/geminiClient.js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -71,9 +72,20 @@ export async function GET() {
     }
   }
 
+  // El modelo configurado, contrastado con el que fija el pliego. `GEMINI_MODEL`
+  // manda sobre el que trae el código, y un despliegue apuntando a otro modelo
+  // funciona igual de bien pero deja de cumplir lo acordado. Desde fuera no se
+  // nota, así que se dice aquí en lugar de descubrirlo en la aceptación.
+  const modeloConfigurado = String((base as { modelo?: string }).modelo ?? "");
+  const modeloDelPliego = MODELOS_DEL_PLIEGO.includes(modeloConfigurado);
+
   return NextResponse.json(
     {
       ...base,
+      modelo_del_pliego: modeloDelPliego,
+      aviso: modeloDelPliego
+        ? null
+        : `El modelo configurado (${modeloConfigurado}) no es uno de los del pliego: ${MODELOS_DEL_PLIEGO.join(" o ")}. Revísalo en la variable GEMINI_MODEL.`,
       app: "docenteia",
       paso: 1,
       base_datos: estado,

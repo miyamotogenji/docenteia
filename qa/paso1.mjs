@@ -16,6 +16,11 @@
 import { readFileSync } from "node:fs";
 
 import {
+  alumnosDelPanel,
+  dificultadesRecurrentes,
+  metricasDelGrupo,
+} from "../lib/docente/metricas.ts";
+import {
   clasificarNivel,
   ETIQUETA_NIVEL,
   DESCRIPCION_NIVEL,
@@ -286,6 +291,110 @@ console.log("\n · La base de datos se actualiza en cada despliegue");
     /reglasEnBase < reglasEsperadas/.test(salud) && /estado = "sin_sembrar"/.test(salud),
   );
 }
+
+
+// ── El panel docente lee la persistencia real ───────────────────────────────
+// El panel mostraba los estudiantes y su nivel, y las métricas eran una tarjeta
+// vacía con un "corresponden al Paso 4". Las tablas que las alimentan —sesiones,
+// progreso y catálogo de errores— llevan tiempo llenándose con lo que hacen los
+// alumnos. El cálculo se comprueba aquí con datos de mentira: no hace falta que
+// haya alumnos reales para saber que los porcentajes salen bien.
+console.log("\n · Métricas del panel docente");
+
+{
+  const alumnosBase = [
+    { perfilId: "p1", nombre: "Frances", email: "f@x.com", nivel: "INTERMEDIO", sesionesCompletadas: 4, ultimaSesion: null },
+    { perfilId: "p2", nombre: "Juan", email: "j@x.com", nivel: "BASICO", sesionesCompletadas: 2, ultimaSesion: null },
+    { perfilId: "p3", nombre: "María", email: "m@x.com", nivel: "AVANZADO", sesionesCompletadas: 6, ultimaSesion: null },
+    { perfilId: "p4", nombre: "Sin diagnosticar", email: "s@x.com", nivel: null, sesionesCompletadas: 0, ultimaSesion: null },
+  ];
+  // p1: 17 de 20 → 85 %. p2: 5 de 8 → 63 %. p3: 19 de 20 → 95 %. p4: nada.
+  const intentos = [
+    ...Array.from({ length: 20 }, (_, i) => ({ perfilId: "p1", tema: "ARITMETICA", acierto: i < 17 })),
+    ...Array.from({ length: 8 }, (_, i) => ({ perfilId: "p2", tema: "ARITMETICA", acierto: i < 5 })),
+    ...Array.from({ length: 20 }, (_, i) => ({ perfilId: "p3", tema: "DERIVADAS", acierto: i < 19 })),
+  ];
+  const errores = [
+    { tema: "ARITMETICA", tipoError: "llevada", ocurrencias: 18 },
+    { tema: "DERIVADAS", tipoError: "exponente", ocurrencias: 7 },
+    { tema: "ARITMETICA", tipoError: "llevada", ocurrencias: 4 },
+  ];
+
+  const alumnos = alumnosDelPanel(alumnosBase, intentos);
+  const porNombre = (n) => alumnos.find((a) => a.nombre === n);
+
+  check("cada alumno lleva su tasa de aciertos", porNombre("Frances").tasaAciertos === 85, `obtenido: ${porNombre("Frances").tasaAciertos}`);
+  check("y se redondea a entero", porNombre("Juan").tasaAciertos === 63, `obtenido: ${porNombre("Juan").tasaAciertos}`);
+  check("quien no ha respondido nada no tiene tasa", porNombre("Sin diagnosticar").tasaAciertos === null);
+  // El estado se lee de un vistazo, y no se inventa para quien no ha empezado.
+  check("un 95 % es óptimo", porNombre("María").estado === "optimo");
+  check("un 85 % va al día", porNombre("Frances").estado === "al_dia");
+  check("un 63 % necesita refuerzo", porNombre("Juan").estado === "refuerzo");
+  check(
+    "sin diagnóstico no se inventa un estado",
+    porNombre("Sin diagnosticar").estado === "sin_empezar",
+  );
+  // Primero quien más ha trabajado: es a quien el docente puede seguir.
+  check(
+    "los alumnos vienen del que más ha practicado al que menos",
+    alumnos.map((a) => a.nombre).join(",") === "Frances,María,Juan,Sin diagnosticar",
+    `obtenido: ${alumnos.map((a) => a.nombre).join(",")}`,
+  );
+
+  const metricas = metricasDelGrupo(alumnosBase, intentos, errores);
+  check("el total de alumnos", metricas.totalAlumnos === 4);
+  check("cuántos hicieron el diagnóstico", metricas.conDiagnostico === 3);
+  check("y su porcentaje", metricas.diagnosticoCompletado === 75, `obtenido: ${metricas.diagnosticoCompletado}`);
+  // 41 aciertos de 48 intentos → 85 %.
+  check("la tasa global del grupo", metricas.tasaAciertosGlobal === 85, `obtenido: ${metricas.tasaAciertosGlobal}`);
+  check("las sesiones COMPLETADAS se suman", metricas.sesionesCompletadas === 12, `obtenido: ${metricas.sesionesCompletadas}`);
+  check("y el tema con más errores", metricas.temaMasDificil === "ARITMETICA", `obtenido: ${metricas.temaMasDificil}`);
+
+  // Un grupo vacío no puede dar un porcentaje: se dice que no hay dato en vez
+  // de enseñar un 0 %, que se lee como "fallan todo".
+  const vacio = metricasDelGrupo([], [], []);
+  check("sin alumnos no se inventa un porcentaje", vacio.diagnosticoCompletado === null && vacio.tasaAciertosGlobal === null);
+  check("ni un tema más difícil", vacio.temaMasDificil === null);
+
+  const dificultades = dificultadesRecurrentes(errores);
+  check(
+    "las dificultades se agrupan por tema y tipo",
+    dificultades.length === 2,
+    `obtenidas: ${dificultades.length}`,
+  );
+  check(
+    "y se acumulan las repetidas",
+    dificultades[0].ocurrencias === 22,
+    `obtenido: ${dificultades[0].ocurrencias}`,
+  );
+  // 22 de 29 → 76 %; 7 de 29 → 24 %.
+  check("con su peso sobre el total", dificultades[0].peso === 76 && dificultades[1].peso === 24,
+    `obtenidos: ${dificultades.map((d) => d.peso).join(", ")}`);
+  check("de la más frecuente a la menos", dificultades[0].ocurrencias >= dificultades[1].ocurrencias);
+  check("sin errores, el mapa está vacío", dificultadesRecurrentes([]).length === 0);
+  check(
+    "un error con cero ocurrencias no cuenta",
+    dificultadesRecurrentes([{ tema: "X", tipoError: "y", ocurrencias: 0 }]).length === 0,
+  );
+
+  // Y la página consulta de verdad esas tablas.
+  const fuentePanel = readFileSync(
+    new URL("../app/docente/page.tsx", import.meta.url),
+    "utf8",
+  );
+  check(
+    "el panel lee las sesiones terminadas",
+    /sesiones: \{\s*\n?\s*where: \{ finalizadaEn: \{ not: null \} \}/.test(fuentePanel),
+    "una sesión empezada y abandonada no es trabajo hecho",
+  );
+  check("lee el progreso calificado", /prisma\.registroProgreso\.findMany/.test(fuentePanel));
+  check("y el catálogo de errores", /prisma\.registroError\.findMany/.test(fuentePanel));
+  check(
+    "ya no dice que las métricas son de otro paso",
+    !/corresponden al Paso 4/i.test(fuentePanel),
+  );
+}
+
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");

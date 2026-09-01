@@ -73,6 +73,7 @@ import {
   MAX_DEBILIDADES,
 } from "../lib/perfil/contexto.ts";
 import { bancoDeEjercicios, leccionBotonLSG } from "../src/lsgPrompt.js";
+import { MODELOS_DEL_PLIEGO } from "../src/geminiClient.js";
 import { hayQueMostrarAyuda, veredictoTrasAcierto } from "../lib/leccion/retroalimentacion.ts";
 import {
   enunciadoTrasPeticion,
@@ -2927,6 +2928,132 @@ console.log("\n · El catálogo se siembra entero y sin huecos");
     "sólo entra lo que el motor puede verificar",
     /if \(!respuesta\)[\s\S]{0,120}continue;/.test(semilla),
   );
+}
+
+// ── Hito 2 · el diagnóstico deja constancia de las debilidades ──────────────
+// El diagnóstico guardaba el nivel, el intento y el historial, pero no las
+// debilidades: un alumno recién diagnosticado llegaba a su primera lección sin
+// ninguna registrada, y el motor no tenía en qué insistir aunque acabara de
+// fallar justo ese tema.
+console.log("\n · El diagnóstico registra las debilidades detectadas");
+
+{
+  const fuenteDiag = readFileSync(
+    new URL("../app/api/diagnostico/route.ts", import.meta.url),
+    "utf8",
+  );
+
+  check(
+    "cada fallo del diagnóstico queda registrado en su tema",
+    /for \(const fallo of corregidas\.filter\(\(r\) => !r\.correcta\)\)/.test(fuenteDiag) &&
+      /tx\.registroError\.upsert/.test(fuenteDiag),
+  );
+  // Se acumulan por tema en lugar de abrir una entrada por intento.
+  check(
+    "las debilidades se acumulan, no se duplican",
+    /ocurrencias: \{ increment: 1 \}/.test(fuenteDiag),
+  );
+  // Y se distinguen de las de la práctica: no es lo mismo llegar flojo en un
+  // tema que seguir fallando después de que te lo expliquen.
+  check(
+    "una debilidad del diagnóstico se distingue de una de la práctica",
+    /TIPO_ERROR_DIAGNOSTICO = "diagnostico_inicial"/.test(fuenteDiag),
+  );
+  // Todo dentro de la MISMA transacción que el nivel: o se guarda el resultado
+  // entero o no se guarda nada.
+  check(
+    "se guardan en la misma transacción que el nivel",
+    /prisma\.\$transaction[\s\S]{0,2600}tx\.registroError\.upsert/.test(fuenteDiag),
+  );
+
+  // El banco cubre aritmética y álgebra, que es lo que pide el pliego.
+  const banco = JSON.parse(
+    readFileSync(new URL("../prisma/seed-data/preguntas-diagnostico.json", import.meta.url), "utf8"),
+  );
+  const preguntas = Array.isArray(banco) ? banco : banco.preguntas ?? [];
+  check(
+    "el diagnóstico son entre 3 y 5 preguntas",
+    preguntas.length >= 3 && preguntas.length <= 5,
+    `preguntas: ${preguntas.length}`,
+  );
+  const temasDiag = new Set(preguntas.map((p) => String(p.tema)));
+  check("cubre aritmética", temasDiag.has("aritmetica"));
+  check(
+    "y álgebra",
+    ["ecuaciones_lineales", "factorizacion", "derivadas"].some((t) => temasDiag.has(t)),
+    `temas: ${[...temasDiag].join(", ")}`,
+  );
+}
+
+// ── Hito 2 · el modelo configurado es el del pliego ─────────────────────────
+// GEMINI_MODEL manda sobre el que trae el código. Un despliegue apuntando a
+// otro modelo funciona igual de bien pero deja de cumplir lo acordado, y desde
+// fuera no se nota.
+console.log("\n · El modelo configurado se puede contrastar");
+
+{
+  check(
+    "el pliego fija dos modelos",
+    MODELOS_DEL_PLIEGO.includes("gemini-2.5-flash-lite") &&
+      MODELOS_DEL_PLIEGO.includes("gemini-2.5-flash"),
+    `modelos: ${MODELOS_DEL_PLIEGO.join(", ")}`,
+  );
+  const salud = readFileSync(new URL("../app/api/health/route.ts", import.meta.url), "utf8");
+  check(
+    "la salud dice si el modelo configurado es uno de ellos",
+    /modelo_del_pliego: modeloDelPliego/.test(salud),
+  );
+  check(
+    "y avisa con el nombre del que hay puesto",
+    /MODELOS_DEL_PLIEGO\.includes\(modeloConfigurado\)/.test(salud) && /aviso:/.test(salud),
+  );
+}
+
+// ── Hito 2 · tolerancia a equivalencias, sin falsos negativos ───────────────
+// Marcar mal una respuesta correcta es el peor error del corrector: es el que
+// hace que el alumno deje de fiarse de él.
+console.log("\n · Se aceptan las formas equivalentes de una respuesta");
+
+{
+  const equivalentes = [
+    ["(x + 3)(x - 3)", "(x - 3)(x + 3)", "el orden de los factores"],
+    ["(x+3)(x-3)", "(x - 3)(x + 3)", "sin espacios"],
+    ["(x - 5)²", "(x - 5)(x - 5)", "el cuadrado y el producto repetido"],
+    ["x(x + 7)", "(x+7)·x", "el factor común, delante o detrás"],
+    ["2(x + 2)(x - 2)", "2(x - 2)(x + 2)", "coeficiente y orden"],
+    ["0.5", "1/2", "decimal y fracción"],
+    ["3/6", "1/2", "una fracción sin simplificar"],
+    ["2,5", "2.5", "la coma decimal"],
+    ["5.0", "5", "un decimal que es entero"],
+    ["−4", "-4", "el menos tipográfico"],
+    ["x·2", "2x", "el coeficiente escrito detrás"],
+    ["x^2", "x²", "el superíndice"],
+    ["3 + 2x", "2x + 3", "el orden de los sumandos"],
+    ["-4x + 12x³", "12x³ - 4x", "un polinomio reordenado"],
+    ["x = 5", "5", "la respuesta con su despeje"],
+  ];
+  for (const [alumno, esperada, motivo] of equivalentes) {
+    check(
+      `«${alumno}» vale para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === true,
+    );
+  }
+
+  // Y lo que NO es equivalente sigue estando mal: aflojar el corrector para
+  // evitar falsos negativos no puede acabar dando por buena cualquier cosa.
+  const distintas = [
+    ["x·3", "2x", "otro coeficiente"],
+    ["(x + 2)(x + 4)", "(x + 2)(x + 3)", "otro factor"],
+    ["6", "7", "otro valor"],
+    ["1/3", "1/2", "otra fracción"],
+    ["12x³ + 4x", "12x³ - 4x", "otro signo"],
+  ];
+  for (const [alumno, esperada, motivo] of distintas) {
+    check(
+      `«${alumno}» no vale para «${esperada}»: ${motivo}`,
+      checkAnswer(alumno, esperada).correct === false,
+    );
+  }
 }
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
