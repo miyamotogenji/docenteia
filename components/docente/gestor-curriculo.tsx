@@ -126,8 +126,9 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
     const publicados = temas.filter((t) => t.estado === "PUBLICADO").length;
     const borradores = temas.filter((t) => t.estado === "BORRADOR").length;
     const sinMotor = temas.filter((t) => !t.motor).length;
+    const sinNivel = temas.filter((t) => !t.nivel).length;
     const ejercicios = temas.reduce((n, t) => n + t.ejercicios, 0);
-    return { publicados, borradores, sinMotor, ejercicios };
+    return { publicados, borradores, sinMotor, sinNivel, ejercicios };
   }, [temas]);
 
   // ── Acciones ───────────────────────────────────────────────────────────────
@@ -217,11 +218,14 @@ export function GestorCurriculo({ materias, temas, puedeEditar }: Props) {
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           { rotulo: "Temas publicados", valor: metricas.publicados, pie: "visibles para el alumno" },
           { rotulo: "En borrador", valor: metricas.borradores, pie: "sólo los ves tú" },
           { rotulo: "Sin motor", valor: metricas.sinMotor, pie: "sin corrección automática" },
+          // Un tema sin nivel no le llega a ningún alumno por la evaluación
+          // inicial, que se compone por niveles. Conviene verlo de un vistazo.
+          { rotulo: "Sin nivel", valor: metricas.sinNivel, pie: "no entran en la evaluación inicial" },
           { rotulo: "Ejercicios en el banco", valor: metricas.ejercicios, pie: "en todos los temas" },
         ].map((m) => (
           <Card key={m.rotulo}>

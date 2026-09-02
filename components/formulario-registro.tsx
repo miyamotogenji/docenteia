@@ -9,6 +9,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
+import { GRADOS, gradoPorValor } from "@/lib/diagnostico/grados";
 
 export function FormularioRegistro() {
   const router = useRouter();
@@ -21,12 +23,16 @@ export function FormularioRegistro() {
     setError(null);
 
     const datos = new FormData(e.currentTarget);
+    // El curso se elige de una lista cerrada y de él salen el ciclo y el grado.
+    // De este dato depende QUÉ PRUEBA se le presenta al alumno, y "3º" escrito
+    // de seis maneras distintas son seis alumnos que no se pueden clasificar.
+    const curso = gradoPorValor(String(datos.get("curso") ?? ""));
     const cuerpo = {
       nombre: String(datos.get("nombre") ?? ""),
       email: String(datos.get("email") ?? ""),
       password: String(datos.get("password") ?? ""),
-      ciclo: String(datos.get("ciclo") ?? ""),
-      grado: String(datos.get("grado") ?? ""),
+      ciclo: curso?.ciclo ?? "",
+      grado: curso?.grado ?? "",
     };
 
     const respuesta = await fetch("/api/registro", {
@@ -98,15 +104,20 @@ export function FormularioRegistro() {
         <p className="text-xs text-muted-foreground">Mínimo 8 caracteres.</p>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-2">
-          <Label htmlFor="ciclo">Ciclo</Label>
-          <Input id="ciclo" name="ciclo" placeholder="Secundaria" maxLength={80} />
-        </div>
-        <div className="space-y-2">
-          <Label htmlFor="grado">Grado</Label>
-          <Input id="grado" name="grado" placeholder="3º" maxLength={80} />
-        </div>
+      <div className="space-y-2">
+        <Label htmlFor="curso">¿En qué curso estás?</Label>
+        <Select id="curso" name="curso" defaultValue="">
+          <option value="">Prefiero no decirlo</option>
+          {GRADOS.map((g) => (
+            <option key={g.valor} value={g.valor}>
+              {g.etiqueta}
+            </option>
+          ))}
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          Con esto ajustamos la evaluación inicial a tu curso. Si no lo dices, empezaremos por lo
+          más básico.
+        </p>
       </div>
 
       <Button type="submit" className="w-full" disabled={enviando}>

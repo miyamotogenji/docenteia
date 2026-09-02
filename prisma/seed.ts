@@ -198,6 +198,7 @@ async function main() {
       update: {
         orden: p.orden,
         tema: p.tema,
+        nivel: p.nivel,
         enunciado: p.enunciado,
         opciones: p.opciones,
         respuestaCorrecta: p.respuestaCorrecta,
@@ -207,6 +208,7 @@ async function main() {
         clave: p.clave,
         orden: p.orden,
         tema: p.tema,
+        nivel: p.nivel,
         enunciado: p.enunciado,
         opciones: p.opciones,
         respuestaCorrecta: p.respuestaCorrecta,
@@ -222,7 +224,13 @@ async function main() {
     data: { activa: false },
   });
 
-  console.log(`  ✓ Diagnóstico: ${preguntas.length} preguntas activas`);
+  const porNivel = new Map<string, number>();
+  for (const p of preguntas) {
+    const clave = p.nivel ?? "sin nivel";
+    porNivel.set(clave, (porNivel.get(clave) ?? 0) + 1);
+  }
+  const reparto = [...porNivel].map(([n, c]) => `${c} ${n.toLowerCase()}`).join(" · ");
+  console.log(`  ✓ Diagnóstico: ${preguntas.length} preguntas activas (${reparto})`);
   if (retiradas.count > 0) {
     console.log(`    (${retiradas.count} pregunta(s) anterior(es) desactivada(s), historial intacto)`);
   }

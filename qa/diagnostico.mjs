@@ -76,14 +76,48 @@ console.log("══════════════════════�
 // ── 1. Integridad estructural ────────────────────────────────────────────────
 console.log(" · Estructura del banco");
 check("es un array", Array.isArray(banco), `tipo: ${typeof banco}`);
-check("tiene 5 preguntas", banco.length === 5, `tiene ${banco.length}`);
+// MVP 2. El banco dejó de ser una lista única de cinco preguntas iguales para
+// todo el mundo —con una de derivadas que le salía a un alumno de 3.º de
+// secundaria— y pasó a estar partido POR NIVEL. Lo que se exige ahora:
+//
+//   · cinco preguntas en cada nivel, para que la regla de corte del cliente
+//     (0-2 básico · 3-4 intermedio · 5 avanzado) siga contando sobre cinco;
+//   · variedad de temas dentro de cada nivel, que es lo que la regla anterior
+//     ("un tema por pregunta") protegía cuando el banco era uno solo.
+const NIVELES_BANCO = ["BASICO", "INTERMEDIO", "AVANZADO"];
+const porNivel = new Map(NIVELES_BANCO.map((n) => [n, banco.filter((p) => p.nivel === n)]));
+
+check("hay preguntas en los tres niveles", NIVELES_BANCO.every((n) => porNivel.get(n).length > 0));
+for (const nivel of NIVELES_BANCO) {
+  const delNivel = porNivel.get(nivel);
+  check(
+    `${nivel}: cinco preguntas`,
+    delNivel.length === 5,
+    `tiene ${delNivel.length}`,
+  );
+  const temasNivel = delNivel.map((p) => p.tema);
+  check(
+    `${nivel}: al menos tres temas distintos`,
+    new Set(temasNivel).size >= 3,
+    temasNivel.join(", "),
+  );
+  check(
+    `${nivel}: ningún tema aparece más de dos veces`,
+    [...new Set(temasNivel)].every((t) => temasNivel.filter((x) => x === t).length <= 2),
+    temasNivel.join(", "),
+  );
+}
+check("toda pregunta declara su nivel", banco.every((p) => NIVELES_BANCO.includes(p.nivel)));
 
 const temas = banco.map((p) => p.tema);
-check("un tema por pregunta, sin repetir", new Set(temas).size === temas.length);
 check(
-  "cubre los 5 temas de PRE Light",
+  "el banco completo sigue cubriendo los 5 temas de PRE Light",
   temas.every((t) => TEMAS_VALIDOS.has(t)) && new Set(temas).size === TEMAS_VALIDOS.size,
   `temas: ${temas.join(", ")}`,
+);
+check(
+  "las derivadas sólo se preguntan en el nivel avanzado",
+  banco.filter((p) => p.tema === "derivadas").every((p) => p.nivel === "AVANZADO"),
 );
 check("los identificadores no se repiten", new Set(banco.map((p) => p.id)).size === banco.length);
 
@@ -326,15 +360,39 @@ try {
 }
 check("un banco con la respuesta fuera de las opciones se rechaza", detectado);
 
-const temaDuplicado = JSON.parse(JSON.stringify(banco));
-temaDuplicado[1].tema = temaDuplicado[0].tema;
-let detectadoTema = false;
+// Con el banco partido por niveles, repetir tema deja de ser un error en sí
+// —básico pregunta dos veces de aritmética porque no puede preguntar de
+// derivadas— y lo que se rechaza es que un NIVEL se apoye en un solo tema.
+const nivelMonotema = JSON.parse(JSON.stringify(banco)).filter((p) => p.nivel === "BASICO");
+for (const p of nivelMonotema) p.tema = "aritmetica";
+let detectadoMonotema = false;
 try {
-  adaptarBanco(temaDuplicado);
+  adaptarBanco(nivelMonotema);
 } catch {
-  detectadoTema = true;
+  detectadoMonotema = true;
 }
-check("un banco con dos preguntas del mismo tema se rechaza", detectadoTema);
+check("un nivel que sólo pregunta por un tema se rechaza", detectadoMonotema);
+
+const nivelDesequilibrado = JSON.parse(JSON.stringify(banco)).filter((p) => p.nivel === "INTERMEDIO");
+nivelDesequilibrado[1].tema = nivelDesequilibrado[0].tema;
+nivelDesequilibrado[2].tema = nivelDesequilibrado[0].tema;
+let detectadoDesequilibrio = false;
+try {
+  adaptarBanco(nivelDesequilibrado);
+} catch {
+  detectadoDesequilibrio = true;
+}
+check("tres preguntas del mismo tema en un nivel se rechazan", detectadoDesequilibrio);
+
+const nivelInventado = JSON.parse(JSON.stringify(banco));
+nivelInventado[0].nivel = "EXPERTO";
+let detectadoNivel = false;
+try {
+  adaptarBanco(nivelInventado);
+} catch {
+  detectadoNivel = true;
+}
+check("un nivel que no existe se rechaza", detectadoNivel);
 
 // ── Veredicto ────────────────────────────────────────────────────────────────
 console.log("\n═══════════════════════════════════════════════════════════");

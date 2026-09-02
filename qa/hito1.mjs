@@ -41,6 +41,7 @@ import { reglasParaGuardar } from "../lib/docente/temas.ts";
 import { INICIO_POR_ROL, ROLES, ZONAS, puedeAcceder, puedeEditarCurriculo } from "../lib/rbac.ts";
 
 import { BASE_URL as BASE } from "./base-url.mjs";
+import { iniciarSesion } from "./sesion.mjs";
 
 let ok = 0;
 const fallos = [];
@@ -420,6 +421,7 @@ if (!salud) {
   }
 
   const sesion = await iniciarSesion(
+    BASE,
     process.env.SEED_DOCENTE_EMAIL || "docente@mentoriamath.local",
     process.env.SEED_DOCENTE_PASSWORD || "Docente-2026",
   );
@@ -736,6 +738,7 @@ if (!salud) {
     //     no le ofrece el botón, así que sin esta prueba nadie notaría que la
     //     API sí se lo permite.
     const sesionDirector = await iniciarSesion(
+      BASE,
       process.env.SEED_DIRECTOR_EMAIL || "director@mentoriamath.local",
       process.env.SEED_DIRECTOR_PASSWORD || "Director-2026",
     );
@@ -788,49 +791,3 @@ if (fallos.length > 0) {
 }
 console.log("═══════════════════════════════════════════════════════════\n");
 process.exit(fallos.length > 0 ? 1 : 0);
-
-/**
- * Inicia sesión contra NextAuth con credenciales y devuelve la cookie de sesión.
- *
- * El PMV 1 no probaba nada que necesitara sesión iniciada, y lo decía. Con el
- * HITO 1 eso deja de ser aceptable: todo el módulo de autoría vive detrás del
- * inicio de sesión, así que la batería tiene que saber entrar. Son dos pasos:
- * pedir el token CSRF (que viene con su cookie) y enviarlo con las credenciales
- * al proveedor de credenciales.
- */
-async function iniciarSesion(email, password) {
-  try {
-    const rCsrf = await fetch(`${BASE}/api/auth/csrf`);
-    const cookiesCsrf = leerCookies(rCsrf);
-    const { csrfToken } = await rCsrf.json();
-
-    const cuerpo = new URLSearchParams({
-      csrfToken,
-      email,
-      password,
-      callbackUrl: BASE,
-      redirect: "false",
-    });
-
-    const rLogin = await fetch(`${BASE}/api/auth/callback/credentials`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-        cookie: cookiesCsrf,
-      },
-      body: cuerpo.toString(),
-      redirect: "manual",
-    });
-
-    const cookiesSesion = leerCookies(rLogin);
-    return /session-token/.test(cookiesSesion) ? `${cookiesCsrf}; ${cookiesSesion}` : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Las cookies de una respuesta, en el formato que espera la cabecera `cookie`. */
-function leerCookies(respuesta) {
-  const crudas = respuesta.headers.getSetCookie?.() ?? [];
-  return crudas.map((c) => c.split(";")[0]).join("; ");
-}

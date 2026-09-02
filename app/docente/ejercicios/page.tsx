@@ -33,7 +33,7 @@ export default async function PaginaEjercicios() {
     prisma.nodoConocimiento.findMany({
       where: { estado: { not: "ARCHIVADO" } },
       orderBy: [{ orden: "asc" }, { titulo: "asc" }],
-      select: { id: true, titulo: true, motor: true, estado: true },
+      select: { id: true, titulo: true, motor: true, estado: true, nivel: true },
       take: 500,
     }),
     prisma.ejercicio.findMany({
@@ -48,6 +48,7 @@ export default async function PaginaEjercicios() {
     titulo: t.titulo,
     motor: t.motor,
     estado: t.estado as Estado,
+    nivel: t.nivel,
   }));
 
   const ejerciciosVista: EjercicioVista[] = ejercicios.map((e) => ({
@@ -80,6 +81,11 @@ export default async function PaginaEjercicios() {
           <p className="text-muted-foreground">
             Escribe ejercicios sueltos o plantillas parametrizadas. El servidor comprueba la
             matemática contra el motor determinista antes de guardarlos.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            El <strong>nivel</strong> de cada ejercicio decide a qué alumnos les llega: la
+            evaluación inicial de un alumno se compone con los ejercicios publicados y verificados
+            de SU nivel, así que a uno de 3.º de secundaria no le aparecerán derivadas.
           </p>
         </div>
 

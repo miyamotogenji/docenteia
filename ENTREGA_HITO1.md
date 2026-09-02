@@ -217,8 +217,9 @@ la aplicación compilada en modo producción:
 | --- | --- |
 | `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
 | `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
-| `qa/leccion.mjs` (PMV 1, lección) | 809 · 0 |
-| `qa/diagnostico.mjs` (PMV 1, banco) | 124 · 0 |
+| `npm run qa:diagnostico-nivel` — **nueva** | **62 comprobaciones · 0 fallidas** |
+| `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
+| `qa/diagnostico.mjs` (banco, ahora por niveles) | 347 · 0 |
 | `qa/paso1.mjs` (PMV 1, roles y registro) | 72 · 0 |
 | `qa/frontend.mjs` (PMV 1, arranque) | 10 · 0 |
 | `npx tsc --noEmit` | sin errores |
@@ -377,6 +378,104 @@ Nota de alcance: el motor sigue **sin** cubrir integrales, límites ni
 trigonometría inversa. Lo que hay ahora es lo que se pidió —derivadas con
 exponenciales, logaritmos, producto, cociente y cadena— más raíz y
 trigonometría básica, que salían gratis al derivar sobre el árbol.
+
+---
+
+## 11. Segunda observación del cliente: la prueba, ajustada al curso
+
+> "Al loguearse un alumno e indicar su grado escolar (ej. 3.º de secundaria), la
+> prueba diagnóstica le presenta derivadas en lugar de contenidos acordes a su
+> nivel."
+
+Tenía razón, y la causa era estructural: el diagnóstico del PMV 1 era **una sola
+lista** de cinco preguntas —una por cada tema del motor, derivadas incluidas—
+que se servía entera a todo el mundo. El alumno declaraba su curso al
+registrarse y ese dato no se usaba para nada.
+
+### 1. El currículo se clasifica por nivel, y el docente lo ve
+
+El nivel ya existía en los formularios; lo que faltaba era que sirviera para
+algo y que se notara:
+
+- El ejercicio **hereda el nivel de su tema** al elegirlo, que es justo el paso
+  que se olvida cuando hay que marcarlo a mano cada vez.
+- El banco tiene **filtro por nivel**, y cada ejercicio que cumple las
+  condiciones lleva la etiqueta **"Entra en el diagnóstico"**.
+- El currículo cuenta los **temas sin nivel**, que son los que no llegan a
+  ningún alumno por esta vía.
+
+### 2. La prueba se compone por nivel, en `app/api/diagnostico/route.ts`
+
+El nivel de partida sale, por este orden: del nivel ya diagnosticado, del
+**curso declarado** al registrarse, o —si no hay nada— de lo básico. Con él se
+arma la prueba a partir de dos fuentes:
+
+| Fuente | Qué aporta |
+| --- | --- |
+| Catálogo (`preguntas_diagnostico`) | Preguntas de opción múltiple calibradas por nivel |
+| Banco del docente (`ejercicios`) | Lo que ha publicado y verificado el profesorado para ese nivel, de respuesta abierta |
+
+Del banco entran como máximo 3 de las 5, y sólo ejercicios **publicados,
+verificados por el motor y sin huecos de plantilla**: son los únicos que el
+servidor puede corregir sin margen de duda. Las dos fuentes se reparten **por
+tema**, para que la prueba no acabe midiendo un solo asunto.
+
+La corrección recompone la prueba en el servidor y sólo admite esas preguntas:
+no se acepta la lista que envía el navegador, porque bastaría con mandar las
+fáciles.
+
+### 3. Preguntas base sembradas en los tres niveles
+
+`prisma/seed-data/preguntas-diagnostico.json` pasa de 5 preguntas a **15: cinco
+por nivel**. Se sembraron cinco y no las tres o cuatro pedidas para que la regla
+de corte acordada con el cliente —0-2 básico · 3-4 intermedio · 5 avanzado—
+siga contando sobre cinco exactamente igual que antes.
+
+| Nivel | Temas que se preguntan |
+| --- | --- |
+| Básico | aritmética, fracciones, ecuaciones lineales |
+| Intermedio | aritmética, fracciones, ecuaciones lineales, factorización |
+| Avanzado | factorización, derivadas, ecuaciones lineales |
+
+**Las derivadas sólo aparecen en el nivel avanzado.**
+
+### 4. El curso deja de escribirse a mano
+
+El registro pedía "Ciclo" y "Grado" en dos campos de texto libre. Ahora es una
+lista cerrada de cursos —de 1.º de primaria a preuniversitario—, porque de ese
+dato depende qué prueba se compone y "3º" escrito de seis maneras son seis
+alumnos que no se pueden clasificar. El mapeo tolera igualmente lo que ya
+estuviera guardado ("3.º de secundaria", "tercero", "3 ESO").
+
+### Comprobado de punta a punta
+
+`npm run qa:diagnostico-nivel` registra alumnos de verdad contra el servidor y
+comprueba el caso exacto del cliente:
+
+```
+✓ se registra un alumno de 3.º de secundaria
+✓ la prueba se arma con nivel INTERMEDIO
+✓ el servidor dice que el nivel sale del curso declarado
+✓ NO le aparece ninguna pregunta de derivadas (el fallo reportado)
+✓ un alumno de bachillerato SÍ recibe nivel avanzado, y en su prueba sí hay derivadas
+✓ sin curso declarado, la prueba es de nivel básico
+```
+
+### Ficheros
+
+```
+lib/diagnostico/grados.ts        catálogo de cursos y traducción curso → nivel (nuevo)
+lib/diagnostico/seleccion.ts     composición de la prueba, con reparto por tema (nuevo)
+lib/diagnostico/prueba.ts        la prueba de un alumno, leída de la base (nuevo)
+lib/diagnostico/banco.ts         el catálogo declara nivel; equilibrio por nivel
+app/api/diagnostico/route.ts     compone y corrige por nivel
+app/estudiante/diagnostico/…     la página usa la misma composición que la API
+components/formulario-diagnostico.tsx  admite respuestas abiertas del banco
+components/formulario-registro.tsx     el curso se elige de una lista
+prisma/seed-data/preguntas-diagnostico.json  15 preguntas, 5 por nivel
+qa/diagnostico-nivel.mjs         62 comprobaciones (nuevo)
+qa/sesion.mjs                    inicio de sesión compartido por las baterías
+```
 
 ---
 

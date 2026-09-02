@@ -301,6 +301,7 @@ Todas están documentadas con más detalle en [`.env.example`](.env.example).
 | `npm run qa:diagnostico` | Valida el banco de preguntas (no necesita servidor).|
 | `npm run qa:hito1`    | Valida la autoría docente y el validador matemático.  |
 | `npm run qa:matematicas` | Valida el analizador, la derivación y la equivalencia.|
+| `npm run qa:diagnostico-nivel` | Valida que cada alumno recibe la prueba de su nivel.|
 | `npm run legacy:start`| Arranca el prototipo Express original (puerto 3001).  |
 
 ---
@@ -521,6 +522,19 @@ salen `e^x`, `ln(x)`, `sqrt`, seno y coseno, y con ellos las reglas del
 Y la corrección compara **funciones, no cadenas**: `e^x + 2x` y `2x + e^x` son
 la misma respuesta. Sólo donde la forma es el ejercicio —una factorización— se
 sigue exigiendo la forma.
+
+### La evaluación inicial se ajusta al curso
+
+Un alumno declara su curso al registrarse —de 1.º de primaria a
+preuniversitario— y de ahí sale su **nivel de partida**: básico, intermedio o
+avanzado. La prueba se compone con las preguntas de ese nivel, y no con un banco
+único: a un alumno de 3.º de secundaria no le aparecen derivadas.
+
+Las preguntas salen del catálogo sembrado (cinco por nivel, de opción múltiple)
+y del **banco del profesorado**: los ejercicios publicados y verificados de ese
+nivel entran en la prueba como preguntas de respuesta abierta, corregidas por el
+mismo motor determinista. El nivel definitivo lo sigue decidiendo el resultado,
+con la regla de corte de siempre.
 
 ### El tema y su motor
 
