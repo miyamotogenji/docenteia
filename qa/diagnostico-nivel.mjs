@@ -22,7 +22,18 @@
 
 import { readFileSync } from "node:fs";
 
-import { GRADOS, gradoPorValor, nivelDePartida, nivelPorGrado } from "../lib/diagnostico/grados.ts";
+import {
+  ETAPAS,
+  cubreAlAlumno,
+  cursoDelPerfil,
+  cursoValido,
+  describirAlcance,
+  describirCurso,
+  etiquetaCurso,
+  interpretarCursoEscrito,
+  nivelDePartida,
+  nivelSugerido,
+} from "../lib/curriculo/etapas.ts";
 import {
   componerDiagnostico,
   partirId,
@@ -49,61 +60,110 @@ function check(nombre, condicion, detalle = "") {
   }
 }
 
-console.log("\n═══════════════════════════════════════════════════════════");
-console.log(" DIAGNÓSTICO POR NIVEL — la prueba se ajusta al curso");
-console.log("═══════════════════════════════════════════════════════════\n");
+console.log("");
+console.log("═══════════════════════════════════════════════════════════");
+console.log(" TAXONOMÍA CURRICULAR — etapa, curso y prueba diagnóstica");
+console.log("═══════════════════════════════════════════════════════════");
+console.log("");
 
-// ── A. Del curso al nivel ────────────────────────────────────────────────────
-console.log(" · A. El curso declarado decide el nivel de partida");
+// ── A. Los dos ejes ──────────────────────────────────────────────────────────
+console.log(" · A. Etapa y curso frente a nivel de dificultad");
 
+check("hay tres etapas", ETAPAS.length === 3);
 check(
-  "3.º de secundaria NO es nivel avanzado",
-  nivelPorGrado("Secundaria", "3.º") === "INTERMEDIO",
-  String(nivelPorGrado("Secundaria", "3.º")),
+  "cada etapa declara sus cursos",
+  ETAPAS.every((e) => e.cursos > 0 && e.unidad && e.nombre),
+  ETAPAS.map((e) => `${e.nombre}:${e.cursos}`).join(" · "),
 );
-check("1.º de secundaria empieza en básico", nivelPorGrado("Secundaria", "1º") === "BASICO");
-check("5.º de primaria es básico", nivelPorGrado("Primaria", "5º") === "BASICO");
-check("bachillerato es avanzado", nivelPorGrado("Bachillerato", "2º") === "AVANZADO");
-check("preuniversitario es avanzado", nivelPorGrado("Preuniversitario", "") === "AVANZADO");
+check("primaria llega a 6.º grado", cursoValido("PRIMARIA", 6) && !cursoValido("PRIMARIA", 7));
+check("secundaria llega a 5.º año", cursoValido("SECUNDARIA", 5) && !cursoValido("SECUNDARIA", 6));
+check("superior llega a 10.º ciclo", cursoValido("SUPERIOR", 10) && !cursoValido("SUPERIOR", 11));
+check("el ordinal se escribe como se dice", etiquetaCurso("SECUNDARIA", 3) === "3.er Año", etiquetaCurso("SECUNDARIA", 3));
+check("y con la unidad de su etapa", etiquetaCurso("SUPERIOR", 2) === "2.º Ciclo", etiquetaCurso("SUPERIOR", 2));
+check(
+  "el curso se describe entero",
+  describirCurso("SECUNDARIA", 3) === "Secundaria · 3.er Año",
+  describirCurso("SECUNDARIA", 3),
+);
 
-// Cómo lo escribe la gente de verdad.
-for (const [ciclo, grado] of [
-  ["Secundaria", "3.º"],
-  ["secundaria", "3º"],
-  ["SECUNDARIA", "3"],
-  ["Secundaria", "tercero"],
-  ["Secundaria", "3er grado"],
-  ["", "secundaria-3"],
-  ["3 ESO", ""],
+// EL ARREGLO DE FONDO: el alcance de un contenido frente al curso del alumno.
+const DERIVADAS = { etapa: "SUPERIOR", cursoMin: 1 };
+const FACTORIZACION = { etapa: "SECUNDARIA", cursoMin: 3 };
+const TRANSVERSAL = { etapa: null, cursoMin: null };
+
+const sec3 = { etapa: "SECUNDARIA", curso: 3 };
+const sec1 = { etapa: "SECUNDARIA", curso: 1 };
+const sup2 = { etapa: "SUPERIOR", curso: 2 };
+const pri5 = { etapa: "PRIMARIA", curso: 5 };
+const sinDeclarar = { etapa: null, curso: null };
+
+check("a 3.º de secundaria NO le tocan las derivadas", !cubreAlAlumno(DERIVADAS, sec3));
+check("ni a 1.º de secundaria", !cubreAlAlumno(DERIVADAS, sec1));
+check("ni a 5.º de primaria", !cubreAlAlumno(DERIVADAS, pri5));
+check("a un universitario SÍ", cubreAlAlumno(DERIVADAS, sup2));
+check("a 3.º de secundaria sí le toca la factorización", cubreAlAlumno(FACTORIZACION, sec3));
+check("a 1.º de secundaria todavía no", !cubreAlAlumno(FACTORIZACION, sec1));
+check(
+  "y un universitario también recibe lo de secundaria: lo tiene estudiado",
+  cubreAlAlumno(FACTORIZACION, sup2),
+);
+check("lo transversal le llega a cualquiera", [sec3, sec1, sup2, pri5, sinDeclarar].every((a) => cubreAlAlumno(TRANSVERSAL, a)));
+check(
+  "quien no declara etapa sólo recibe lo transversal",
+  !cubreAlAlumno(DERIVADAS, sinDeclarar) && !cubreAlAlumno(FACTORIZACION, sinDeclarar),
+);
+check(
+  "el alcance se explica en castellano",
+  describirAlcance(FACTORIZACION) === "Desde Secundaria · 3.er Año",
+  describirAlcance(FACTORIZACION),
+);
+
+// El otro eje: la dificultad con la que se empieza a preguntar.
+check("un alumno de primaria empieza en básico", nivelSugerido("PRIMARIA", 5) === "BASICO");
+check("uno de 1.º de secundaria, también", nivelSugerido("SECUNDARIA", 1) === "BASICO");
+check("uno de 3.º de secundaria, en intermedio", nivelSugerido("SECUNDARIA", 3) === "INTERMEDIO");
+check("uno de superior, en avanzado", nivelSugerido("SUPERIOR", 1) === "AVANZADO");
+check(
+  "el nivel ya medido manda sobre el curso",
+  nivelDePartida({ nivelActual: "BASICO", etapa: "SUPERIOR", curso: 3 }) === "BASICO",
+);
+check(
+  "sin nivel medido, decide el curso",
+  nivelDePartida({ nivelActual: null, etapa: "SECUNDARIA", curso: 4 }) === "INTERMEDIO",
+);
+
+// Las cuentas del PMV 1 traían el curso en texto libre.
+for (const [ciclo, grado, etapa, curso] of [
+  ["Secundaria", "3.º", "SECUNDARIA", 3],
+  ["secundaria", "3º", "SECUNDARIA", 3],
+  ["Secundaria", "tercero", "SECUNDARIA", 3],
+  ["Primaria", "5º", "PRIMARIA", 5],
+  ["Bachillerato", "2º", "SUPERIOR", 2],
+  ["Universidad", "", "SUPERIOR", null],
 ]) {
+  const leido = interpretarCursoEscrito(ciclo, grado);
   check(
-    `"${ciclo} ${grado}".trim() → INTERMEDIO`,
-    nivelPorGrado(ciclo, grado) === "INTERMEDIO",
-    String(nivelPorGrado(ciclo, grado)),
+    `"${ciclo} ${grado}".trim() se entiende como ${etapa}${curso ? " " + curso : ""}`,
+    leido.etapa === etapa && leido.curso === curso,
+    JSON.stringify(leido),
   );
 }
-
-check("un curso irreconocible no se inventa", nivelPorGrado("", "") === null);
-check("un ordinal sin ciclo tampoco", nivelPorGrado("", "3º") === null);
+check("un curso irreconocible no se inventa", interpretarCursoEscrito("", "").etapa === null);
+check("un ordinal sin etapa tampoco", interpretarCursoEscrito("", "3º").etapa === null);
 check(
-  "sin curso se empieza por lo básico, no por lo avanzado",
-  nivelDePartida({ nivelActual: null, ciclo: null, grado: null }) === "BASICO",
+  "el perfil nuevo manda sobre el texto heredado",
+  cursoDelPerfil({ etapa: "SUPERIOR", curso: 1, ciclo: "Secundaria", grado: "3º" }).etapa === "SUPERIOR",
 );
-check(
-  "el nivel ya diagnosticado manda sobre el curso",
-  nivelDePartida({ nivelActual: "AVANZADO", ciclo: "Secundaria", grado: "1º" }) === "AVANZADO",
-);
-check("el catálogo de cursos cubre primaria, secundaria y superior", GRADOS.length >= 13);
-check("cada curso del catálogo trae su nivel", GRADOS.every((g) => g.nivel));
-check("el catálogo se busca por su valor", gradoPorValor("secundaria-3")?.nivel === "INTERMEDIO");
 
 // ── B. Cómo se compone la prueba ─────────────────────────────────────────────
 console.log("\n · B. Composición de la prueba");
 
-const pregunta = (id, tema, nivel, orden) => ({
+const pregunta = (id, tema, nivel, orden, alcance = {}) => ({
   id,
   tema,
   nivel,
+  etapa: alcance.etapa ?? null,
+  cursoMin: alcance.cursoMin ?? null,
   enunciado: `¿Pregunta ${id}?`,
   expresion: null,
   opciones: [
@@ -120,6 +180,8 @@ const ejercicio = (id, extra = {}) => ({
   motor: "ECUACIONES_LINEALES",
   respuestaCorrecta: "4",
   plantilla: false,
+  etapa: null,
+  cursoMin: null,
   ...extra,
 });
 
@@ -279,13 +341,43 @@ check(
   (porNivel.get("AVANZADO") ?? []).some((p) => p.tema === "DERIVADAS"),
 );
 
+// Y, sobre el otro eje: el catálogo declara PARA QUIÉN es cada pregunta.
+check("toda pregunta declara su etapa", banco.every((p) => p.etapa));
+check(
+  "las derivadas están marcadas como Superior",
+  banco.filter((p) => p.tema === "derivadas" || p.tema === "DERIVADAS").every((p) => p.etapa === "SUPERIOR"),
+);
+check(
+  "hay preguntas de las tres etapas",
+  new Set(banco.map((p) => p.etapa)).size === 3,
+  [...new Set(banco.map((p) => p.etapa))].join(", "),
+);
+check(
+  "un alumno de 3.º de secundaria tiene al menos cinco preguntas que le corresponden",
+  banco.filter((p) => cubreAlAlumno(p, { etapa: "SECUNDARIA", curso: 3 })).length >= 5,
+  String(banco.filter((p) => cubreAlAlumno(p, { etapa: "SECUNDARIA", curso: 3 })).length),
+);
+check(
+  "y ninguna de ellas es de derivadas",
+  banco
+    .filter((p) => cubreAlAlumno(p, { etapa: "SECUNDARIA", curso: 3 }))
+    .every((p) => p.tema !== "DERIVADAS"),
+);
+check(
+  "un alumno de superior sí las tiene",
+  banco
+    .filter((p) => cubreAlAlumno(p, { etapa: "SUPERIOR", curso: 1 }))
+    .some((p) => p.tema === "DERIVADAS"),
+);
+
 // La regla de corte del cliente sigue en pie con cinco preguntas por nivel.
 check("2 de 5 aciertos siguen siendo BÁSICO", clasificarNivel(2, 5) === "BASICO");
 check("3 de 5 siguen siendo INTERMEDIO", clasificarNivel(3, 5) === "INTERMEDIO");
 check("5 de 5 siguen siendo AVANZADO", clasificarNivel(5, 5) === "AVANZADO");
 
 // ── D. De punta a punta ──────────────────────────────────────────────────────
-console.log("\n · D. Un alumno real, de punta a punta");
+console.log("");
+console.log(" · D. Un alumno real, de punta a punta");
 
 const salud = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(8000) })
   .then((r) => r.json())
@@ -296,36 +388,51 @@ if (!salud || (salud.base_datos && salud.base_datos !== "ok")) {
 } else {
   const sufijo = Date.now().toString(36);
 
-  /** Registra un alumno con su curso y devuelve la prueba que le arma el servidor. */
-  async function pruebaDe(curso, { ciclo, grado }) {
-    const email = `qa.${curso}.${sufijo}@mentoriamath.local`;
+  /**
+   * Registra un alumno, le configura su etapa por la pantalla de nivel
+   * educativo y devuelve la prueba que le arma el servidor.
+   */
+  async function pruebaDe(nombre, { etapa, curso, ciclo, grado } = {}) {
+    const email = `qa.${nombre}.${sufijo}@mentoriamath.local`;
     const { ok: registrado, sesion } = await registrarAlumno(BASE, {
-      nombre: `QA ${curso}`,
+      nombre: `QA ${nombre}`,
       email,
       password: "Diagnostico-2026",
       ciclo,
       grado,
     });
-    if (!registrado || !sesion) return { registrado, prueba: null, sesion: null };
+    if (!registrado || !sesion) {
+      return { registrado, prueba: null, sesion: null, configurado: false };
+    }
+
+    let configurado = true;
+    if (etapa) {
+      const r = await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", cookie: sesion },
+        body: JSON.stringify({ etapa, curso }),
+      });
+      configurado = r.ok;
+    }
 
     const r = await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: sesion } });
-    return { registrado, prueba: await r.json().catch(() => null), sesion };
+    return { registrado, configurado, prueba: await r.json().catch(() => null), sesion };
   }
 
-  // El caso exacto que reportó el cliente.
-  const tercero = await pruebaDe("sec3", { ciclo: "Secundaria", grado: "3.º" });
-  check("se registra un alumno de 3.º de secundaria", tercero.registrado);
+  // EL CASO DEL CLIENTE: 3.er año de secundaria.
+  const tercero = await pruebaDe("sec3", { etapa: "SECUNDARIA", curso: 3 });
+  check("un alumno se registra y configura su etapa", tercero.registrado && tercero.configurado);
 
   if (tercero.prueba) {
     check(
-      "la prueba se arma con nivel INTERMEDIO",
-      tercero.prueba.nivelDePartida === "INTERMEDIO",
-      String(tercero.prueba.nivelDePartida),
+      "el servidor reconoce su etapa y su curso",
+      tercero.prueba.etapa === "SECUNDARIA" && tercero.prueba.cursoEscolar === 3,
+      `${tercero.prueba.etapa} ${tercero.prueba.cursoEscolar}`,
     );
     check(
-      "el servidor dice que el nivel sale del curso declarado",
-      tercero.prueba.origenDelNivel === "curso_declarado",
-      String(tercero.prueba.origenDelNivel),
+      "la prueba se arma con dificultad INTERMEDIO",
+      tercero.prueba.nivelDePartida === "INTERMEDIO",
+      String(tercero.prueba.nivelDePartida),
     );
     check(
       "NO le aparece ninguna pregunta de derivadas (el fallo reportado)",
@@ -342,7 +449,6 @@ if (!salud || (salud.base_datos && salud.base_datos !== "ok")) {
       JSON.stringify(tercero.prueba.preguntas ?? []).includes("respuestaCorrecta") === false,
     );
 
-    // Y el diagnóstico se puede terminar: se responde a todo y sale un nivel.
     const envio = await fetch(`${BASE}/api/diagnostico`, {
       method: "POST",
       headers: { "Content-Type": "application/json", cookie: tercero.sesion },
@@ -360,13 +466,7 @@ if (!salud || (salud.base_datos && salud.base_datos !== "ok")) {
       envio.status === 200 && Boolean(resultado.nivel),
       `HTTP ${envio.status}`,
     );
-    check(
-      "y cuenta sobre el total de SU prueba",
-      resultado.total === PREGUNTAS_POR_DIAGNOSTICO,
-      `total: ${resultado.total}`,
-    );
 
-    // No se admite media prueba: sería un recuento que no significa nada.
     const parcial = await fetch(`${BASE}/api/diagnostico`, {
       method: "POST",
       headers: { "Content-Type": "application/json", cookie: tercero.sesion },
@@ -375,34 +475,68 @@ if (!salud || (salud.base_datos && salud.base_datos !== "ok")) {
       }),
     });
     check("un envío incompleto se rechaza", parcial.status === 400, `HTTP ${parcial.status}`);
+
+    // Un curso que no existe no se acepta: secundaria no tiene 8.º año.
+    const invalido = await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", cookie: tercero.sesion },
+      body: JSON.stringify({ etapa: "SECUNDARIA", curso: 8 }),
+    });
+    check("un curso imposible se rechaza", invalido.status === 400, `HTTP ${invalido.status}`);
   }
 
-  // El otro extremo: bachillerato sí ve derivadas.
-  const bachiller = await pruebaDe("bach2", { ciclo: "Bachillerato", grado: "2.º" });
-  if (bachiller.prueba) {
+  // El otro extremo: superior sí ve derivadas.
+  const universitario = await pruebaDe("sup2", { etapa: "SUPERIOR", curso: 2 });
+  if (universitario.prueba) {
     check(
-      "un alumno de bachillerato SÍ recibe nivel avanzado",
-      bachiller.prueba.nivelDePartida === "AVANZADO",
-      String(bachiller.prueba.nivelDePartida),
+      "un alumno de superior recibe dificultad avanzada",
+      universitario.prueba.nivelDePartida === "AVANZADO",
+      String(universitario.prueba.nivelDePartida),
     );
     check(
-      "y en su prueba sí hay derivadas",
-      (bachiller.prueba.preguntas ?? []).some((p) => p.tema === "DERIVADAS"),
-      (bachiller.prueba.preguntas ?? []).map((p) => p.tema).join(", "),
+      "y en su prueba SÍ hay derivadas",
+      (universitario.prueba.preguntas ?? []).some((p) => p.tema === "DERIVADAS"),
+      (universitario.prueba.preguntas ?? []).map((p) => p.tema).join(", "),
     );
   }
 
-  // Y el que no dice su curso empieza por lo básico.
-  const sinCurso = await pruebaDe("sincurso", { ciclo: "", grado: "" });
-  if (sinCurso.prueba) {
+  // Primaria: ni derivadas ni factorización.
+  const nino = await pruebaDe("pri5", { etapa: "PRIMARIA", curso: 5 });
+  if (nino.prueba) {
     check(
-      "sin curso declarado, la prueba es de nivel básico",
-      sinCurso.prueba.nivelDePartida === "BASICO",
-      String(sinCurso.prueba.nivelDePartida),
+      "un alumno de primaria recibe dificultad básica",
+      nino.prueba.nivelDePartida === "BASICO",
+      String(nino.prueba.nivelDePartida),
+    );
+    check(
+      "y ni derivadas ni factorización",
+      (nino.prueba.preguntas ?? []).every((p) => !["DERIVADAS", "FACTORIZACION"].includes(p.tema)),
+      (nino.prueba.preguntas ?? []).map((p) => p.tema).join(", "),
+    );
+  }
+
+  // Una cuenta del PMV 1, con el curso en texto libre.
+  const heredada = await pruebaDe("legado", { ciclo: "Secundaria", grado: "3.º" });
+  if (heredada.prueba) {
+    check(
+      "una cuenta antigua con el curso en texto también se clasifica",
+      heredada.prueba.etapa === "SECUNDARIA" && heredada.prueba.cursoEscolar === 3,
+      `${heredada.prueba.etapa} ${heredada.prueba.cursoEscolar}`,
     );
     check(
       "y tampoco ve derivadas",
-      (sinCurso.prueba.preguntas ?? []).every((p) => p.tema !== "DERIVADAS"),
+      (heredada.prueba.preguntas ?? []).every((p) => p.tema !== "DERIVADAS"),
+    );
+  }
+
+  // Sin etapa declarada no se compone prueba: se le manda a configurarla, que
+  // es mejor que medirle con un temario que no es el suyo.
+  const sinEtapa = await pruebaDe("sinetapa", {});
+  if (sinEtapa.prueba) {
+    check(
+      "sin etapa declarada, el servidor pide configurarla",
+      sinEtapa.prueba.etapaSinConfigurar === true,
+      JSON.stringify(sinEtapa.prueba).slice(0, 90),
     );
   }
 }

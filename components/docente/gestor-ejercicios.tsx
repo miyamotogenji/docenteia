@@ -18,6 +18,7 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { planoALatex } from "@/lib/matematicas";
+import { describirAlcance } from "@/lib/curriculo/etapas";
 import { pedir } from "@/lib/docente/cliente";
 import {
   ESTADOS,
@@ -51,6 +52,9 @@ export interface TemaOpcion {
   estado: Estado;
   /** Nivel del tema: lo hereda el ejercicio que se cree dentro. */
   nivel: string | null;
+  /** Alcance curricular del tema: también se hereda. */
+  etapa: string | null;
+  cursoMin: number | null;
 }
 
 export interface EjercicioVista {
@@ -63,6 +67,8 @@ export interface EjercicioVista {
   pistas: string[];
   nivel: string;
   motor: string | null;
+  etapa: string | null;
+  cursoMin: number | null;
   estado: Estado;
   origen: string;
   validado: boolean;
@@ -292,6 +298,21 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
               {temaActual?.motor
                 ? `Se validará con el motor "${etiquetaMotor(temaActual.motor)}", que hereda del tema.`
                 : "El tema elegido no tiene motor: tendrás que escribir tú la respuesta y el ejercicio se guardará sin verificar."}
+              {temaActual && (
+                <>
+                  {" "}
+                  Alcance curricular heredado del tema:{" "}
+                  <strong>
+                    {temaActual.etapa
+                      ? describirAlcance({
+                          etapa: temaActual.etapa as never,
+                          cursoMin: temaActual.cursoMin,
+                        })
+                      : "cualquier etapa"}
+                  </strong>
+                  .
+                </>
+              )}
             </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
@@ -677,6 +698,11 @@ export function GestorEjercicios({ temas, ejercicios, puedeEditar }: Props) {
                       <td className="py-3">
                         <div className="font-medium">{e.enunciado}</div>
                         <div className="flex flex-wrap gap-1 pt-1">
+                          {e.etapa && (
+                            <Badge variant="contorno">
+                              {describirAlcance({ etapa: e.etapa as never, cursoMin: e.cursoMin })}
+                            </Badge>
+                          )}
                           {e.estado === "PUBLICADO" && e.validado && !e.plantilla && (
                             <Badge
                               variant="exito"

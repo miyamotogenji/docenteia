@@ -9,6 +9,7 @@ import {
   solveLinearFromText,
 } from "../../src/preLight.js";
 import { derivarExpresion } from "../matematicas/derivar.ts";
+import { analizar, evaluar, formatearNumero, variablesDe } from "../matematicas/expresiones.ts";
 
 /**
  * Resolución determinista de un ejercicio, en el servidor.
@@ -48,8 +49,59 @@ const derivar: Solver = (e) => computeDerivative(/deriv|d\s*\/\s*dx/i.test(e) ? 
 
 const factorizar: Solver = (e) => computeFactorization(/factoriz/i.test(e) ? e : `factoriza ${e}`);
 
+/**
+ * Aritmética, con el evaluador heredado y el analizador nuevo contrastados.
+ *
+ * El heredado calcula con fracciones EXACTAS —"1/2 + 1/4" da "3/4", no 0.75—, y
+ * por eso sigue siendo el primero. Pero no entiende las potencias: para
+ * "2^3 + 1" devuelve 4, y para "5·(-3)" no devuelve nada. Un ejercicio con una
+ * potencia acababa con el alumno corregido contra un número equivocado, que es
+ * la clase de fallo que este proyecto no se permite.
+ *
+ * Así que se calcula también con el analizador nuevo, que sí tiene gramática y
+ * precedencia, y se comparan:
+ *
+ *   · coinciden           → vale la del heredado, que conserva la fracción exacta;
+ *   · discrepan           → vale la del analizador, que es la que sabe leer la expresión;
+ *   · el heredado no sabe → vale la del analizador.
+ *
+ * Sin acuerdo entre los dos, no se responde: eso es lo que significa devolver null.
+ */
+const aritmetica: Solver = (expresion) => {
+  const heredada = seguro(() => computeAnswer(expresion));
+  const arbol = analizar(expresion);
+  const nueva =
+    arbol && variablesDe(arbol).length === 0 ? seguroNumero(() => evaluar(arbol, {})) : null;
+
+  if (heredada == null) return nueva;
+  if (nueva == null) return heredada;
+
+  const comoNumero = Number(analizar(heredada) ? evaluar(analizar(heredada)!, {}) : NaN);
+  const coinciden = Number.isFinite(comoNumero) && Math.abs(comoNumero - Number(nueva)) < 1e-9;
+  return coinciden ? heredada : nueva;
+};
+
+function seguro(calcular: () => unknown): string | null {
+  try {
+    const r = calcular();
+    const texto = r == null ? null : String(r).trim();
+    return texto ? texto : null;
+  } catch {
+    return null;
+  }
+}
+
+function seguroNumero(calcular: () => number): string | null {
+  try {
+    const valor = calcular();
+    return Number.isFinite(valor) ? formatearNumero(valor) : null;
+  } catch {
+    return null;
+  }
+}
+
 const SOLVERS_POR_TEMA: Record<string, Solver[]> = {
-  aritmetica: [computeAnswer],
+  aritmetica: [aritmetica],
   fracciones: [solveFractionFromText, computeAnswer],
   lineales: [solveLinearFromText],
   ecuaciones_lineales: [solveLinearFromText],
@@ -61,7 +113,7 @@ const SOLVERS_POR_TEMA: Record<string, Solver[]> = {
 const SOLVERS_SIN_TEMA: Solver[] = [
   solveLinearFromText,
   solveFractionFromText,
-  computeAnswer,
+  aritmetica,
   derivar,
   factorizar,
 ];

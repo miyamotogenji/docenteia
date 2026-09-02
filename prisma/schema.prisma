@@ -65,6 +65,26 @@ enum Rol {
   SUPERADMIN
 }
 
+/// ETAPA EDUCATIVA del sistema escolar.
+///
+/// Es distinta de `NivelAcademico`, y la diferencia es la que pidió el cliente:
+///
+///   · `EtapaEducativa` + curso dicen DÓNDE ESTÁ EL ALUMNO en el sistema
+///     educativo —Secundaria 3.er año, Superior 2.º ciclo—. Es un hecho
+///     administrativo: lo trae de su colegio.
+///   · `NivelAcademico` (Básico/Intermedio/Avanzado) dice CUÁNTO CUESTA un
+///     contenido dentro de su etapa. Es una gradación interna y relativa, y es
+///     la que mide el diagnóstico.
+///
+/// Confundirlas era la causa de que a un alumno de secundaria le llegaran
+/// derivadas: "avanzado" no significa "universitario", significa "lo más
+/// difícil de lo tuyo".
+enum EtapaEducativa {
+  PRIMARIA
+  SECUNDARIA
+  SUPERIOR
+}
+
 /// Nivel académico asignado por el diagnóstico inicial.
 enum NivelAcademico {
   BASICO
@@ -181,6 +201,14 @@ model PerfilEstudiante {
   usuario   Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
 
   /// Ciclo académico (p. ej. "Secundaria", "Bachillerato", "Ciclo IV").
+  /// ETAPA EDUCATIVA declarada por el alumno. Junto con `curso`, decide QUÉ
+  /// CONTENIDOS se le sirven: es un hecho administrativo que trae de su
+  /// colegio, no una medida de lo que sabe.
+  etapa EtapaEducativa?
+  /// Curso dentro de la etapa: grado en primaria (1-6), año en secundaria
+  /// (1-5), ciclo en superior (1-10).
+  curso Int?
+
   ciclo       String?
   /// Grado o curso dentro del ciclo (p. ej. "3º").
   grado       String?
@@ -305,6 +333,21 @@ model NodoConocimiento {
   /// automática garantizada, y la interfaz lo advierte antes de guardar.
   motor Tema?
 
+  /// DESDE QUÉ PUNTO DEL SISTEMA EDUCATIVO se puede plantear este contenido.
+  ///
+  /// Es la taxonomía curricular: dice para QUÉ ALUMNOS es, no cuánto cuesta
+  /// (eso lo dice `nivel`). Una derivada no es "difícil": es de Superior, y por
+  /// eso no puede aparecerle a un alumno de secundaria por muy avanzado que
+  /// vaya en lo suyo.
+  ///
+  /// Se lee como "A PARTIR DE": etapa SECUNDARIA con cursoMin 3 significa que
+  /// se plantea desde 3.º de secundaria en adelante —y también en Superior, que
+  /// viene después—. Es como funciona un temario: lo que se estudia antes sigue
+  /// valiendo después. `etapa` a null es contenido transversal, válido para
+  /// cualquiera, y es lo que heredó todo el catálogo del PMV 1.
+  etapa    EtapaEducativa?
+  cursoMin Int?
+
   nivel NivelAcademico?
   orden Int             @default(0)
 
@@ -334,6 +377,7 @@ model NodoConocimiento {
   @@index([materiaId, orden])
   @@index([motor, nivel])
   @@index([estado, actualizadoEn])
+  @@index([etapa, cursoMin])
   @@map("nodos_conocimiento")
 }
 
@@ -356,7 +400,22 @@ model Ejercicio {
   nodo   NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
 
   /// Motor determinista con el que se corrige. Se hereda del tema al guardar.
-  motor Tema?
+  motor    Tema?
+  /// DESDE QUÉ PUNTO DEL SISTEMA EDUCATIVO se puede plantear este contenido.
+  ///
+  /// Es la taxonomía curricular: dice para QUÉ ALUMNOS es, no cuánto cuesta
+  /// (eso lo dice `nivel`). Una derivada no es "difícil": es de Superior, y por
+  /// eso no puede aparecerle a un alumno de secundaria por muy avanzado que
+  /// vaya en lo suyo.
+  ///
+  /// Se lee como "A PARTIR DE": etapa SECUNDARIA con cursoMin 3 significa que
+  /// se plantea desde 3.º de secundaria en adelante —y también en Superior, que
+  /// viene después—. Es como funciona un temario: lo que se estudia antes sigue
+  /// valiendo después. `etapa` a null es contenido transversal, válido para
+  /// cualquiera, y es lo que heredó todo el catálogo del PMV 1.
+  etapa    EtapaEducativa?
+  cursoMin Int?
+
   nivel NivelAcademico
 
   /// El enunciado. En una plantilla lleva los huecos: "{a}x + {b} = {c}".
@@ -405,6 +464,7 @@ model Ejercicio {
   @@unique([motor, nivel, enunciado])
   @@index([motor, nivel, validado])
   @@index([nodoId, estado])
+  @@index([etapa, cursoMin])
   @@map("ejercicios")
 }
 
@@ -558,6 +618,21 @@ model PreguntaDiagnostico {
   ///
   /// `null` significa "vale para cualquier nivel", no "sin clasificar": es el
   /// comodín para preguntas transversales cuando un nivel se queda corto.
+  /// DESDE QUÉ PUNTO DEL SISTEMA EDUCATIVO se puede plantear este contenido.
+  ///
+  /// Es la taxonomía curricular: dice para QUÉ ALUMNOS es, no cuánto cuesta
+  /// (eso lo dice `nivel`). Una derivada no es "difícil": es de Superior, y por
+  /// eso no puede aparecerle a un alumno de secundaria por muy avanzado que
+  /// vaya en lo suyo.
+  ///
+  /// Se lee como "A PARTIR DE": etapa SECUNDARIA con cursoMin 3 significa que
+  /// se plantea desde 3.º de secundaria en adelante —y también en Superior, que
+  /// viene después—. Es como funciona un temario: lo que se estudia antes sigue
+  /// valiendo después. `etapa` a null es contenido transversal, válido para
+  /// cualquiera, y es lo que heredó todo el catálogo del PMV 1.
+  etapa    EtapaEducativa?
+  cursoMin Int?
+
   nivel NivelAcademico?
 
   enunciado         String
@@ -578,6 +653,7 @@ model PreguntaDiagnostico {
   @@index([activa, orden])
   @@index([tema])
   @@index([nivel, activa])
+  @@index([etapa, cursoMin])
   @@map("preguntas_diagnostico")
 }
 

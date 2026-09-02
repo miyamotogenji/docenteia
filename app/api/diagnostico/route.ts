@@ -7,6 +7,7 @@ import { clasificarNivel } from "@/lib/diagnostico/clasificar";
 import { armarPrueba, perfilParaPrueba } from "@/lib/diagnostico/prueba";
 import { partirId } from "@/lib/diagnostico/seleccion";
 import { compararRespuesta } from "@/lib/matematicas/equivalencia";
+import { describirCurso } from "@/lib/curriculo/etapas";
 
 /**
  * Cómo se etiqueta una debilidad detectada por el diagnóstico.
@@ -37,8 +38,10 @@ export async function GET() {
   }
 
   const perfil = await perfilParaPrueba(sesion.user.perfilId);
-  const { nivel, items, origen } = await armarPrueba({
+  const { nivel, items, origen, alumno } = await armarPrueba({
     nivelActual: perfil?.nivelActual ?? null,
+    etapa: perfil?.etapa ?? null,
+    curso: perfil?.curso ?? null,
     ciclo: perfil?.ciclo ?? null,
     grado: perfil?.grado ?? null,
   });
@@ -46,8 +49,10 @@ export async function GET() {
   if (items.length === 0) {
     return NextResponse.json(
       {
-        error:
-          "No hay preguntas para tu nivel todavía. Si eres docente, publica ejercicios de ese nivel; si acabas de instalar, ejecuta la semilla: npm run db:seed",
+        error: alumno.etapa
+          ? `Todavía no hay preguntas para ${describirCurso(alumno.etapa, alumno.curso)}. Publica ejercicios de esa etapa desde el panel docente, o ejecuta la semilla: npm run db:seed`
+          : "Configura antes tu etapa educativa para poder componer tu evaluación.",
+        etapaSinConfigurar: !alumno.etapa,
       },
       { status: 503 },
     );
@@ -58,10 +63,13 @@ export async function GET() {
     // API; lo que cambia es que cada una trae su `tipo`.
     preguntas: items,
     total: items.length,
-    /** Nivel con el que se ha armado la prueba, y de dónde sale. */
+    /** Nivel de dificultad con el que se ha armado la prueba, y de dónde sale. */
     nivelDePartida: nivel,
     origenDelNivel: origen,
-    curso: [perfil?.ciclo, perfil?.grado].filter(Boolean).join(" ") || null,
+    /** Taxonomía curricular del alumno: lo que acota qué contenidos entran. */
+    etapa: alumno.etapa,
+    cursoEscolar: alumno.curso,
+    curso: alumno.etapa ? describirCurso(alumno.etapa, alumno.curso) : null,
     yaCompletado: Boolean(perfil?.nivelActual),
     nivelActual: perfil?.nivelActual ?? null,
     nivelAsignadoEn: perfil?.nivelAsignadoEn ?? null,
@@ -138,6 +146,8 @@ export async function POST(req: Request) {
 
   const { items } = await armarPrueba({
     nivelActual: perfil.nivelActual,
+    etapa: perfil.etapa,
+    curso: perfil.curso,
     ciclo: perfil.ciclo,
     grado: perfil.grado,
   });

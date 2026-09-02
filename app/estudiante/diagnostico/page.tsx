@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { FormularioDiagnostico } from "@/components/formulario-diagnostico";
 import { armarPrueba, perfilParaPrueba } from "@/lib/diagnostico/prueba";
+import { cursoDelPerfil, describirCurso } from "@/lib/curriculo/etapas";
 
 export const metadata: Metadata = { title: "Evaluación diagnóstica" };
 export const dynamic = "force-dynamic";
@@ -28,8 +29,16 @@ export default async function PaginaDiagnostico() {
   // hacerlo sería reescribir su punto de partida sin criterio pedagógico.
   if (perfil?.nivelActual) redirect("/estudiante");
 
+  // Sin etapa declarada no hay prueba que componer: se le lleva antes a decir
+  // en qué curso está. Es preferible un paso más que una evaluación de un
+  // temario que no es el suyo.
+  const suCurso = cursoDelPerfil(perfil ?? {});
+  if (!suCurso.etapa) redirect("/estudiante/nivel-educativo");
+
   const { items, nivel } = await armarPrueba({
     nivelActual: perfil?.nivelActual ?? null,
+    etapa: perfil?.etapa ?? null,
+    curso: perfil?.curso ?? null,
     ciclo: perfil?.ciclo ?? null,
     grado: perfil?.grado ?? null,
   });
@@ -39,8 +48,8 @@ export default async function PaginaDiagnostico() {
       <div className="space-y-3">
         <h1 className="text-2xl font-bold">Evaluación no disponible</h1>
         <p className="text-muted-foreground">
-          Todavía no hay preguntas para tu nivel. Si acabas de instalar la aplicación, ejecuta la
-          semilla de la base de datos:{" "}
+          Todavía no hay preguntas para {describirCurso(suCurso.etapa, suCurso.curso)}. Si acabas
+          de instalar la aplicación, ejecuta la semilla de la base de datos:{" "}
           <code className="rounded bg-muted px-1 py-0.5">npm run db:seed</code>
         </p>
       </div>
@@ -58,7 +67,7 @@ export default async function PaginaDiagnostico() {
         opciones: i.opciones,
       }))}
       nivel={nivel}
-      curso={[perfil?.ciclo, perfil?.grado].filter(Boolean).join(" ") || null}
+      curso={describirCurso(suCurso.etapa, suCurso.curso)}
     />
   );
 }

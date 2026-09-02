@@ -2979,8 +2979,8 @@ console.log("\n · El diagnóstico registra las debilidades detectadas");
   for (const nivel of nivelesDiag) {
     const delNivel = preguntas.filter((p) => String(p.nivel ?? "SIN_NIVEL") === nivel);
     check(
-      `el diagnóstico de nivel ${nivel} son entre 3 y 5 preguntas`,
-      delNivel.length >= 3 && delNivel.length <= 5,
+      `el nivel ${nivel} tiene al menos 3 preguntas sembradas`,
+      delNivel.length >= 3,
       `preguntas: ${delNivel.length}`,
     );
   }

@@ -1,7 +1,7 @@
-import type { NivelAcademico } from "@prisma/client";
+import type { EtapaEducativa, NivelAcademico } from "@prisma/client";
 
 import { prisma } from "../prisma.ts";
-import { nivelDePartida } from "./grados.ts";
+import { cursoDelPerfil, nivelDePartida, type CursoDelAlumno } from "../curriculo/etapas.ts";
 import { componerDiagnostico, type ItemDiagnostico } from "./seleccion.ts";
 
 /**
@@ -16,15 +16,21 @@ import { componerDiagnostico, type ItemDiagnostico } from "./seleccion.ts";
 
 export interface PerfilParaPrueba {
   nivelActual: NivelAcademico | null;
+  /** Taxonomía curricular: dónde está el alumno. */
+  etapa: EtapaEducativa | null;
+  curso: number | null;
+  /** Lo mismo, en el texto libre del PMV 1. Se usa si falta lo anterior. */
   ciclo: string | null;
   grado: string | null;
 }
 
 export interface PruebaCompuesta {
-  /** Nivel con el que se ha armado. */
+  /** Nivel de dificultad con el que se ha armado. */
   nivel: NivelAcademico;
+  /** Etapa y curso del alumno: lo que acota QUÉ contenidos entran. */
+  alumno: CursoDelAlumno;
   items: ItemDiagnostico[];
-  /** De dónde sale ese nivel, para poder explicárselo al alumno. */
+  /** De dónde sale el nivel, para poder explicárselo al alumno. */
   origen: "diagnostico_previo" | "curso_declarado" | "por_defecto";
 }
 
@@ -32,6 +38,8 @@ const CAMPOS_CATALOGO = {
   id: true,
   tema: true,
   nivel: true,
+  etapa: true,
+  cursoMin: true,
   enunciado: true,
   expresion: true,
   opciones: true,
@@ -40,6 +48,10 @@ const CAMPOS_CATALOGO = {
 
 export async function armarPrueba(perfil: PerfilParaPrueba): Promise<PruebaCompuesta> {
   const nivel = nivelDePartida(perfil);
+  // La etapa y el curso son el filtro de fondo. La consulta trae lo del nivel
+  // que toca —y lo transversal— y `componerDiagnostico` descarta después lo que
+  // no corresponde a la etapa del alumno.
+  const alumno = cursoDelPerfil(perfil);
 
   const [catalogo, comodines, banco] = await Promise.all([
     prisma.preguntaDiagnostico.findMany({
@@ -75,16 +87,19 @@ export async function armarPrueba(perfil: PerfilParaPrueba): Promise<PruebaCompu
         motor: true,
         respuestaCorrecta: true,
         plantilla: true,
+        etapa: true,
+        cursoMin: true,
       },
     }),
   ]);
 
   return {
     nivel,
-    items: componerDiagnostico({ catalogo, banco, comodines }),
+    alumno,
+    items: componerDiagnostico({ catalogo, banco, comodines, alumno }),
     origen: perfil.nivelActual
       ? "diagnostico_previo"
-      : perfil.ciclo || perfil.grado
+      : alumno.etapa
         ? "curso_declarado"
         : "por_defecto",
   };
@@ -97,6 +112,13 @@ export async function perfilParaPrueba(
   if (!perfilId) return null;
   return prisma.perfilEstudiante.findUnique({
     where: { id: perfilId },
-    select: { nivelActual: true, nivelAsignadoEn: true, ciclo: true, grado: true },
+    select: {
+      nivelActual: true,
+      nivelAsignadoEn: true,
+      etapa: true,
+      curso: true,
+      ciclo: true,
+      grado: true,
+    },
   });
 }

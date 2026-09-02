@@ -217,9 +217,9 @@ la aplicación compilada en modo producción:
 | --- | --- |
 | `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
 | `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
-| `npm run qa:diagnostico-nivel` — **nueva** | **62 comprobaciones · 0 fallidas** |
+| `npm run qa:diagnostico-nivel` — **nueva** | **85 comprobaciones · 0 fallidas** |
 | `qa/leccion.mjs` (PMV 1, lección) | 811 · 0 |
-| `qa/diagnostico.mjs` (banco, ahora por niveles) | 347 · 0 |
+| `qa/diagnostico.mjs` (banco, por nivel y etapa) | 416 · 0 |
 | `qa/paso1.mjs` (PMV 1, roles y registro) | 72 · 0 |
 | `qa/frontend.mjs` (PMV 1, arranque) | 10 · 0 |
 | `npx tsc --noEmit` | sin errores |
@@ -464,7 +464,7 @@ comprueba el caso exacto del cliente:
 ### Ficheros
 
 ```
-lib/diagnostico/grados.ts        catálogo de cursos y traducción curso → nivel (nuevo)
+lib/curriculo/etapas.ts          taxonomía curricular: etapa, curso y alcance
 lib/diagnostico/seleccion.ts     composición de la prueba, con reparto por tema (nuevo)
 lib/diagnostico/prueba.ts        la prueba de un alumno, leída de la base (nuevo)
 lib/diagnostico/banco.ts         el catálogo declara nivel; equilibrio por nivel
@@ -490,4 +490,122 @@ app/docente/page.tsx            portada de autoría
 app/estudiante/leccion/page.tsx sólo suben a la lección las reglas publicadas
 app/api/registro/route.ts       comentario de roles al día
 package.json                    `qa:hito1` incorporado a `npm test`
+```
+
+---
+
+## 12. Tercera observación: la taxonomía curricular
+
+> "El campo actual Nivel (Básico, Intermedio, Avanzado) sólo indica complejidad
+> relativa interna, pero no el nivel educativo del estudiante."
+
+Exacto, y ahí estaba el fondo del problema. El sistema tenía **un solo eje** y lo
+usaba para dos cosas incompatibles: graduar la dificultad y decidir qué
+contenidos le tocan a cada alumno. Por eso un chico de secundaria que respondía
+bien acababa recibiendo derivadas: "avanzado" no significa "universitario",
+significa "lo más difícil de lo tuyo".
+
+### Los dos ejes, separados
+
+| Eje | Qué dice | Quién lo pone |
+| --- | --- | --- |
+| **Etapa + curso** | Dónde está el alumno: Secundaria 3.er año, Superior 2.º ciclo | El alumno, al configurar su perfil |
+| **Nivel** (Básico/Intermedio/Avanzado) | Cuánto cuesta un contenido dentro de su etapa | El docente al crearlo; el diagnóstico al medir |
+
+`EtapaEducativa` es un enum nuevo —PRIMARIA (1.º a 6.º grado), SECUNDARIA (1.º a
+5.º año), SUPERIOR (1.º a 10.º ciclo)— y viaja en el modelo de **temas,
+ejercicios, preguntas del diagnóstico y perfil del alumno**.
+
+### El alcance se lee "a partir de"
+
+Un contenido declara `etapa` y `cursoMin`. La factorización, marcada como
+Secundaria 3.º, se plantea desde 3.º de secundaria **y también en Superior**: lo
+que se estudia antes sigue valiendo después, como en cualquier temario. Lo que
+no ocurre nunca es lo contrario:
+
+```
+Secundaria 3.er año  →  derivadas: NO   ·  factorización: sí  ·  transversal: sí
+Secundaria 1.er año  →  derivadas: NO   ·  factorización: no  ·  transversal: sí
+Superior 2.º ciclo   →  derivadas: sí   ·  factorización: sí  ·  transversal: sí
+Primaria 5.º grado   →  derivadas: NO   ·  factorización: no  ·  transversal: sí
+```
+
+Un contenido sin etapa es **transversal** y le llega a cualquiera. Es lo que
+permitió introducir la taxonomía sin dejar a nadie sin temario mientras el
+profesorado clasifica lo suyo.
+
+### La pantalla de configuración
+
+`/estudiante/nivel-educativo`, en dos pasos —etapa y curso— tal como estaba
+planteada: tarjetas para PRIMARIA / SECUNDARIA / SUPERIOR y los cursos que
+corresponden a cada una, con el resumen ("Estás configurando tu nivel como:
+Secundaria · 3.er Año") antes de finalizar.
+
+Se pregunta **una vez**, después del registro y antes de la evaluación inicial, y
+se puede volver a ella al cambiar de curso. El registro dejó de pedir "ciclo" y
+"grado" en texto libre: de ese dato depende todo lo que el alumno recibe, y
+escondido al final de un formulario de alta se rellenaba a la ligera.
+
+Un alumno sin etapa declarada no recibe una prueba de un temario que no es el
+suyo: se le lleva a configurarla. Las cuentas del PMV 1, que tienen el curso en
+texto, se interpretan automáticamente ("Secundaria" + "3.º" → SECUNDARIA 3).
+
+### En el panel docente
+
+- El formulario de tema tiene **Alcance curricular**: etapa y curso a partir del
+  cual se plantea, con la explicación de en qué se diferencia del nivel.
+- Los **subtemas heredan el alcance** del tema padre, igual que el motor.
+- Los **ejercicios heredan el alcance de su tema**: es el tema quien sabe a qué
+  alumnos va dirigido, y duplicar el dato sólo daría ocasión de que se
+  contradigan.
+- El listado del currículo muestra el alcance de cada tema y **filtra por
+  etapa**; el banco muestra el alcance heredado de cada ejercicio.
+
+### El contenido sembrado, clasificado
+
+Las 18 preguntas del catálogo declaran su etapa y su curso, y las 394 del banco
+determinista heredan el alcance de su motor:
+
+| Motor | A partir de |
+| --- | --- |
+| Aritmética | Primaria 1.º |
+| Fracciones | Primaria 4.º |
+| Ecuaciones lineales | Secundaria 1.º |
+| Factorización | Secundaria 3.º |
+| **Derivadas** | **Superior 1.º** |
+
+### Comprobado
+
+`npm run qa:diagnostico-nivel` — **85 comprobaciones** — registra alumnos reales
+contra el servidor, les configura la etapa por la pantalla nueva y comprueba lo
+que se pidió:
+
+```
+✓ el servidor reconoce su etapa y su curso
+✓ NO le aparece ninguna pregunta de derivadas (el fallo reportado)
+✓ un alumno de superior recibe dificultad avanzada, y en su prueba SÍ hay derivadas
+✓ un alumno de primaria no ve ni derivadas ni factorización
+✓ una cuenta antigua con el curso en texto también se clasifica
+✓ un curso imposible se rechaza (secundaria no tiene 8.º año)
+✓ sin etapa declarada, el servidor pide configurarla
+```
+
+Y, de paso, la batería del banco descubrió que el evaluador aritmético heredado
+calculaba mal las potencias —`2^3 + 1` daba 4— y no sabía leer `5·(-3)`. Ahora se
+contrasta con el analizador nuevo: si discrepan manda el que tiene gramática, y
+si coinciden se conserva la fracción exacta del heredado.
+
+### Ficheros de esta ampliación
+
+```
+lib/curriculo/etapas.ts                       la taxonomía y el alcance (nuevo)
+components/configurador-nivel-educativo.tsx   la pantalla de dos pasos (nuevo)
+app/estudiante/nivel-educativo/page.tsx       su ruta (nuevo)
+app/api/estudiante/nivel-educativo/route.ts   guardar etapa y curso (nuevo)
+prisma/migrations/20260902140000_taxonomia_curricular
+lib/diagnostico/seleccion.ts   filtra por etapa además de por nivel
+lib/diagnostico/prueba.ts      consulta y compone con el curso del alumno
+lib/leccion/correccion.ts      aritmética contrastada entre los dos motores
+components/docente/*           alcance en el formulario, la tabla y el banco
+qa/diagnostico-nivel.mjs       85 comprobaciones
 ```

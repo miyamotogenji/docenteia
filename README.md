@@ -523,12 +523,18 @@ Y la corrección compara **funciones, no cadenas**: `e^x + 2x` y `2x + e^x` son
 la misma respuesta. Sólo donde la forma es el ejercicio —una factorización— se
 sigue exigiendo la forma.
 
-### La evaluación inicial se ajusta al curso
+### Dos ejes: dónde está el alumno y cuánto cuesta el contenido
 
-Un alumno declara su curso al registrarse —de 1.º de primaria a
-preuniversitario— y de ahí sale su **nivel de partida**: básico, intermedio o
-avanzado. La prueba se compone con las preguntas de ese nivel, y no con un banco
-único: a un alumno de 3.º de secundaria no le aparecen derivadas.
+- **Etapa + curso** (Primaria 1.º-6.º, Secundaria 1.º-5.º, Superior 1.º-10.º)
+  dicen dónde está el alumno en el sistema educativo y deciden **qué contenidos
+  existen para él**. Se configuran en `/estudiante/nivel-educativo`, en dos pasos.
+- **Nivel** (Básico, Intermedio, Avanzado) dice cuánto cuesta un contenido dentro
+  de su etapa. Lo mide el diagnóstico.
+
+Cada tema y cada ejercicio declaran su **alcance**: la etapa y el curso a partir
+del cual se plantean. Así, una derivada marcada como Superior no le aparece a un
+alumno de secundaria por muy avanzado que vaya en lo suyo, y un universitario sí
+recibe la factorización de secundaria, que tiene estudiada.
 
 Las preguntas salen del catálogo sembrado (cinco por nivel, de opción múltiple)
 y del **banco del profesorado**: los ejercicios publicados y verificados de ese

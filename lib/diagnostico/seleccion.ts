@@ -1,4 +1,6 @@
-import type { NivelAcademico, Tema } from "@prisma/client";
+import type { EtapaEducativa, NivelAcademico, Tema } from "@prisma/client";
+
+import { cubreAlAlumno, type CursoDelAlumno } from "../curriculo/etapas.ts";
 
 /**
  * QUÉ PREGUNTAS VE CADA ALUMNO EN EL DIAGNÓSTICO.
@@ -55,6 +57,8 @@ export interface PreguntaCatalogo {
   id: string;
   tema: Tema;
   nivel: NivelAcademico | null;
+  etapa: EtapaEducativa | null;
+  cursoMin: number | null;
   enunciado: string;
   expresion: string | null;
   opciones: unknown;
@@ -69,6 +73,8 @@ export interface EjercicioBanco {
   motor: Tema | null;
   respuestaCorrecta: string;
   plantilla: boolean;
+  etapa: EtapaEducativa | null;
+  cursoMin: number | null;
 }
 
 /**
@@ -154,12 +160,27 @@ export function componerDiagnostico({
   banco,
   comodines = [],
   objetivo = PREGUNTAS_POR_DIAGNOSTICO,
+  alumno,
 }: {
   catalogo: readonly PreguntaCatalogo[];
   banco: readonly EjercicioBanco[];
   comodines?: readonly PreguntaCatalogo[];
   objetivo?: number;
+  /**
+   * Dónde está el alumno. Es el filtro de fondo: por muy bien que responda, a
+   * un alumno de secundaria no le puede llegar contenido marcado como Superior.
+   * Sin este dato sólo se le sirve lo transversal.
+   */
+  alumno?: CursoDelAlumno;
 }): ItemDiagnostico[] {
+  const delAlumno = alumno ?? { etapa: null, curso: null };
+  const leCorresponde = (c: { etapa: EtapaEducativa | null; cursoMin: number | null }) =>
+    cubreAlAlumno(c, delAlumno);
+
+  catalogo = catalogo.filter(leCorresponde);
+  banco = banco.filter(leCorresponde);
+  comodines = comodines.filter(leCorresponde);
+
   // Los dos repartos se hacen por tema, para que la prueba no acabe midiendo
   // un solo asunto por el orden en que se sembró el contenido.
   const delBanco = repartirPorTema(

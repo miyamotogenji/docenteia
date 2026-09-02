@@ -32,8 +32,12 @@ export const TEMAS: readonly TemaEnum[] = [
 export interface PreguntaOficial {
   id: string;
   tema: string;
-  /** Nivel al que corresponde: BASICO, INTERMEDIO o AVANZADO. */
+  /** Nivel de dificultad: BASICO, INTERMEDIO o AVANZADO. */
   nivel?: string;
+  /** Etapa educativa A PARTIR DE la cual se plantea: PRIMARIA, SECUNDARIA, SUPERIOR. */
+  etapa?: string;
+  /** Curso mínimo dentro de esa etapa. */
+  curso_min?: number;
   pregunta: string;
   opciones: string[];
   respuesta_correcta: string;
@@ -43,6 +47,10 @@ export interface PreguntaOficial {
 export type NivelPregunta = "BASICO" | "INTERMEDIO" | "AVANZADO";
 
 const NIVELES_PREGUNTA: readonly NivelPregunta[] = ["BASICO", "INTERMEDIO", "AVANZADO"];
+
+export type EtapaPregunta = "PRIMARIA" | "SECUNDARIA" | "SUPERIOR";
+
+const ETAPAS_PREGUNTA: readonly EtapaPregunta[] = ["PRIMARIA", "SECUNDARIA", "SUPERIOR"];
 
 /** Pregunta ya adaptada al esquema de `preguntas_diagnostico`. */
 export interface PreguntaAdaptada {
@@ -61,6 +69,13 @@ export interface PreguntaAdaptada {
    * entero.
    */
   nivel: NivelPregunta | null;
+  /**
+   * Desde qué punto del sistema educativo se plantea. Es el otro eje: `nivel`
+   * dice cuánto cuesta, esto dice a quién le toca. Una derivada es de Superior
+   * aunque su dificultad relativa sea la misma que la de una factorización.
+   */
+  etapa: EtapaPregunta | null;
+  cursoMin: number | null;
 }
 
 /**
@@ -110,8 +125,16 @@ export function temaAEnum(tema: string): TemaEnum {
 
 export const IDS_OPCION = ["a", "b", "c", "d", "e", "f"];
 
-/** Cuántas preguntas del mismo tema se toleran dentro de un mismo nivel. */
-export const MAX_PREGUNTAS_POR_TEMA = 2;
+/**
+ * Cuántas preguntas del mismo tema se toleran dentro de un mismo nivel.
+ *
+ * Eran dos cuando el banco sólo se dividía por dificultad. Con la taxonomía
+ * curricular, un mismo nivel reparte sus preguntas entre varios cursos —lo
+ * básico empieza en 1.º de primaria y llega hasta 1.º de secundaria— y dos por
+ * tema no alcanzan a cubrirlos. Tres siguen dejando sitio a otros temas, que es
+ * lo que este tope protege.
+ */
+export const MAX_PREGUNTAS_POR_TEMA = 3;
 
 /**
  * Convierte una pregunta del formato oficial al del esquema.
@@ -159,6 +182,16 @@ export function adaptar(p: PreguntaOficial, indice: number): PreguntaAdaptada {
     );
   }
 
+  const etapa = p.etapa ? String(p.etapa).toUpperCase() : null;
+  if (etapa && !(ETAPAS_PREGUNTA as readonly string[]).includes(etapa)) {
+    throw new Error(
+      `Etapa desconocida en la pregunta "${p.id}": ${p.etapa}. Las válidas son: ${ETAPAS_PREGUNTA.join(", ")}`,
+    );
+  }
+  if (p.curso_min != null && (!Number.isInteger(p.curso_min) || p.curso_min < 1 || p.curso_min > 10)) {
+    throw new Error(`El curso mínimo de "${p.id}" no es un curso posible: ${p.curso_min}`);
+  }
+
   return {
     clave: p.id,
     orden: indice + 1,
@@ -167,6 +200,8 @@ export function adaptar(p: PreguntaOficial, indice: number): PreguntaAdaptada {
     opciones,
     respuestaCorrecta: correcta.id,
     nivel: (nivel as NivelPregunta | null) ?? null,
+    etapa: (etapa as EtapaPregunta | null) ?? null,
+    cursoMin: p.curso_min ?? null,
   };
 }
 
@@ -214,6 +249,16 @@ export function adaptarBanco(oficial: PreguntaOficial[]): PreguntaAdaptada[] {
 
     if (delNivel.length >= 3 && cuenta.size < 2) {
       throw new Error(`El nivel ${nivel} sólo pregunta por un tema (${[...cuenta.keys()][0]}).`);
+    }
+  }
+
+  // Lo que motivó toda la taxonomía: una derivada no se le plantea a un alumno
+  // de secundaria, por muy avanzado que vaya en lo suyo.
+  for (const p of preguntas) {
+    if (p.tema === "DERIVADAS" && p.etapa !== "SUPERIOR") {
+      throw new Error(
+        `La pregunta "${p.clave}" es de derivadas y su etapa es ${p.etapa ?? "ninguna"}: las derivadas son de Superior.`,
+      );
     }
   }
 

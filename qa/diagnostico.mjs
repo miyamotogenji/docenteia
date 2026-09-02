@@ -26,7 +26,7 @@ import {
 } from "../src/preLight.js";
 // Se importa la transformación REAL que usa la semilla, no una copia: validar
 // una copia podría dar por bueno un banco que la semilla carga de otra manera.
-import { adaptarBanco, latexAPlano } from "../lib/diagnostico/banco.ts";
+import { MAX_PREGUNTAS_POR_TEMA, adaptarBanco, latexAPlano } from "../lib/diagnostico/banco.ts";
 import { separarFormulas } from "../lib/matematicas/index.ts";
 
 const RUTA = new URL("../prisma/seed-data/preguntas-diagnostico.json", import.meta.url);
@@ -90,9 +90,13 @@ const porNivel = new Map(NIVELES_BANCO.map((n) => [n, banco.filter((p) => p.nive
 check("hay preguntas en los tres niveles", NIVELES_BANCO.every((n) => porNivel.get(n).length > 0));
 for (const nivel of NIVELES_BANCO) {
   const delNivel = porNivel.get(nivel);
+  // Cinco es el mínimo, no el tope: con la taxonomía curricular un mismo nivel
+  // de dificultad tiene preguntas de etapas distintas —lo avanzado de
+  // secundaria no es lo avanzado de la universidad— y hacen falta cinco para
+  // CADA alumno que llegue a ese nivel, no cinco en total.
   check(
-    `${nivel}: cinco preguntas`,
-    delNivel.length === 5,
+    `${nivel}: al menos cinco preguntas`,
+    delNivel.length >= 5,
     `tiene ${delNivel.length}`,
   );
   const temasNivel = delNivel.map((p) => p.tema);
@@ -102,8 +106,10 @@ for (const nivel of NIVELES_BANCO) {
     temasNivel.join(", "),
   );
   check(
-    `${nivel}: ningún tema aparece más de dos veces`,
-    [...new Set(temasNivel)].every((t) => temasNivel.filter((x) => x === t).length <= 2),
+    `${nivel}: ningún tema aparece más de ${MAX_PREGUNTAS_POR_TEMA} veces`,
+    [...new Set(temasNivel)].every(
+      (t) => temasNivel.filter((x) => x === t).length <= MAX_PREGUNTAS_POR_TEMA,
+    ),
     temasNivel.join(", "),
   );
 }
@@ -118,6 +124,46 @@ check(
 check(
   "las derivadas sólo se preguntan en el nivel avanzado",
   banco.filter((p) => p.tema === "derivadas").every((p) => p.nivel === "AVANZADO"),
+);
+
+// Y el otro eje: cada alumno tiene con qué completar SU prueba, sin salirse de
+// lo que le corresponde por curso.
+const ETAPA_ORDEN = { PRIMARIA: 1, SECUNDARIA: 2, SUPERIOR: 3 };
+const leCorresponde = (p, alumno) => {
+  if (!p.nivel_etapa && !p.etapa) return true;
+  const etapa = p.etapa;
+  if (!etapa) return true;
+  if (ETAPA_ORDEN[alumno.etapa] < ETAPA_ORDEN[etapa]) return false;
+  if (ETAPA_ORDEN[alumno.etapa] > ETAPA_ORDEN[etapa]) return true;
+  return !p.curso_min || alumno.curso >= p.curso_min;
+};
+
+// El contenido sembrado empieza en 4.º de primaria: por debajo, la prueba
+// depende de lo que cargue el profesorado, y así se dice en lugar de fingir
+// una cobertura que no hay.
+for (const [alumno, nivelEsperado] of [
+  [{ etapa: "PRIMARIA", curso: 4 }, "BASICO"],
+  [{ etapa: "PRIMARIA", curso: 5 }, "BASICO"],
+  [{ etapa: "SECUNDARIA", curso: 1 }, "BASICO"],
+  [{ etapa: "SECUNDARIA", curso: 3 }, "INTERMEDIO"],
+  [{ etapa: "SECUNDARIA", curso: 4 }, "AVANZADO"],
+  [{ etapa: "SUPERIOR", curso: 1 }, "AVANZADO"],
+]) {
+  const suyas = banco.filter(
+    (p) => p.nivel === nivelEsperado && leCorresponde(p, alumno),
+  );
+  check(
+    `${alumno.etapa} ${alumno.curso} tiene cinco preguntas de nivel ${nivelEsperado}`,
+    suyas.length >= 5,
+    `${suyas.length} preguntas`,
+  );
+}
+
+check(
+  "ningún alumno de secundaria puede recibir una derivada",
+  banco
+    .filter((p) => leCorresponde(p, { etapa: "SECUNDARIA", curso: 5 }))
+    .every((p) => p.tema !== "derivadas"),
 );
 check("los identificadores no se repiten", new Set(banco.map((p) => p.id)).size === banco.length);
 
@@ -374,15 +420,19 @@ try {
 check("un nivel que sólo pregunta por un tema se rechaza", detectadoMonotema);
 
 const nivelDesequilibrado = JSON.parse(JSON.stringify(banco)).filter((p) => p.nivel === "INTERMEDIO");
-nivelDesequilibrado[1].tema = nivelDesequilibrado[0].tema;
-nivelDesequilibrado[2].tema = nivelDesequilibrado[0].tema;
+for (let i = 1; i <= MAX_PREGUNTAS_POR_TEMA; i++) {
+  nivelDesequilibrado[i].tema = nivelDesequilibrado[0].tema;
+}
 let detectadoDesequilibrio = false;
 try {
   adaptarBanco(nivelDesequilibrado);
 } catch {
   detectadoDesequilibrio = true;
 }
-check("tres preguntas del mismo tema en un nivel se rechazan", detectadoDesequilibrio);
+check(
+  `más de ${MAX_PREGUNTAS_POR_TEMA} preguntas del mismo tema en un nivel se rechazan`,
+  detectadoDesequilibrio,
+);
 
 const nivelInventado = JSON.parse(JSON.stringify(banco));
 nivelInventado[0].nivel = "EXPERTO";
