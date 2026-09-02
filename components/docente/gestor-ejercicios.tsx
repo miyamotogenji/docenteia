@@ -741,6 +741,11 @@ function PanelInforme({ informe }: { informe: InformeValidacion }) {
         <div className="flex flex-wrap items-center gap-3">
           <Badge variant={tono}>{titulo}</Badge>
           {informe.motor && <Badge variant="contorno">{etiquetaMotor(informe.motor)}</Badge>}
+          {informe.reglas.length > 0 && (
+            <span className="text-sm text-muted-foreground">
+              Reglas aplicadas: {informe.reglas.join(" · ")}
+            </span>
+          )}
           {informe.totalCombinaciones > 1 && (
             <span className="text-sm text-muted-foreground">
               {informe.comprobadas} comprobada(s) ·{" "}

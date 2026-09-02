@@ -29,7 +29,7 @@ import {
   pareceMatematica,
   planoALatex,
   separarProsaYMatematicas,
-} from "../lib/matematicas.ts";
+} from "../lib/matematicas/index.ts";
 import {
   esFaseConocida,
   esFaseDeConcepto,

@@ -300,6 +300,7 @@ Todas están documentadas con más detalle en [`.env.example`](.env.example).
 | `npm test`            | Ejecuta la suite de validación completa.              |
 | `npm run qa:diagnostico` | Valida el banco de preguntas (no necesita servidor).|
 | `npm run qa:hito1`    | Valida la autoría docente y el validador matemático.  |
+| `npm run qa:matematicas` | Valida el analizador, la derivación y la equivalencia.|
 | `npm run legacy:start`| Arranca el prototipo Express original (puerto 3001).  |
 
 ---
@@ -416,6 +417,8 @@ components/             Componentes de UI (shadcn/ui) y KaTeX
   docente/                MVP 2: gestor curricular, formularios y validación
 lib/                    prisma · rbac · diagnóstico · utilidades
   docente/                MVP 2: validador matemático, parámetros, currículo
+  matematicas/            MVP 2: analizador de expresiones, derivación
+                          simbólica y equivalencia de respuestas
 prisma/                 schema.prisma · migraciones · semilla
 src/                    NÚCLEO HEREDADO: classifier · preLight · lsgPrompt ·
                         geminiClient · queryCore  (+ declaraciones .d.ts)
@@ -507,6 +510,17 @@ Con plantillas parametrizadas recorre **todas** las combinaciones cuando son 240
 o menos, y una muestra **reproducible** cuando son más. Si el tema no declara
 motor, el ejercicio se guarda **marcado como no verificado** y se explica por
 qué: nunca se inventa un veredicto. La IA no interviene en ningún punto.
+
+### Derivadas con exponenciales y logaritmos
+
+El motor del PMV 1 sólo sabía derivar polinomios, porque leía las expresiones
+con expresiones regulares. `lib/matematicas/` las lee como una gramática: de ahí
+salen `e^x`, `ln(x)`, `sqrt`, seno y coseno, y con ellos las reglas del
+**producto**, del **cociente** y de la **cadena**, que se componen entre sí.
+
+Y la corrección compara **funciones, no cadenas**: `e^x + 2x` y `2x + e^x` son
+la misma respuesta. Sólo donde la forma es el ejercicio —una factorización— se
+sigue exigiendo la forma.
 
 ### El tema y su motor
 

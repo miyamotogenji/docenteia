@@ -27,7 +27,7 @@ import {
 // Se importa la transformación REAL que usa la semilla, no una copia: validar
 // una copia podría dar por bueno un banco que la semilla carga de otra manera.
 import { adaptarBanco, latexAPlano } from "../lib/diagnostico/banco.ts";
-import { separarFormulas } from "../lib/matematicas.ts";
+import { separarFormulas } from "../lib/matematicas/index.ts";
 
 const RUTA = new URL("../prisma/seed-data/preguntas-diagnostico.json", import.meta.url);
 const banco = JSON.parse(readFileSync(RUTA, "utf8"));

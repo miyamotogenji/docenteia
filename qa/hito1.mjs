@@ -588,6 +588,66 @@ if (!salud) {
       `HTTP ${rPlantilla.status}`,
     );
 
+    // 5b. LO QUE REPORTÓ EL CLIENTE: una derivada con funciones trascendentes.
+    //     Antes el motor no las reconocía y el ejercicio se guardaba como "no
+    //     comprobable". Ahora tiene que quedar VERIFICADO, y por el camino
+    //     completo: API, validador y motor simbólico.
+    //
+    //     Va en un tema PROPIO, con motor de derivadas: el ejercicio hereda el
+    //     motor de su tema, y meterlo en el de ecuaciones lineales sería pedirle
+    //     al motor equivocado que lo resuelva.
+    const rTemaDerivadas = await api("/api/docente/temas", {
+      method: "POST",
+      body: JSON.stringify({
+        titulo: `QA Derivadas ${sufijo}`,
+        materiaId,
+        motor: "DERIVADAS",
+        nivel: "AVANZADO",
+        estado: "PUBLICADO",
+      }),
+    });
+    const temaDerivadas = await rTemaDerivadas.json().catch(() => ({}));
+    const temaDerivadasId = temaDerivadas?.tema?.id ?? null;
+    check("se crea un tema con motor de derivadas", Boolean(temaDerivadasId));
+
+    const rTrascendente = await api("/api/docente/ejercicios", {
+      method: "POST",
+      body: JSON.stringify({
+        nodoId: temaDerivadasId,
+        nivel: "AVANZADO",
+        enunciado: "x·ln(x)",
+        // Escrita en otro orden a propósito: el motor calcula "ln(x) + 1".
+        respuestaCorrecta: "1 + ln(x)",
+      }),
+    });
+    const trascendente = await rTrascendente.json().catch(() => ({}));
+    check(
+      "una derivada con ln(x) se guarda VERIFICADA (lo que fallaba)",
+      rTrascendente.status === 201 && trascendente?.ejercicio?.validado === true,
+      `HTTP ${rTrascendente.status}`,
+    );
+    check(
+      "y el informe nombra la regla del producto",
+      (trascendente?.informe?.reglas ?? []).some((r) => r.includes("producto")),
+      (trascendente?.informe?.reglas ?? []).join(" · "),
+    );
+
+    const rExponencial = await api("/api/docente/ejercicios/validar", {
+      method: "POST",
+      body: JSON.stringify({
+        nodoId: temaDerivadasId,
+        enunciado: "e^(2x)",
+        respuestaCorrecta: "e^(2x)",
+      }),
+    });
+    const exponencial = await rExponencial.json().catch(() => ({}));
+    check(
+      "y una derivada exponencial mal resuelta se rechaza con el número exacto",
+      exponencial?.informe?.valido === false &&
+        (exponencial?.informe?.errores ?? []).some((e) => e.includes("2e^(2x)")),
+      (exponencial?.informe?.errores ?? [])[0],
+    );
+
     // 6. Duplicado
     const rRepetido = await api("/api/docente/ejercicios", {
       method: "POST",
@@ -704,6 +764,14 @@ if (!salud) {
     for (const ej of banco?.ejercicios ?? []) {
       await api(`/api/docente/ejercicios/${ej.id}`, { method: "DELETE" });
     }
+    const bancoDerivadas = await (
+      await api(`/api/docente/ejercicios?nodoId=${temaDerivadasId}`)
+    ).json();
+    for (const ej of bancoDerivadas?.ejercicios ?? []) {
+      await api(`/api/docente/ejercicios/${ej.id}`, { method: "DELETE" });
+    }
+    await api(`/api/docente/temas/${temaDerivadasId}`, { method: "DELETE" });
+
     const rBorrarTema = await api(`/api/docente/temas/${temaId}`, { method: "DELETE" });
     check("el tema se borra cuando ya no tiene historial", rBorrarTema.status === 200, `HTTP ${rBorrarTema.status}`);
 

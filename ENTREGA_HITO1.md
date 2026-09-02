@@ -215,7 +215,8 @@ la aplicación compilada en modo producción:
 
 | Batería | Resultado |
 | --- | --- |
-| `npm run qa:hito1` — **nueva** | **104 comprobaciones · 0 fallidas** |
+| `npm run qa:hito1` — **nueva** | **108 comprobaciones · 0 fallidas** |
+| `npm run qa:matematicas` — **nueva** | **100 comprobaciones · 0 fallidas** |
 | `qa/leccion.mjs` (PMV 1, lección) | 809 · 0 |
 | `qa/diagnostico.mjs` (PMV 1, banco) | 124 · 0 |
 | `qa/paso1.mjs` (PMV 1, roles y registro) | 72 · 0 |
@@ -292,9 +293,92 @@ components/docente/navegacion.tsx
 components/ui/{textarea,select,badge}.tsx
 
 prisma/migrations/20260901120000_hito1_autoria_docente/migration.sql
-qa/hito1.mjs                    104 comprobaciones
+qa/hito1.mjs                    108 comprobaciones
+qa/matematicas.mjs              100 comprobaciones (ampliación)
 ENTREGA_HITO1.md                este documento
 ```
+
+---
+
+## 10. Ampliación tras la verificación del cliente
+
+Al revisar el hito, el cliente encontró el límite exacto del motor heredado: la
+autoría funcionaba con polinomios, pero **una derivada con funciones
+trascendentes —`e^x`, `ln(x)`— se marcaba como "no comprobable"**. Pidió tres
+cosas, y las tres están resueltas.
+
+### 1. El analizador entiende e^x y ln(x)
+
+El motor del PMV 1 leía las expresiones con expresiones regulares: buscaba
+"coeficiente + variable + exponente". `e^x` no era una función que no supiera
+derivar, era texto que no encajaba en el patrón. Parchear el patrón sólo habría
+movido el límite un poco más allá, así que se ha hecho lo que faltaba: leer la
+expresión como una **gramática**.
+
+`lib/matematicas/expresiones.ts` convierte el texto en un árbol —números,
+variables, constantes `e` y `π`, superíndices Unicode, multiplicación implícita,
+llaves de LaTeX, y las funciones `ln`, `log`, `exp`, `sqrt`, `sin`, `cos`,
+`tan`, con o sin paréntesis— y `lib/matematicas/derivar.ts` deriva sobre él.
+
+### 2. Regla del producto y del cociente, verificadas
+
+Al derivar sobre la estructura, las reglas se componen solas:
+
+| Ejercicio | El motor calcula | Reglas que declara haber aplicado |
+| --- | --- | --- |
+| `x·ln(x)` | `ln(x) + 1` | producto · logaritmo |
+| `ln(x)/x` | `(1 - ln(x))/x²` | cociente · logaritmo |
+| `(x² + 1)/(x - 3)` | `(2x·(x - 3) - (x² + 1))/(x - 3)²` | cociente · suma · potencia |
+| `e^(2x)` | `2e^(2x)` | exponencial · cadena |
+| `ln(x² + 1)` | `2x/(x² + 1)` | cadena · logaritmo |
+| `x^x` | `(ln(x) + 1)x^x` | derivación logarítmica |
+
+Las reglas aplicadas se guardan en el informe del ejercicio y se muestran en
+pantalla: el docente ve **con qué** se ha comprobado su ejercicio, no sólo que
+salió bien.
+
+### 3. La corrección acepta respuestas equivalentes
+
+Se dejan de comparar cadenas y se comparan **funciones**: dos respuestas son la
+misma si valen lo mismo, evaluadas en varios puntos. Con eso, `e^x + 2x` y
+`2x + e^x` dejan de ser respuestas distintas, y con ellas `12x^3` y `12x³`,
+`7/2` y `3.5`, `f'(x) = e^x` y `e^x`, o `2e^x` y `e^x + e^x`.
+
+Dos cosas se han conservado a propósito:
+
+- **La forma sigue importando donde el ejercicio ES la forma.** Si se pedía
+  factorizar y el alumno entrega `x² - 9`, se rechaza: vale lo mismo que
+  `(x - 3)(x + 3)` y no es la respuesta a lo que se preguntaba.
+- **Las respuestas en prosa** —"la respuesta es 4", "8 metros/segundo"— las
+  sigue interpretando el corrector del PMV 1, que sabe leerlas.
+
+### Comprobado contra las matemáticas, no contra lo que yo recuerde
+
+Además de las comprobaciones caso a caso, la batería deriva 16 funciones y
+compara cada derivada con la **pendiente numérica real** de su función
+(diferencia centrada). Si una regla estuviera mal escrita, la comparación
+fallaría aunque el resultado coincidiera con lo que la prueba esperaba.
+
+### Ficheros de la ampliación
+
+```
+lib/matematicas/expresiones.ts   analizador: texto → árbol (nuevo)
+lib/matematicas/derivar.ts       reglas de derivación y simplificación (nuevo)
+lib/matematicas/equivalencia.ts  ¿son la misma respuesta? (nuevo)
+lib/matematicas/index.ts         lo que era lib/matematicas.ts, más el LaTeX
+                                 de ln, log, sen, cos, tan, sqrt y exp
+lib/leccion/correccion.ts        el solver de derivadas usa el motor nuevo
+lib/docente/validador.ts         compara por equivalencia y guarda las reglas
+app/api/practica/corregir/…      el alumno también se beneficia
+qa/matematicas.mjs               100 comprobaciones (nuevo)
+```
+
+Nota de alcance: el motor sigue **sin** cubrir integrales, límites ni
+trigonometría inversa. Lo que hay ahora es lo que se pidió —derivadas con
+exponenciales, logaritmos, producto, cociente y cadena— más raíz y
+trigonometría básica, que salían gratis al derivar sobre el árbol.
+
+---
 
 **Modificados**
 
