@@ -986,6 +986,20 @@ if (!vivo) {
     }
     check("la pizarra animada viaja en el paquete de la lección", conPizarra);
     check("y con ella el modo proyección", conProyeccion);
+
+    // Los estilos no van en el mismo sitio que el código: el resaltado y el
+    // tema de proyección son CSS, y si su hoja no llega a esta ruta la pizarra
+    // se pinta sin recuadros y sin escalar, sin dar un solo error.
+    const hojas = [...html.matchAll(/href="(\/_next\/static\/css\/[^"]+)"/g)].map((m) => m[1]);
+    let conEstilos = false;
+    let conRevelado = false;
+    for (const hoja of hojas) {
+      const css = await (await fetch(`${BASE}${hoja}`)).text();
+      if (css.includes("modo-proyeccion") && css.includes("pz-trazo")) conEstilos = true;
+      if (css.includes("pz-rev-")) conRevelado = true;
+    }
+    check("los estilos de la pizarra y de proyección llegan a la ruta", conEstilos);
+    check("y las piezas por destapar arrancan invisibles en el navegador", conRevelado);
   }
 
   const docente = await iniciarSesion(

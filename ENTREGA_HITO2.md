@@ -1,8 +1,8 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.789 comprobaciones automáticas, 0
-fallos**, de las cuales **162 son nuevas** y específicas de este hito
+verificado con la suite del proyecto: **1.791 comprobaciones automáticas, 0
+fallos**, de las cuales **164 son nuevas** y específicas de este hito
 (`qa/hito2.mjs`).
 
 ---
@@ -238,7 +238,7 @@ verifica en la suite leyendo el HTML de la página.
 
 ```bash
 node qa/hito2.mjs                                  # sin servidor: 146 comprobaciones
-BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 162
+BASE_URL=http://localhost:3000 node qa/hito2.mjs   # con servidor: 164
 ```
 
 ---
@@ -250,7 +250,7 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 162 | 0 |
+| `qa/hito2.mjs` (este hito) | 164 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
@@ -258,7 +258,7 @@ Suite completa contra la aplicación compilada y en marcha:
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/leccion.mjs` | 811 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| **Total** | **1.789** | **0** |
+| **Total** | **1.791** | **0** |
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -310,7 +310,7 @@ Lo que comprueba `qa/hito2.mjs`, en concreto:
 | `lib/leccion/avatar.ts` | Los cinco estados pedagógicos y la traducción desde el motor |
 | `components/leccion/pizarra-animada.tsx` | La pizarra con capa SVG y el panel con mandos y modo proyección |
 | `components/leccion/sincronizador-leccion.ts` | El hook de React sobre la máquina, con el locutor real |
-| `qa/hito2.mjs` | 162 comprobaciones del hito |
+| `qa/hito2.mjs` | 164 comprobaciones del hito |
 | `ENTREGA_HITO2.md` | Este documento |
 
 **Modificados**
@@ -367,10 +367,10 @@ una pantalla táctil. El detalle está en la sección 6.
 
 ### Comprobado
 
-`qa/hito2.mjs` pasa de 139 a **162 comprobaciones**. Las nuevas fijan que la
+`qa/hito2.mjs` pasa de 139 a **164 comprobaciones**. Las nuevas fijan que la
 cifra de cada columna y cada llevada se destapan en el paso que las calcula
 —verificado también como regla general sobre seis cuentas, sumas y restas—, que
 en el paso de entrada no hay nada destapado, que la solución del despeje llega
 la última, y que el tema de proyección escala con `vw`, reserva lienzo, deja
-sitio al avatar y usa pizarra oscura. Suite completa: **1.789 comprobaciones, 0
+sitio al avatar y usa pizarra oscura. Suite completa: **1.791 comprobaciones, 0
 fallos**.
