@@ -1,9 +1,10 @@
 # MVP 2 · HITO 2 — Pizarra KaTeX Animada y Avatar Dinámico Enriquecido
 
 Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
-verificado con la suite del proyecto: **1.888 comprobaciones automáticas, 0
-fallos**, de las cuales **261 son nuevas** y específicas de este hito
-(`qa/hito2.mjs`).
+verificado con la suite del proyecto: **3.529 comprobaciones automáticas, 0
+fallos** (`npm test`, código de salida 0), de las cuales **270 son nuevas** y
+específicas de este hito (`qa/hito2.mjs`) y **12 se ejecutan dentro de un
+Chrome de verdad** (`qa/navegador.mjs`).
 
 ---
 
@@ -250,16 +251,19 @@ Suite completa contra la aplicación compilada y en marcha:
 
 | Batería | Comprobaciones | Fallos |
 | --- | ---: | ---: |
-| `qa/hito2.mjs` (este hito) | 253 | 0 |
+| `qa/hito2.mjs` (este hito) | 270 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
-| `qa/leccion.mjs` | 811 | 0 |
+| `qa/leccion.mjs` | 819 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
-| `qa/navegador.mjs` (navegador real) | 8 | 0 |
-| **Total** | **1.888** | **0** |
+| `qa/navegador.mjs` (navegador real) | 12 | 0 |
+| **Suma de estas** | **1.917** | **0** |
+
+Y la suite entera, con las catorce baterías de `npm test`: **3.529
+comprobaciones, 0 fallos**.
 
 Lo que comprueba `qa/hito2.mjs`, en concreto:
 
@@ -897,18 +901,94 @@ Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
 | `qa/diagnostico.mjs` | 416 | 0 |
 | `qa/paso1.mjs` | 72 | 0 |
 | `qa/hito1.mjs` | 124 | 0 |
-| `qa/hito2.mjs` | 259 | 0 |
+| `qa/hito2.mjs` | 270 | 0 |
 | `qa/matematicas.mjs` | 100 | 0 |
 | `qa/diagnostico-nivel.mjs` | 94 | 0 |
 | `qa/qa.mjs` | 1.462 | 0 |
 | `qa/frontend.mjs` | 10 | 0 |
 | `qa/sesiones.mjs` | 126 | 0 |
 | `qa/aceptacion.mjs` | 24 | 0 |
-| `qa/leccion.mjs` | 811 | 0 |
-| `qa/navegador.mjs` (Chrome real) | 9 | 0 |
-| **Total** | **3.507** | **0** |
+| `qa/leccion.mjs` | 819 | 0 |
+| `qa/navegador.mjs` (Chrome real) | 12 | 0 |
+| **Total** | **3.529** | **0** |
 
 Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
 
 `npm test` termina con código 0 y ejecuta **las catorce baterías**, la del
 navegador incluida. Compilación y comprobación de tipos, limpias.
+
+---
+
+## 20. Cuarta revisión: cancelación, diálogo pegado y lienzos vacíos
+
+Cuatro puntos sobre el build `38a10ff`. Los cuatro, corregidos.
+
+### 1. La cancelación se tragaba el signo igual (error matemático)
+
+**Lo que se veía.** En `2x + 6 = 16 − 6`, la caja roja y la tachadura de *«se
+cancelan»* encerraban `+ 6 = 16 − 6`: el signo igual y un número que no se
+cancela con nada. Como afirmación matemática, falsa.
+
+**Por qué.** Los dos seises compartían la clase `pz-cancela`, y el resaltado
+dibuja **una caja que abarca todas las piezas de una misma clase**. Para una
+columna de una cuenta eso es justo lo que se quiere —las tres cifras, un
+recuadro— pero para dos términos a uno y otro lado del igual es un disparate: la
+caja los une pasando por encima de todo lo que hay en medio.
+
+**La corrección.** Un foco puede enmarcar **varias piezas por separado**. Cada
+término que se va lleva su propia marca (`pz-cancela-izq`, `pz-cancela-der`) y
+la pizarra dibuja **un recuadro por término**, con el rótulo escrito una sola
+vez. Lo mismo al simplificar una fracción: numerador y denominador se tachan por
+separado, sin cruzar la raya.
+
+Medido en el navegador, no a ojo: con la lección de ecuaciones en pantalla, los
+recuadros salen en 683–704 y 744–761, y el signo igual está en 700–714 —**fuera
+de los dos**—. Es una comprobación permanente de `qa/navegador.mjs`.
+
+### 2. El diálogo se quedaba pegado de la fase anterior
+
+En "Reglas y propiedades" de Fracciones seguía debajo el ejemplo de la pizza, de
+"Concepto". Limpiar el subtítulo al abrir la fase —lo que se hizo en la ronda
+anterior— **no basta**: el orden de las directivas lo decide el generador de la
+lección, y una frase de la fase que se cierra puede llegar después del cambio.
+
+Ahora el subtítulo va **etiquetado con la fase a la que pertenece**, igual que ya
+se hacía con el contenido de la pizarra, y sólo se pinta si esa fase es la que
+está abierta. Llegue cuando llegue, una frase de Concepto no aparece bajo el
+rótulo de Reglas.
+
+### 3. Faltaba señalar el numerador y el denominador
+
+En "Concepto" de Fracciones, el tutor explicaba las dos palabras y la pizarra
+enseñaba una barra con una celda azul, sin decir cuál era cuál. Ahora el dibujo
+lo señala: una **flecha a la parte sombreada** rotulada *numerador: lo que
+tomamos*, y una **llave que abarca las cuatro partes** rotulada *denominador:
+partes iguales del todo*.
+
+### 4. El recuadro en blanco de Aritmética
+
+Dos causas, las dos corregidas:
+
+- **El lienzo tenía la altura del ejemplo resuelto en todas las fases.** Concepto
+  y Reglas enseñan una tarjeta y poco más, así que quedaba medio lienzo vacío.
+  Ahora el alto se ajusta a la fase —fijo dentro de cada una, que es lo que
+  evitaba que los botones bailaran— y cambia sólo al cambiar de fase, cuando la
+  vista se sustituye entera de todas formas.
+- **Aritmética era el único tema sin diagrama.** Su fase de Concepto se quedaba
+  con una línea de texto en medio del lienzo. Ahora tiene el suyo: dos grupos de
+  fichas que se juntan en un total.
+
+Medido en el navegador, el hueco en blanco de la fase de Concepto de Aritmética
+pasa de **330 px a 93 px**, y el de Reglas de 273 px a 168 px, con la tarjeta de
+la regla ocupando el resto.
+
+Y de paso: la pizarra ya no repite el rótulo de la regla que la tarjeta acaba de
+enseñar. En la fase de Reglas se leía "Suma con llevada" en la tarjeta, otra vez
+debajo y una tercera en el subtítulo.
+
+### Comprobado
+
+`qa/hito2.mjs` sube a **270 comprobaciones** y `qa/navegador.mjs` a **12**, tres
+de ellas nuevas y dentro de Chrome: que se dibuje un recuadro por término
+cancelado y que ninguno encierre el signo igual. `npm test` completo: **3.529
+comprobaciones, 0 fallos**.

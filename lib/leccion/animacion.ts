@@ -42,6 +42,16 @@ export interface Foco {
   /** Rótulo corto que se dibuja junto al recuadro ("llevo 1"). */
   etiqueta?: string;
   /**
+   * Piezas que este foco enmarca POR SEPARADO, cada una con su caja.
+   *
+   * Sin esto, dos trozos que comparten clase se enmarcan en UNA sola caja que
+   * los abarca a los dos y a todo lo que quede en medio. Para una columna eso
+   * es lo que se quiere; para una cancelación a los dos lados de una ecuación
+   * es un disparate: la caja se comía el "= 16" y la tachadura cruzaba el signo
+   * igual, que no se cancela con nada.
+   */
+  piezas?: string[];
+  /**
    * La palabra por la que el tutor llama a este paso: "unidades", "decenas".
    *
    * Es la señal más fiable para seguirle, porque la dice con cualquier
@@ -403,7 +413,12 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const izquierda = unitario
     ? `${coeficiente === -1 ? "-" : ""}${variable}`
     : `${marcar("pz-coef-despeje", String(coeficiente))}${variable}`;
-  const terminoLatex = b === 0 ? "" : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela", String(Math.abs(b)))}`;
+  // Cada término que se cancela lleva SU clase además de la común: la común
+  // identifica el foco, las propias delimitan una caja por término.
+  const terminoLatex =
+    b === 0
+      ? ""
+      : ` ${b > 0 ? "+" : "-"} ${marcar("pz-cancela pz-cancela-izq", String(Math.abs(b)))}`;
 
   // Cuántos focos habrá, para saber en cuál se destapa la solución. La ecuación
   // no puede empezar con el resultado escrito: eso es dar la respuesta antes de
@@ -415,7 +430,7 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   const compensacion =
     b === 0
       ? ""
-      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela", String(Math.abs(b)))}`)}`;
+      : ` ${marcar(`pz-rev-0`, `${b > 0 ? "-" : "+"} ${marcar("pz-cancela pz-cancela-der", String(Math.abs(b)))}`)}`;
 
   const solucion = formatearRacional(c - b, coeficiente);
   const latex =
@@ -429,6 +444,9 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
   if (b !== 0) {
     focos.push({
       clase: "pz-cancela",
+      // Una caja por término: la del miembro izquierdo y la del derecho. Nunca
+      // una sola que las una pasando por encima del igual.
+      piezas: ["pz-cancela-izq", "pz-cancela-der"],
       tipo: "tachado",
       narracion: `Quitamos ${Math.abs(b)} en los dos lados: a la izquierda se cancela y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
       etiqueta: "se cancelan",
@@ -558,7 +576,7 @@ export function escenaDeSimplificacion(texto: string, id: string): Escena | null
     abajoSimple === "1" ? arribaSimple : `\\frac{${arribaSimple}}{${abajoSimple}}`;
 
   const latex =
-    `\\frac{${marcar("pz-cancela", arriba)}}{${marcar("pz-cancela", abajo)}}` +
+    `\\frac{${marcar("pz-cancela pz-cancela-num", arriba)}}{${marcar("pz-cancela pz-cancela-den", abajo)}}` +
     ` ${marcar("pz-rev-1", `= ${marcar("pz-simplificada", resultado)}`)}`;
 
   const porQue: string[] = [];
@@ -580,6 +598,9 @@ export function escenaDeSimplificacion(texto: string, id: string): Escena | null
     focos: [
       {
         clase: "pz-cancela",
+        // Se tachan arriba y abajo por separado, como se hace a mano; una caja
+        // única taparía también la raya de la fracción.
+        piezas: ["pz-cancela-num", "pz-cancela-den"],
         tipo: "tachado",
         narracion: `${mayuscula(porQue.join(" y "))}.`,
         etiqueta: divisor > 1 ? `÷ ${divisor}` : "se cancelan",

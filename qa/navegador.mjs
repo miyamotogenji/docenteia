@@ -436,5 +436,98 @@ check(
   erroresConsola.slice(0, 2).join(" | "),
 );
 
+// ── Segunda escena: la cancelación de un despeje ──────────────────────────
+//
+// El cliente lo reportó como error matemático grave: en "2x + 6 = 16 - 6" la
+// caja roja y la tachadura abarcaban "+ 6 = 16 - 6", es decir el signo igual y
+// un número que no se cancela con nada. Lo único que puede quedar dentro es el
+// término que se va, en su miembro. Se mide en pantalla: dónde están las cajas
+// y dónde el "=".
+console.log("\n── Ecuaciones lineales: la cancelación no puede tragarse el igual ──");
+
+const emailEq = `qa.despeje.${Date.now().toString(36)}@mentoriamath.local`;
+const altaEq = await registrarAlumno(BASE, { email: emailEq, password: clave, nombre: "QA Despeje" });
+await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+  method: "PUT",
+  headers: { "Content-Type": "application/json", cookie: altaEq.sesion },
+  body: JSON.stringify({ etapa: "SECUNDARIA", curso: 2 }),
+});
+const pruebaEq = await (
+  await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: altaEq.sesion } })
+).json();
+await fetch(`${BASE}/api/diagnostico`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json", cookie: altaEq.sesion },
+  body: JSON.stringify({
+    respuestas: (pruebaEq.preguntas ?? []).map((p) => ({
+      preguntaId: p.id,
+      respuestaDada: p.tipo === "opcion_multiple" ? "a" : "0",
+    })),
+  }),
+});
+const galletaEq = (await iniciarSesion(BASE, emailEq, clave)) ?? altaEq.sesion;
+
+const ctxEq = await navegador.newContext({ viewport: { width: 1280, height: 1400 } });
+await ctxEq.addCookies(
+  galletaEq.split(";").map((par) => {
+    const [nombre, ...resto] = par.trim().split("=");
+    return {
+      name: nombre,
+      value: resto.join("="),
+      domain: url.hostname,
+      path: "/",
+      httpOnly: false,
+      secure: url.protocol === "https:",
+    };
+  }),
+);
+const paginaEq = await ctxEq.newPage();
+await paginaEq.goto(`${BASE}/estudiante/leccion`, { waitUntil: "networkidle" });
+
+const temas = await paginaEq.locator(".text-lg").allTextContents();
+const cual = temas.findIndex((t) => /ecuaciones/i.test(t));
+check("la vista ofrece Ecuaciones lineales", cual >= 0, temas.join(", "));
+await paginaEq
+  .getByRole("button", { name: /Empezar|Desde el principio/ })
+  .nth(cual < 0 ? 0 : cual)
+  .click();
+
+let cancelacion = null;
+for (let k = 0; k < 80 && !cancelacion; k++) {
+  cancelacion = await paginaEq.evaluate(() => {
+    const panel = document.querySelector(".pz-animada");
+    if (!panel?.querySelector('.pz-resaltado[data-tipo="tachado"]')) return null;
+    const caja = (n) => {
+      const b = n.getBoundingClientRect();
+      return { x1: Math.round(b.left), x2: Math.round(b.right) };
+    };
+    return {
+      formula: panel.querySelector("annotation")?.textContent ?? "",
+      cajas: [...panel.querySelectorAll('.pz-resaltado[data-tipo="tachado"] rect')].map(caja),
+      iguales: [...panel.querySelectorAll(".pz-formula .mrel")]
+        .filter((n) => n.textContent?.trim() === "=")
+        .map(caja),
+    };
+  });
+  if (!cancelacion) await paginaEq.waitForTimeout(750);
+}
+
+if (!cancelacion) {
+  check("la lección llega a mostrar una cancelación", false, "no apareció en 60 s");
+} else {
+  // Cada caja se dibuja dos veces —fondo y trazo—, así que se agrupan por
+  // posición para contar recuadros, no rectángulos.
+  const distintas = [...new Set(cancelacion.cajas.map((c) => `${c.x1}-${c.x2}`))];
+  console.log(`  · recuadros: ${distintas.join(" · ")}`);
+  console.log(`  · signos igual: ${cancelacion.iguales.map((s) => `${s.x1}-${s.x2}`).join(" · ")}`);
+
+  check("se dibuja un recuadro por término cancelado", distintas.length === 2, distintas.join(" · "));
+  check(
+    "y ningún recuadro encierra el signo igual",
+    !cancelacion.cajas.some((c) => cancelacion.iguales.some((s) => s.x1 >= c.x1 && s.x2 <= c.x2)),
+    JSON.stringify(cancelacion.cajas),
+  );
+}
+
 await navegador.close();
 salir();
