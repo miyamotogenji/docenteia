@@ -705,6 +705,54 @@ titulo("B2. La pizarra sigue a la voz del tutor");
     JSON.stringify(cierre),
   );
 
+  // ── Y LO MISMO CON UNA CUENTA DE UNA SOLA CIFRA ────────────────────────────
+  //
+  // Es la cuenta que recibe un alumno de primaria recién diagnosticado, y era
+  // justo la que no cerraba: "El resultado es 7" no tiene ninguna pieza que el
+  // tutor repita —"resultado" no lo dice, y el 7 no se contaba por ser de una
+  // cifra—, así que el cierre no encajaba en ningún paso y la pizarra se
+  // quedaba clavada en "Paso 2 de 3", sin llegar nunca a rodear el resultado.
+  {
+    const corta = guionDeLeccion(["3 + 4", "unidades: 3 + 4 = 7"]);
+    const ultimo = corta[0].focos.length - 1;
+
+    const pasos = [
+      ["Vamos a sumar 3 + 4 paso a paso.", -1],
+      ["Sumamos las unidades: 3 + 4 = 7.", 0],
+      ["Así, 3 + 4 = 7. Ahora te toca a ti.", ultimo],
+    ];
+    let donde = 0;
+    for (const [dicho, esperado] of pasos) {
+      const destino = situacionParaNarracion(corta, dicho, donde);
+      if (destino) donde = destino.escena;
+      check(
+        `una cuenta de una cifra: "${dicho.slice(0, 30)}…" va al paso ${esperado + 2}`,
+        destino?.foco === esperado,
+        destino ? `foco ${destino.foco}` : "sin situación",
+      );
+    }
+
+    check(
+      "el cierre de una cuenta de una cifra NO se queda en las unidades",
+      situacionParaNarracion(corta, "Así, 3 + 4 = 7. Ahora te toca a ti.", 0)?.foco === ultimo,
+    );
+
+    // Presentar la SIGUIENTE cuenta no puede cerrar la anterior: tampoco nombra
+    // columna, pero no repite la cuenta entera.
+    const dos = guionDeLeccion(["3 + 4", "unidades: 3 + 4 = 7", "7 + 2 = ?"]);
+    const siguiente = situacionParaNarracion(dos, "Vamos a sumar 7 más 2, columna por columna.", 0);
+    check(
+      "presentar la cuenta siguiente lleva la pizarra a ESA cuenta",
+      siguiente?.escena === 1 && siguiente?.foco === -1,
+      JSON.stringify(siguiente),
+    );
+
+    check(
+      "y el cierre de la primera sigue yendo a su resultado",
+      situacionParaNarracion(dos, "Así, 3 + 4 = 7. Ahora te toca a ti.", 0)?.escena === 0,
+    );
+  }
+
   check(
     "una frase que no habla de la cuenta no mueve la pizarra",
     situacionParaNarracion(guion, "Ahora practica tú con otro ejemplo.", 0) === null,

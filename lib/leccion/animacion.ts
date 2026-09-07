@@ -741,6 +741,17 @@ export function situacionParaNarracion(
    */
   const palabras = palabrasDe(narracion);
 
+  // EL CIERRE DEL EJEMPLO, ANTES QUE NADA.
+  //
+  // "Así, 3 + 4 = 7. Ahora te toca a ti." es la frase con la que el tutor cierra
+  // la cuenta, y el óvalo tiene que ir al resultado. Por puntuación no puede
+  // ganar: dice exactamente los mismos números que el paso de las unidades —en
+  // una suma de una cifra, "3 más 4 son 7" ES la cuenta entera—, y el paso de
+  // las unidades lleva además la palabra de su columna. Se reconoce por su
+  // forma, no por parecido.
+  const cierre = cierreDeColumna(escenas, palabras, escenaActual);
+  if (cierre) return cierre;
+
   // Se buscan por separado la mejor escena CON algo que señalar y la mejor sin
   // nada. Una línea de prosa cuya narración es la frase entera encaja al 100 %
   // y le robaba el turno a la columna que el tutor estaba explicando; entre las
@@ -790,6 +801,60 @@ export function situacionParaNarracion(
   return eleccion ?? respaldo;
 }
 
+/**
+ * ¿Es esto el cierre de una cuenta en columna?
+ *
+ * Lo es cuando la frase cumple las dos condiciones a la vez:
+ *
+ *   1. NO nombra ninguna columna. El tutor dice "unidades" o "decenas" siempre
+ *      que explica una, así que una frase sin esa palabra no está en ninguna.
+ *   2. Repite la cuenta ENTERA: los dos sumandos y el total.
+ *
+ * Con las dos no queda otra lectura: la frase resume la cuenta y lo que toca
+ * encender es el óvalo del resultado. Exigir la cuenta entera es lo que separa
+ * el cierre de la presentación de la SIGUIENTE cuenta —"Vamos a sumar 7 más 2,
+ * columna por columna" tampoco nombra columna, pero no dice ni 3, ni 4, ni 7—.
+ */
+function cierreDeColumna(
+  escenas: readonly Escena[],
+  palabras: Set<string>,
+  escenaActual: number,
+): Situacion | null {
+  const orden = [
+    escenaActual,
+    ...escenas.map((_, i) => i).filter((i) => i !== escenaActual),
+  ];
+
+  for (const indice of orden) {
+    const escena = escenas[indice];
+    if (!escena) continue;
+
+    // Sólo las cuentas en columna: son las únicas cuyos focos llevan el nombre
+    // de su columna. En un polinomio o un despeje esta lectura no aplica.
+    const columnas = escena.focos.filter((f) => f.pista);
+    if (columnas.length === 0) continue;
+    if (columnas.some((f) => palabras.has(f.pista as string))) continue;
+
+    const resultado = escena.focos.findIndex((f) => f.clase === "pz-resultado");
+    if (resultado < 0) continue;
+
+    const cuenta = [
+      ...cifrasDe(escena.narracion),
+      ...cifrasDe(escena.focos[resultado].narracion),
+    ];
+    if (cuenta.length === 0 || !cuenta.every((n) => palabras.has(n))) continue;
+
+    return { escena: indice, foco: resultado };
+  }
+
+  return null;
+}
+
+/** Los números enteros de un texto, tal como se dicen. */
+function cifrasDe(texto: string): string[] {
+  return normalizar(texto).match(/\d+/g) ?? [];
+}
+
 /** Palabras que delatan un foco aunque el tutor lo cuente con otras palabras. */
 function clavesDeFoco(foco: Foco): string[] {
   // La posición decimal manda sobre todo lo demás: si el tutor dice "decenas",
@@ -807,13 +872,21 @@ function clavesDeFoco(foco: Foco): string[] {
 /**
  * Qué parte de lo que diría el guion aparece en lo que ha dicho el tutor.
  *
- * Sólo cuentan las palabras largas y los números de dos cifras o más. Un "2"
- * suelto aparece en casi cualquier frase con números —"234 + 178 = 412" tiene
- * un 2, un 1 y un 4—, así que contarlo como prueba hacía que el cierre del
- * ejemplo se pareciera al paso de las centenas más que al del resultado.
+ * Cuentan las palabras largas y los números ENTEROS, de una cifra o de cuatro.
+ *
+ * Antes se exigían dos cifras. El miedo era razonable —"234 + 178 = 412" lleva
+ * dentro un 2, un 1 y un 4, y contarlos habría hecho que el cierre del ejemplo
+ * se pareciera al paso de las centenas—, pero no llega a darse: los dos lados
+ * se parten en números ENTEROS, así que la pieza "2" sólo casa con un "2"
+ * suelto, nunca con el 2 que va dentro de "234".
+ *
+ * Y exigir dos cifras dejaba ciega a la pizarra justo con las cuentas de los
+ * más pequeños: en "3 + 4 = 7" no hay una sola pieza que puntuar, así que dos
+ * sumas distintas de una cifra eran indistinguibles y el cierre del ejemplo no
+ * encajaba en ningún paso.
  */
 function solapamiento(narracion: string, palabras: Set<string>): number {
-  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d{2,}/g) ?? [];
+  const piezas = normalizar(narracion).match(/[a-z]{4,}|\d+/g) ?? [];
   if (piezas.length === 0) return 0;
   const aciertos = piezas.filter((pieza) => palabras.has(pieza)).length;
   return aciertos / piezas.length;

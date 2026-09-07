@@ -791,3 +791,124 @@ dentro de Chrome. Suite completa: **1.888 comprobaciones, 0 fallos**.
 
 > Nota: el mensaje del cliente anuncia cuatro inconsistencias y en la captura
 > sólo se leen tres. Si hay una cuarta, hace falta el texto para cerrarla.
+
+---
+
+## 20. La cuenta que no llegaba a cerrarse
+
+Este repaso no salió de una captura del cliente. Salió de levantar el proyecto
+entero —PostgreSQL, servidor y navegador— y mirar la lección corriendo de
+principio a fin. De ahí salió un fallo de verdad en la pizarra, y dos pruebas
+que no probaban lo que decían.
+
+### 1. Con números de una cifra, el ejemplo no cerraba nunca
+
+**Lo que se veía.** Un alumno de primaria recién diagnosticado recibe cuentas de
+una cifra: `3 + 4`. La animación llegaba a *«Paso 2 de 3»* y ahí se quedaba. El
+óvalo sobre el resultado —el paso que remata la cuenta, el que dice *«el
+resultado es 7»*— no se encendía nunca, y la lección pasaba al ejercicio
+siguiente con el contador a medias.
+
+**Por qué.** La pizarra sigue al tutor comparando lo que dice con la narración
+de cada paso, y esa comparación sólo contaba **palabras de cuatro letras o más y
+números de dos cifras o más**. Aplicada al cierre de una cuenta pequeña, no
+queda nada que comparar:
+
+| Cuenta | Narración del paso | Lo que dice el tutor | Piezas comparables |
+| --- | --- | --- | --- |
+| `234 + 178` | «El resultado es 412.» | «Así, 234 + 178 = 412…» | `resultado`, **`412`** ✅ |
+| `3 + 4` | «El resultado es 7.» | «Así, 3 + 4 = 7…» | `resultado` — que el tutor no dice ❌ |
+
+Con el `412` bastaba; con el `7` no había nada, y el cierre no encajaba en
+ningún paso. La regla de las dos cifras se puso por un motivo razonable —«234 +
+178 = 412» lleva dentro un 2, un 1 y un 4, y contarlos habría confundido el
+cierre con el paso de las centenas—, pero ese riesgo no llega a darse: los dos
+lados se parten en números **enteros**, así que la pieza `2` sólo casa con un
+`2` suelto, nunca con el que va dentro de `234`.
+
+**La corrección.** Dos cambios en `lib/leccion/animacion.ts`:
+
+- Se cuentan los números enteros, tengan una cifra o cuatro. Con eso, además,
+  dos sumas distintas de una cifra dejan de ser indistinguibles entre sí.
+- El cierre se reconoce **por su forma, no por parecido**: una frase que no
+  nombra ninguna columna —el tutor dice «unidades» o «decenas» siempre que
+  explica una— y que repite la cuenta entera, sumandos y total, sólo puede ser
+  el cierre. Eso lo separa de la presentación de la cuenta SIGUIENTE («Vamos a
+  sumar 7 más 2, columna por columna» tampoco nombra columna, pero no dice ni 3,
+  ni 4, ni 7).
+
+En el navegador, la lección pasa ahora por *«Paso 3 de 3 · El resultado es 7»*,
+que antes no aparecía nunca. `qa/hito2.mjs` sube a **259 comprobaciones**, con
+seis nuevas que fijan el caso: el recorrido completo de una cuenta de una cifra,
+que el cierre no se quede en las unidades, y que presentar la cuenta siguiente
+lleve la pizarra a **esa** cuenta sin cerrar la anterior.
+
+### 2. La prueba de navegador llevaba días sin ejecutarse
+
+`qa/navegador.mjs` es la batería que abre un Chrome de verdad, y es la que
+destapó el fallo de la voz cancelada que la lectura del código había dado por
+bueno. Tenía dos problemas:
+
+- Cargaba el motor de navegador desde **una carpeta temporal del equipo de quien
+  la escribió**. Esa carpeta se limpió, y desde entonces no cargaba.
+- Al no cargar, **avisaba y salía con código 0**: figuraba como superada sin
+  haber abierto un navegador.
+
+Ahora `playwright-core` es una dependencia de desarrollo declarada —el *driver*,
+sin navegadores dentro: conduce el Chrome que ya esté instalado—, y no poder
+correr es un **fallo**, con su código de salida. Una prueba que no puede correr
+no es una prueba que pasa.
+
+Además, ni `qa/hito2.mjs` ni `qa/navegador.mjs` estaban en `npm test`: la batería
+del hito en curso había que lanzarla a mano. Las dos entran ahora en la suite, y
+cada una tiene su atajo (`npm run qa:hito2`, `npm run qa:navegador`).
+
+### 3. Dos comprobaciones que no comprobaban lo que decían
+
+Al arreglar el cierre, la lección empezó a llegar a su último paso —cosa que
+antes no hacía— y dejó al descubierto dos reglas escritas a la medida de un caso
+concreto:
+
+- **«El desarrollo no aparece mientras la animación explica»** daba por
+  terminada la animación al llegar a `Paso 5 de 5`, que son los pasos de la
+  cuenta de tres cifras del ejemplo grande. Una cuenta de una cifra tiene tres,
+  y al terminar en «Paso 3 de 3» la comprobación la acusaba de destripar la
+  solución. Ahora se pregunta por la forma —el último paso, sea cual sea el
+  número—, y se exige además que el tutor **esté hablando**, que es la condición
+  con la que la lección esconde el desarrollo. En la pausa entre el ejemplo y la
+  práctica sigue compuesto el desarrollo de la cuenta anterior, ya explicada
+  entera: eso no destripa nada y es justo lo que el alumno necesita para
+  repasar.
+- **«La consola no suelta errores»** disculpaba todo lo que encajara en
+  `/Failed to load resource/`, que es el texto con el que Chrome anuncia
+  **cualquier** recurso que no carga. El escape se puso para tapar el 404 del
+  favicon —que el proyecto no tenía—, y de paso habría tapado un trozo de
+  JavaScript que faltara o una llamada a la API que devolviera 500. Se añade
+  `app/icon.svg` —dibujado con rectángulos y no con un glifo, para que no dependa
+  de las tipografías de quien lo mire— y la comprobación pasa a ser lo que decía
+  ser: la consola limpia del todo, sin excepciones.
+
+### Comprobado
+
+Contra la aplicación compilada, con PostgreSQL y el servidor en marcha:
+
+| Batería | Comprobaciones | Fallos |
+| --- | ---: | ---: |
+| `qa/diagnostico.mjs` | 416 | 0 |
+| `qa/paso1.mjs` | 72 | 0 |
+| `qa/hito1.mjs` | 124 | 0 |
+| `qa/hito2.mjs` | 259 | 0 |
+| `qa/matematicas.mjs` | 100 | 0 |
+| `qa/diagnostico-nivel.mjs` | 94 | 0 |
+| `qa/qa.mjs` | 1.462 | 0 |
+| `qa/frontend.mjs` | 10 | 0 |
+| `qa/sesiones.mjs` | 126 | 0 |
+| `qa/aceptacion.mjs` | 24 | 0 |
+| `qa/leccion.mjs` | 811 | 0 |
+| `qa/navegador.mjs` (Chrome real) | 9 | 0 |
+| **Total** | **3.507** | **0** |
+
+Y `qa/barrido.mjs`: 200 sesiones, 1.800 turnos, 0 violaciones.
+
+`npm test` termina con código 0 y ejecuta **las catorce baterías**, la del
+navegador incluida. Compilación y comprobación de tipos, limpias.
