@@ -2263,3 +2263,81 @@ vuelta con la pregunta nueva, la fracción de letras y la escala de la tarjeta);
 sesiones 126, aceptación 24, matemáticas 100, frontend 10 y el barrido de 200
 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`,
 limpios.
+
+## 34. Tercera ronda del cliente: rigor en la cancelación, la multiplicación a la vista, notas sin desfase y los dos ambientes
+
+Cuatro observaciones más, con sus capturas (a1–a4), sobre lo ya desplegado. Como
+siempre, resueltas como reglas generales y verificadas en Chrome.
+
+### 1. La cancelación ocurre DENTRO de su miembro (a4)
+
+La pizarra escribía «2x + 6 = 16 − 6» y tachaba el +6 de la izquierda contra el
+−6 de la derecha, cruzando el signo igual. El cliente, sin matices: «es
+matemáticamente incorrecto». Ahora la propiedad uniforme se aplica de verdad —el
+−6 se escribe en LOS DOS miembros— y el tachado va sólo sobre el par de opuestos
+del miembro en el que estaba:
+
+```
+2x + 6 − 6 = 16 − 6        (tachados el +6 y el −6, los dos a la izquierda)
+        2x = 10            (la resta del miembro derecho, en la línea siguiente)
+```
+
+A la derecha no se tacha nada: queda la resta simple, que es la que da el 10.
+Las dos marcas (`pz-cancela-termino` y `pz-cancela-opuesto`) viven en el mismo
+miembro, así que ninguna caja cruza el igual. La locución lo cuenta igual:
+«Quitamos 6 en los dos lados: a la izquierda se cancela +6 con −6, y a la
+derecha 16 menos 6 son 10» —sin la «y −6» de antes, que la composición de
+fórmulas dentro de la frase leía como expresión y escribía en cursiva
+matemática—.
+
+### 2. Lo que la voz multiplica, se ve multiplicado (a2)
+
+En Reglas de fracciones el tutor decía «si multiplicas arriba y abajo de 1/2 por
+2, sale 2/4» mientras la pizarra escribía sólo el resultado, «2/4 = 1/2». Ahora
+se escribe el paso entero, con el factor a la vista y en fracción vertical:
+`1/2 = (1 × 2)/(2 × 2) = 2/4`.
+
+### 3. Las notas del Ambiente 2, al paso de la voz (a1)
+
+El motor de aritmética hablaba primero y escribía después, así que la nota de
+las unidades aparecía cuando la voz ya iba por las decenas —el desfase que
+fotografió el cliente en 234 + 178—. Ahora cada línea se escribe al EMPEZAR la
+frase que la explica, como ya hacían el concepto y el desglose: mientras se
+suman las unidades, la nota de la derecha explica las unidades.
+
+### 4. Los dos ambientes, aprovechados (a3)
+
+En 1/2 + 1/3, el Ambiente 1 se quedaba con las dos conversiones y el Ambiente 2
+con el MCM y un hueco. La regla de reparto cambia en un punto: **un solo paso
+acompaña al planteamiento** en el Ambiente 1; el siguiente abre el Ambiente 2,
+aunque repita el mismo gesto. Así queda la primera conversión a la izquierda y,
+a la derecha, el MCM, la segunda conversión, la suma y la respuesta enmarcada
+—que es el reparto que dibujó el cliente—. Sigue siendo monótona: ninguna línea
+escrita cambia de lado cuando llega la siguiente.
+
+Con el Ambiente 2 más cargado, proyectar pedía sitio: en proyección se recorta
+lo que no es contenido —el relleno del panel, la fila del botón de salir, los
+mandos y los márgenes que KaTeX pone alrededor de cada fórmula— y el factor por
+anchura de las fórmulas baja de 3,6vw a 3,4vw, que en una pantalla de 1366
+deja las fórmulas en su suelo de 48 px. Los 24 px entre pasos, que pidió el
+informe, no se tocan. Con eso, los cuatro pasos de un ambiente caben en una
+pantalla y «−x + 8 − 8 = −1 − 8» cabe entera en su mitad.
+
+### Comprobado
+
+`qa/observaciones.mjs` mide ahora, en cada muestra de las cinco clases, lo que
+esta ronda exige: dónde cae cada marca de cancelación respecto al signo igual
+—y que lo tachado sea siempre el término y su opuesto—, qué nota está escrita
+mientras suena cada columna, que la pizarra enseñe la multiplicación cuando la
+voz la dice, y en qué ambiente entra cada paso. **62.721 comprobaciones y 0
+fallos**, con 126 capturas. Con el **motor de voz real** del sistema, la clase
+de aritmética entera —la de las notas y la cuenta en columna—: **30.715
+comprobaciones y 0 fallos**, que es la prueba de que la nota y la columna van al
+paso de la voz de verdad y no de un temporizador. `qa/hito2.mjs`: **652**
+(bloque nuevo A00g: la cancelación dentro de su miembro en todo el catálogo de
+ecuaciones, la equivalencia escrita con su factor y las notas sin desfase en los
+cuatro motores de aritmética); `qa/leccion.mjs`: **825**; `qa/navegador.mjs`:
+**87**; las demás baterías —diagnóstico 416, paso 1 72, hito 1 124, diagnóstico
+por nivel 94, qa 1.462, sesiones 126, aceptación 24, matemáticas 100, frontend
+10 y el barrido de 200 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y
+`npm run build`, limpios.

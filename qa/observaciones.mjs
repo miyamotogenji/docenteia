@@ -33,6 +33,18 @@
 //           punta de flecha de tamaño fijo y el "× 2" debajo sin tocar nada.
 //   Y en proyección: fórmulas ≥ 48 px, notas y rótulos ≥ 24 px.
 //
+// Y LA TERCERA RONDA, rigor matemático y sincronía:
+//
+//   R3-01  La cancelación de un despeje ocurre DENTRO de su miembro: se escribe
+//          la resta en los dos lados y se tachan los opuestos de la izquierda.
+//          Ninguna marca cruza el signo igual.
+//   R3-02  Lo que la voz multiplica, se ve multiplicado: en Reglas de fracciones
+//          la equivalencia se escribe con su factor, no sólo con su resultado.
+//   R3-03  Las notas del Ambiente 2 van al paso de la voz: mientras se suman las
+//          decenas, la nota de la derecha explica las decenas.
+//   R3-04  Los dos ambientes se aprovechan: las dos conversiones de una suma de
+//          fracciones no caen en el mismo lado.
+//
 // Y LA SEGUNDA RONDA DEL CLIENTE, las ayudas en la práctica:
 //
 //   R2-01  «Explicar regla» (y «No entendí este paso») anima el ejercicio a la
@@ -249,6 +261,14 @@ function instalarMedidor() {
       practicaColumna: null,
       mcm: null,
       preguntaTexto: textoVisible(document.querySelector(".pz-pregunta")),
+      // R3-03/04: qué hay escrito en cada ambiente y con qué gesto.
+      notas: [...document.querySelectorAll(".pz-nota")].filter(visible).map((n) => textoVisible(n)),
+      pasosAmbiente: [...document.querySelectorAll(".pz-elemento")].filter(visible).map((e) => ({
+        ambiente: e.closest("[data-ambiente]")?.getAttribute("data-ambiente") ?? "",
+        papel: e.getAttribute("data-papel") ?? "",
+        gesto: e.querySelector("[data-gesto]")?.getAttribute("data-gesto") ?? "",
+      })),
+      cancelaciones: [],
       // La misma pregunta, con cada fórmula en su TeX: el texto visible de una
       // fracción de KaTeX pone el denominador ANTES que el numerador.
       preguntaFuente: fuenteTex(document.querySelector(".pz-pregunta")),
@@ -307,6 +327,15 @@ function instalarMedidor() {
         .map(R)
         .filter((b) => b.w > 0 && b.h > 0);
       out.ambientes.at(-1).sobresaleDerecha = Math.max(0, ...piezas.map((b) => b.x + b.w - (caja.x + caja.w)));
+      // Qué línea se sale, para poder arreglarla sin adivinar: se busca por las
+      // CIFRAS que sobresalen, porque la caja del paso está recortada al ambiente.
+      out.ambientes.at(-1).sobresaleTexto = [
+        ...new Set(
+          [...amb.querySelectorAll(".katex-html *, .pz-nota-trozo, .pz-resaltado")]
+            .filter((el) => visible(el) && el.childElementCount === 0 && R(el).x + R(el).w > caja.x + caja.w + 1)
+            .map((el) => textoVisible(el.closest(".pz-elemento") ?? el).slice(0, 70)),
+        ),
+      ].join(" · ");
       out.ambientes.at(-1).sobresaleAbajo = marco ? Math.max(0, ...piezas.map((b) => b.y + b.h - (R(marco).y + R(marco).h))) : 0;
       const mcm = /ejemplo|practica/i.test(fase) ? hijos.find((h) => /MCM\s*\(/.test(textoVisible(h))) : null;
       if (mcm) out.mcm = { ambiente: amb.getAttribute("data-ambiente"), indice: hijos.indexOf(mcm), y: R(mcm).y };
@@ -462,6 +491,23 @@ function instalarMedidor() {
         fracciones: tarjeta.querySelectorAll(".katex .mfrac").length,
         conFraccion: [...tarjeta.querySelectorAll(".katex-mathml annotation")].some((a) => (a.textContent ?? "").includes("\\frac")),
       };
+    }
+
+    // R3-01: la cancelación de un despeje, contra el signo igual de SU línea.
+    for (const formula of document.querySelectorAll(".pz-animada-formula")) {
+      const marcas = [...formula.querySelectorAll('[class*="pz-cancela-"]')].filter(visible);
+      if (marcas.length === 0) continue;
+      const iguales = [...formula.querySelectorAll(".katex-html *")]
+        .filter((el) => el.childElementCount === 0 && (el.textContent ?? "").trim() === "=" && visible(el))
+        .map(R);
+      // El primer igual de la línea: a su derecha no puede haber ninguna marca.
+      const igual = iguales.sort((a, b) => a.y - b.y || a.x - b.x)[0] ?? null;
+      out.cancelaciones.push({
+        texto: textoVisible(formula),
+        marcas: marcas.length,
+        trasElIgual: igual ? marcas.map(R).filter((b) => b.x >= igual.x + igual.w).length : 0,
+        clases: marcas.map((m) => [...m.classList].find((c) => c.startsWith("pz-cancela-")) ?? "").filter(Boolean),
+      });
     }
 
     // R2-01: el planteamiento del ejercicio —¿se anima?, ¿qué cifras del
@@ -727,13 +773,46 @@ function comprobarSiempre(m, clase) {
     verificar("SUB-PIZ-02", "ningún paso se escribe dos veces (tampoco al reanudar tras una pausa)", repetidos.length === 0, `${repetidos.slice(0, 2).join(" · ")} (${clase})`);
   }
   for (const a of m.ambientes) {
-    verificar("SUB-PIZ-02", `Ambiente ${a.n}: nada se sale por la derecha`, a.sobresaleDerecha <= 1, `${a.sobresaleDerecha.toFixed(1)} px (${clase}${m.proy ? ", proyección" : ""})`);
+    verificar("SUB-PIZ-02", `Ambiente ${a.n}: nada se sale por la derecha`, a.sobresaleDerecha <= 1, `${a.sobresaleDerecha.toFixed(1)} px en «${a.sobresaleTexto ?? ""}» (${clase}${m.proy ? ", proyección" : ""})`);
     // En pantalla la pizarra tiene su propio desplazamiento; proyectada, todo en una sola pantalla.
     if (m.proy) verificar("SUB-PIZ-02", `Ambiente ${a.n}: proyectado, todo cabe en una sola pantalla`, a.sobresaleAbajo <= 1, `${a.sobresaleAbajo.toFixed(1)} px (${clase})`);
   }
   if (m.ambientes.length === 2) {
     const [a1, a2] = m.ambientes;
     verificar("OBS-08", "los dos ambientes miden lo mismo (50 % / 50 %)", Math.abs(a1.caja.w - a2.caja.w) <= 2, `${a1.caja.w.toFixed(0)} / ${a2.caja.w.toFixed(0)}`);
+  }
+
+  // R3-01: ninguna marca de cancelación a la derecha del igual.
+  for (const c of m.cancelaciones) {
+    verificar("R3-01", "la cancelación se tacha DENTRO de su miembro, sin cruzar el igual", c.trasElIgual === 0, `«${c.texto}»: ${c.trasElIgual} de ${c.marcas} marcas pasadas del igual (${clase})`);
+    // Antes de destaparse, sólo está el término; al destaparse, su opuesto al lado.
+    verificar("R3-01", "…y lo que se tacha es el término y su opuesto, nunca el número del otro miembro", JSON.stringify([...new Set(c.clases)].sort()) === JSON.stringify(c.clases.length > 1 ? ["pz-cancela-opuesto", "pz-cancela-termino"] : ["pz-cancela-termino"]), `${c.clases.join(",")} (${clase})`);
+  }
+
+  // R3-02: lo que la voz multiplica, se ve multiplicado.
+  if (/multiplicas arriba y abajo/i.test(m.sub)) {
+    const equivalencia = m.notas.find((t) => /equivalentes/i.test(t)) ?? m.tablero;
+    verificar("R3-02", "cuando la voz multiplica arriba y abajo, la pizarra enseña esa multiplicación", /×/.test(equivalencia), `«${String(equivalencia).slice(0, 80)}» (${clase})`);
+  }
+
+  // R3-03: la nota de la derecha explica la columna que se está sumando.
+  const columna = String(m.sub ?? "").match(/^(?:Sumamos|Restamos|Multiplicamos|Dividimos) las (unidades|decenas|centenas|unidades de millar)/)?.[1];
+  if (columna && m.notas.length > 0) {
+    verificar("R3-03", "mientras la voz suma una columna, la nota de la derecha es la de ESA columna", m.notas.some((t) => new RegExp(`^${columna}`, "i").test(t.trim())), `«${m.sub.slice(0, 40)}» con ${JSON.stringify(m.notas.map((t) => t.slice(0, 18)))} (${clase})`);
+  }
+
+  // R3-04: las dos conversiones de una suma de fracciones, una a cada lado.
+  const amplificaciones = m.pasosAmbiente.filter((p) => p.gesto === "amplificacion");
+  if (amplificaciones.length >= 2) {
+    verificar("R3-04", "las dos conversiones no caen en el mismo ambiente", new Set(amplificaciones.map((p) => p.ambiente)).size >= 2, `${amplificaciones.map((p) => p.ambiente).join(",")} (${clase})`);
+  }
+  // Y el Ambiente 2 no se queda con una sola línea mientras el 1 acumula pasos.
+  // (Sólo donde hay ejercicio: en Reglas, el Ambiente 1 lleva la tarjeta —que no
+  // es un paso— y las notas van todas al 2.)
+  const enUno = m.pasosAmbiente.filter((p) => p.ambiente === "1").length;
+  const enDos = m.pasosAmbiente.filter((p) => p.ambiente === "2").length;
+  if (/ejemplo|practica/i.test(m.fase) && enUno + enDos >= 4) {
+    verificar("R3-04", "con el procedimiento avanzado, los dos ambientes llevan contenido", enUno >= 1 && enDos >= 1, `${enUno} / ${enDos} (${clase})`);
   }
 }
 
@@ -1126,7 +1205,7 @@ await darClase({
 await navegador.close();
 
 // ── Lo que no apareció no se da por bueno ────────────────────────────────────
-const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04"];
+const esperadas = ["OBS-01", "OBS-02", "OBS-03", "OBS-04", "OBS-05", "OBS-06", "OBS-07", "OBS-08", "OBS-09", "OBS-10", "OBS-11", "OBS-12", "OBS-13", "OBS-14", "OBS-15", "OBS-16", "SUB-PIZ-02", "SUB-PRJ-03", "R2-01", "R2-02", "R2-03", "R2-04", "R3-01", "R3-02", "R3-03", "R3-04"];
 for (const obs of esperadas) if (!resultados.has(obs)) check(obs, "la observación no llegó a comprobarse", false, "no se dio el momento en las tres clases");
 check("CONSOLA", "la consola no suelta errores", erroresDeConsola.length === 0, erroresDeConsola.slice(0, 3).join(" · "));
 
