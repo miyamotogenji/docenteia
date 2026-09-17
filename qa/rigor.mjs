@@ -63,7 +63,9 @@ function check(nombre, condicion, detalle = "") {
  * —de los que de verdad aparecieron— y se exige que los cace todos: sólo
  * entonces significa algo que luego no encuentre ninguno.
  */
+let autocomprobaciones = 0;
 function debeCazar(descripcion, fn) {
+  autocomprobaciones++;
   cazados = [];
   try {
     fn();
@@ -97,7 +99,6 @@ const igualR = (a, b) => Boolean(a && b && a.n === b.n && a.d === b.d);
 
 // ── Polinomios en una variable: mapa exponente → racional ────────────────────
 
-const P0 = () => new Map();
 const constante = (r) => (r ? new Map([[0, r]]) : null);
 function sumaP(a, b) {
   if (!a || !b) return null;
@@ -358,6 +359,7 @@ const VERBALES = [
 /** Todas las afirmaciones verbales de una frase, ya juzgadas. */
 function verbalesCiertas(frase) {
   const malas = [];
+  let halladas = 0;
   let disparo = false;
   for (const [patron, op] of VERBALES) {
     for (const m of String(frase ?? "").matchAll(patron)) {
@@ -368,6 +370,7 @@ function verbalesCiertas(frase) {
         return op === "+" ? sumaP(acc, n) : op === "-" ? restaP(acc, n) : op === "*" ? porP(acc, n) : entreP(acc, n);
       }, null);
       const dicho = nums[nums.length - 1];
+      halladas++;
       if (!disparo) {
         disparo = true;
         anotar("cuenta dicha por el tutor");
@@ -375,12 +378,13 @@ function verbalesCiertas(frase) {
       if (!esperado || !igualesP(esperado, dicho)) malas.push(m[0]);
     }
   }
-  return malas;
+  return { halladas, malas };
 }
 
 /** "la derivada de P es Q" / "derivada de P = Q". */
 function derivadasCiertas(frase) {
   const malas = [];
+  let halladas = 0;
   const patrones = [
     /derivada de ([^.,;]+?) es ([^.,;]+?)(?=[.,;]|$)/gi,
     /derivada de ([^=]+?)\s*=\s*([^.,;]+?)(?=[.,;]|$)/gi,
@@ -390,10 +394,11 @@ function derivadasCiertas(frase) {
       const f = leer(m[1]);
       const d = leer(m[2]);
       if (!f || !d) continue;
+      halladas++;
       if (!igualesP(derivarP(f), d)) malas.push(m[0]);
     }
   }
-  return malas;
+  return { halladas, malas };
 }
 
 /** Notas de columna: "unidades: 4 + 8 = 12 (se escribe 2, se lleva 1)". */
@@ -676,14 +681,23 @@ const leccion = (crudo) => {
   }
 };
 
-/** Comprueba una frase hablada o un pie: sus cuentas y sus derivadas. */
+/**
+ * Comprueba una frase hablada o un pie: sus cuentas y sus derivadas.
+ *
+ * SÓLO SE CUENTA LO QUE SE JUZGA. Una frase sin ninguna cuenta dentro no suma
+ * una comprobación: un número inflado por las frases que no dicen matemáticas
+ * es exactamente lo que hace que un "0 fallos" no signifique nada.
+ */
 function juzgarFrase(frase, donde) {
-  for (const mala of verbalesCiertas(frase)) check(`cuenta dicha correcta (${donde})`, false, mala);
-  for (const mala of derivadasCiertas(frase)) check(`derivada dicha correcta (${donde})`, false, mala);
+  const verbales = verbalesCiertas(frase);
+  for (const mala of verbales.malas) check(`cuenta dicha correcta (${donde})`, false, mala);
+  ok += verbales.halladas - verbales.malas.length;
+  const derivadas = derivadasCiertas(frase);
+  for (const mala of derivadas.malas) check(`derivada dicha correcta (${donde})`, false, mala);
+  ok += derivadas.halladas - derivadas.malas.length;
   const cadena = cadenaCierta(frase.replace(/^[^:]*:\s*/, ""));
   if (cadena === false) check(`igualdad dicha correcta (${donde})`, false, frase);
   else if (cadena === true) ok++;
-  else ok++;
 }
 
 /** Comprueba una línea escrita y TODO lo que su escena compone y dice. */
@@ -691,9 +705,10 @@ function juzgarLinea(contenido, operacion, narracion, donde, contexto) {
   const texto = String(contenido ?? "");
   // 1. La nota de columna, con su cifra y su llevada.
   const notaMala = columnaCierta(texto);
-  if (notaMala !== null || /^(unidades|decenas|centenas)/i.test(texto)) anotar("nota de columna");
+  const esNota = /^(unidades|decenas|centenas|unidades de millar|millares)\s*:/i.test(texto);
+  if (esNota) anotar("nota de columna");
   if (notaMala) check(`nota de columna correcta (${donde})`, false, notaMala);
-  else ok++;
+  else if (esNota) ok++;
 
   // 2. La línea escrita: cadena de igualdades o ecuación equivalente.
   juzgarIgualdad(texto, `${donde} · escrito`, contexto);
@@ -702,9 +717,10 @@ function juzgarLinea(contenido, operacion, narracion, donde, contexto) {
   const escena = escenaDeLinea({ latex: texto, ...(operacion ? { operacion } : {}), ...(narracion ? { narracion } : {}) }, "r");
   if (escena?.latex) {
     const dibujo = columnaDibujadaCierta(escena.latex);
-    if (/\\begin\{array\}/.test(escena.latex)) anotar("cuenta en columna dibujada");
+    const hayArray = /\\begin\{array\}/.test(escena.latex);
+    if (hayArray) anotar("cuenta en columna dibujada");
     if (dibujo) check(`cuenta en columna dibujada correcta (${donde})`, false, dibujo);
-    else ok++;
+    else if (hayArray) ok++;
     if (!/\\begin\{array\}/.test(escena.latex)) {
       for (const fila of filasDe(escena.latex)) juzgarIgualdad(fila, `${donde} · compuesto`, contexto);
     }
@@ -961,7 +977,7 @@ console.log("══════════════════════�
     juzgarRespuesta({ texto: "¿Cuál es la derivada de 5x²?", respuesta: "10x²" }, "auto"));
   debeCazar("una factorización esperada que no es la correcta", () =>
     juzgarRespuesta({ texto: "¿Cómo se factoriza x² - 9? Escríbelo como producto.", respuesta: "(x - 3)(x + 2)" }, "auto"));
-  console.log(`  · autocomprobación: ${ok} errores de prueba cazados\n`);
+  console.log(`  · autocomprobación: ${autocomprobaciones} errores de prueba, todos cazados\n`);
 }
 
 const NIVELES = ["facil", "normal", "dificil", "experto"];

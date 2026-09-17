@@ -2426,3 +2426,75 @@ nuevo A00f con las regresiones de los cuatro errores); `qa/qa.mjs`: **1.465**;
 —diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
 aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
 turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.
+
+## 36. Revisión final: dos temas que ninguna batería había abierto, y lo que escondían
+
+La pregunta era si quedaba algo. Quedaba, y estaba donde no se había mirado: de
+los cinco motores que un alumno puede abrir, la batería de Chrome daba clase en
+tres —aritmética, fracciones y ecuaciones—. **Derivadas y Factorización no las
+había abierto nunca nadie**, y ahí vivía, entre otras cosas, la escena de
+polinomio que se acababa de corregir. Ahora son dos clases más de la batería
+(siete en total), con sus ayudas y su proyección. Al abrirlas apareció esto:
+
+### 1. La tarjeta de la regla se cortaba contra el borde (Derivadas)
+
+«Regla de la potencia» trae dos ejemplos —`d/dx[x³] = 3x²` y `d/dx[x⁵] = 5x⁴`— y
+a tamaño de aula no caben en media pizarra: la tarjeta los cortaba por la mitad
+y dejaba un «d/dx» suelto colgando del borde. Siete fórmulas del catálogo pasan
+del ancho disponible.
+
+**Lo que se hace ahora** (`lib/leccion/ajuste.ts`): la fórmula se parte en
+renglones por donde una fórmula se puede partir —primero por el separador entre
+ejemplos, luego por el signo de relación, nunca dentro de unas llaves—, y los
+renglones van arrimados a la izquierda, como se parte una cuenta larga en una
+pizarra de verdad. Si aun así no cabe —«a² − b² = (a − b)(a + b)» no tiene un
+segundo igual por el que partir—, se encoge lo justo y nunca por debajo del
+80 %: una tarjeta un poco más pequeña se lee; una tarjeta cortada, no.
+
+### 2. La respuesta enmarcada se salía de la pizarra (Factorización)
+
+El cierre «x² − 1 = (x − 1)(x + 1)», con su cápsula y su visto, se salía por el
+borde derecho en proyección: la cápsula se pinta POR ENCIMA de la fórmula, así
+que la caja no se enteraba de que su contenido ya no cabía. Ahora la pizarra
+animada mide hasta dónde llega de verdad lo compuesto —contra el borde de su
+ambiente, que es lo que se ve— y parte la línea en dos renglones. Y vuelve a
+medirlo cuando cargan las fuentes de KaTeX y cuando se entra o se sale de
+proyección, que es cuando cambia el tamaño de la letra.
+
+### 3. La etiqueta de la regla de la potencia nombraba un 1 que no está escrito
+
+Sobre «x²» la etiqueta decía «1 × 2 = 2»: en «x²» no hay ningún 1 escrito que
+multiplicar, y además la etiqueta quedaba a 6,5 px de una cifra (el informe
+exige 8). Ahora, sin coeficiente a la vista, la etiqueta es el gesto —«× 2»—,
+como la de una amplificación; con coeficiente escrito se sigue viendo la cuenta
+entera, «2 × 3 = 6».
+
+### 4. «2 · 1x¹⁻¹ = 2»
+
+El paso que enseña la regla aplicada escribía, para 2x, «2 · 1x¹⁻¹ = 2». Es
+cierto, pero se lee mal: escribe un coeficiente 1 que no está en el término y
+deja el exponente sin resolver. Ahora, con exponente 1, se escribe «2 · 1 = 2»,
+y en «x» a secas no se escribe paso intermedio: su derivada es 1 y no hay nada
+que enseñar en medio. Con exponente mayor no cambia nada: «3 · 4x⁴⁻¹ = 12x³».
+
+### Y la batería de rigor, contada honestamente
+
+`qa/rigor.mjs` decía «58.677 afirmaciones comprobadas». No era verdad: sumaba
+también las frases que no dicen ninguna matemática. Ahora **sólo cuenta lo que
+de verdad juzga**: 31.294 afirmaciones. El número es menor y es el bueno; un
+número inflado es justo lo que hace que un «0 fallos» no signifique nada.
+
+### Comprobado
+
+`qa/observaciones.mjs`, ahora con **siete clases** (aritmética básica y
+avanzada, fracciones, fracciones a 1920 × 1080, ecuaciones, **derivadas** y
+**factorización**), cada una con sus dos ayudas en la práctica: **80.866 comprobaciones y 0 fallos**, con 166 capturas. Con el
+**motor de voz real** del sistema, la clase de derivadas entera —la de los
+términos y sus coeficientes—: **28.695 comprobaciones y 0 fallos**. La
+batería de rigor: **31.294 afirmaciones matemáticas recalculadas, 0
+incorrectas**, con sus 29 autocomprobaciones cazadas. `qa/hito2.mjs`: **674**
+(bloque nuevo A00e con la partición de fórmulas); `qa/qa.mjs`: **1.465**;
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**; las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
+aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
+turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.

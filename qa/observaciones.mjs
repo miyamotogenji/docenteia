@@ -186,7 +186,12 @@ function instalarMedidor() {
     if (!el) return "";
     const c = el.cloneNode(true);
     c.querySelectorAll(".katex-mathml, style, script, [hidden]").forEach((n) => n.remove());
-    return (c.textContent ?? "").replace(/\s+/g, " ").trim();
+    return (c.textContent ?? "")
+      // Los espacios de anchura cero con que KaTeX maqueta sus filas no son
+      // palabras: una fórmula partida en dos renglones dice lo mismo que en uno.
+      .replace(/[​-‍﻿]/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
   };
   const fuenteTex = (el) => {
     if (!el) return "";
@@ -890,7 +895,13 @@ async function momento(p, clase, nombre) {
 // ── Segunda ronda: las ayudas en la práctica ─────────────────────────────────
 
 /** Las cifras de un texto, para reconocer un ejercicio dentro de una frase. */
-const cifrasDe = (t) => String(t ?? "").replace(/=\s*\?\s*$/, "").replace(/\D+/g, "");
+const SUPERINDICES = { "⁰": "0", "¹": "1", "²": "2", "³": "3", "⁴": "4", "⁵": "5", "⁶": "6", "⁷": "7", "⁸": "8", "⁹": "9" };
+const cifrasDe = (t) =>
+  String(t ?? "")
+    .replace(/=\s*\?\s*$/, "")
+    // "2x⁴" y "2x^{4}" son el mismo ejercicio: el exponente cuenta como cifra.
+    .replace(/[⁰¹²³⁴-⁹]/g, (c) => SUPERINDICES[c] ?? "")
+    .replace(/\D+/g, "");
 /** El lugar de cada columna, por su nombre: la voz dice cuál está sumando. */
 const COLUMNAS = { unidades: 0, decenas: 1, centenas: 2 };
 
@@ -956,7 +967,7 @@ async function pedirAyuda(p, clase, boton) {
     const distintas = [...new Set(cifras)].sort((x, y) => x - y);
     verificar("R2-01", "la cuenta en columna se anima (deja de estar quieta en el «?»)", explicacion.some((s) => s.plan && s.plan.estado !== "estatica"), etiqueta);
     verificar("R2-01", "…la columna que se explica se enciende", explicacion.some((s) => s.plan?.foco), etiqueta);
-    verificar("R2-01", "…y las cifras del resultado se escriben de una en una", distintas.length >= 3 && Math.max(...cifras) >= cifrasDe(resolverEjercicio(viejo)).length, `${etiqueta}: ${distintas.join(" → ")}`);
+    verificar("R2-01", "…y las cifras del resultado se escriben de una en una", distintas.length >= 3 && Math.max(...cifras) >= cifrasDe(resolverEjercicio(viejo, TEMA_DE_LA_CLASE[clase] ?? "")).length, `${etiqueta}: ${distintas.join(" → ")}`);
     // AL COMPÁS DE LA VOZ: con "Sumamos las decenas" en el subtítulo, la cifra de
     // las unidades ya está escrita y la de las centenas todavía no.
     let comparadas = 0;
@@ -989,11 +1000,22 @@ async function pedirAyuda(p, clase, boton) {
   return fin;
 }
 
+/** El tema con el que se lee un enunciado ambiguo: "x² - 9" se deriva o se factoriza. */
+const TEMA_DE_LA_CLASE = {
+  aritmetica: "aritmetica",
+  "aritmetica-avanzado": "aritmetica",
+  fracciones: "fracciones",
+  "fracciones-1920": "fracciones",
+  ecuaciones: "ecuaciones_lineales",
+  derivadas: "derivadas",
+  factorizacion: "factorizacion",
+};
+
 /** Contesta bien la práctica en curso y comprueba que se corrige y se cierra. */
 async function contestarBien(p, clase) {
   const m = await p.evaluate(() => window.__obs());
   const enunciado = m.encabezado?.enunciado ?? "";
-  const respuesta = resolverEjercicio(enunciado);
+  const respuesta = resolverEjercicio(enunciado, TEMA_DE_LA_CLASE[clase] ?? "");
   await p.locator("input[placeholder*='respuesta' i]").fill(respuesta ?? "0");
   await p.getByRole("button", { name: /Responder/ }).click();
   let ultimo = null;
@@ -1197,6 +1219,39 @@ await darClase({
     ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2") && /Resultado final/.test(m.pie), (a) => {
       verificar("OBS-14", "la respuesta final, enmarcada en el Ambiente 2", a.capsulas.some((c) => c.ambiente === "2"));
     }],
+    ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
+  ],
+  ayudas: ["Explicar regla"],
+});
+
+// DERIVADAS Y FACTORIZACIÓN: los dos motores que ninguna clase abría en el
+// navegador. En derivadas vive la escena de POLINOMIO —la que nombra cada
+// término con su coeficiente y su exponente—, y es donde apareció el error de
+// signo; conviene verla en pantalla, no sólo en la batería de rigor.
+await darClase({
+  clase: "derivadas",
+  etapa: "SUPERIOR",
+  curso: 1,
+  tema: /derivad/i,
+  masDificil: 1,
+  disparadores: [
+    ["reglas", (m) => /regla/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
+    ["termino", (m) => etiquetaVisible(m, /^(coeficiente|exponente)$/)],
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2")],
+    ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
+  ],
+  ayudas: ["No entendí este paso", "Explicar regla"],
+});
+
+await darClase({
+  clase: "factorizacion",
+  etapa: "SECUNDARIA",
+  curso: 3,
+  tema: /factoriza/i,
+  masDificil: 1,
+  disparadores: [
+    ["reglas", (m) => /regla/i.test(m.fase) && m.ambientes.some((a) => a.elementos > 0)],
+    ["cierre", (m) => m.capsulas.some((c) => c.ambiente === "2")],
     ["practica", (m) => /practica/i.test(m.fase) && m.pregunta],
   ],
   ayudas: ["Explicar regla"],

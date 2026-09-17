@@ -80,6 +80,7 @@ import {
 import { manejarConsulta } from "../src/queryCore.js";
 import { esNotaRotulada, expresionFormalDeFraccion, partirNota } from "../lib/leccion/notas.ts";
 import { esCalculoAuxiliar, repartirEnAmbientes } from "../lib/leccion/ambientes.ts";
+import { comoFilas, partirFormula, partirLaMasLarga, yaEstaDispuesta } from "../lib/leccion/ajuste.ts";
 import { colocarEtiqueta, MARGEN_ANOTACION, seSolapan } from "../lib/leccion/etiquetas.ts";
 import { rotulosALatex } from "../lib/leccion/rotulos.ts";
 import { ROL, ROLES_TIPOGRAFICOS, rol } from "../lib/leccion/roles.ts";
@@ -537,6 +538,59 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
     "con el rótulo escrito una sola vez (y sólo en el paso activo)",
     panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
   );
+}
+
+titulo("A00e. Lo que no cabe se parte en renglones, no se corta");
+
+{
+  // La regla de la potencia trae DOS ejemplos; la diferencia de cuadrados, una
+  // igualdad larga. A tamaño de aula no caben en media pizarra, y se cortaban
+  // contra el borde dejando un trozo colgando (el cliente lo vio en Derivadas).
+  const dosEjemplos = "\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2} \\qquad \\frac{d}{dx}\\left[x^{5}\\right] = 5x^{4}";
+  check(
+    "una fórmula con dos ejemplos se parte por el separador, no por el igual",
+    JSON.stringify(partirFormula(dosEjemplos)) ===
+      JSON.stringify(["\\frac{d}{dx}\\left[x^{3}\\right] = 3x^{2}", "\\frac{d}{dx}\\left[x^{5}\\right] = 5x^{4}"]),
+    JSON.stringify(partirFormula(dosEjemplos)),
+  );
+  check(
+    "y una igualdad larga, por su igual, que se lleva el renglón siguiente",
+    JSON.stringify(partirFormula("a^{2} - b^{2} = (a - b)(a + b)")) === JSON.stringify(["a^{2} - b^{2}", "= (a - b)(a + b)"]),
+    JSON.stringify(partirFormula("a^{2} - b^{2} = (a - b)(a + b)")),
+  );
+  check(
+    "nunca por un igual que esté dentro de unas llaves (el numerador de una fracción)",
+    partirFormula("\\frac{a = b}{c}") === null,
+    JSON.stringify(partirFormula("\\frac{a = b}{c}")),
+  );
+  check(
+    "lo que no tiene por dónde partirse, no se parte",
+    partirFormula("2x") === null && partirLaMasLarga(["2x"]) === null,
+  );
+  check(
+    "las filas se componen ARRIMADAS A LA IZQUIERDA, en un solo bloque",
+    comoFilas(["x^{2} - 9", "= (x - 3)(x + 3)"]) === "\\begin{aligned} &x^{2} - 9 \\\\[0.15em] &= (x - 3)(x + 3) \\end{aligned}",
+    comoFilas(["x^{2} - 9", "= (x - 3)(x + 3)"]),
+  );
+  check(
+    "una cuenta ya dispuesta —una columna, un despeje alineado— no se toca",
+    yaEstaDispuesta("\\begin{array}{rcc} & 2 & 4 \\end{array}") &&
+      yaEstaDispuesta("\\begin{aligned} x &= 5 \\end{aligned}") &&
+      !yaEstaDispuesta("x^{2} - 9 = (x - 3)(x + 3)"),
+  );
+  // Y toda regla larga del catálogo tiene por dónde partirse para caber.
+  const catalogo = JSON.parse(readFileSync(new URL("../prisma/seed-data/reglas-matematicas.json", import.meta.url), "utf8"));
+  const reglasDelBanco = Array.isArray(catalogo) ? catalogo : Object.values(catalogo)[0];
+  const largasSinPartir = [];
+  for (const r of reglasDelBanco) {
+    for (const campo of ["enunciado", "ejemplo"]) {
+      const latex = String(r[campo] ?? "");
+      if (!latex || yaEstaDispuesta(latex)) continue;
+      const cuerpo = latex.replace(/\\[a-zA-Z]+|[{}]/g, "").replace(/\s+/g, "");
+      if (cuerpo.length > 18 && !partirFormula(latex)) largasSinPartir.push(`${r.nombre} · ${campo}: ${latex}`);
+    }
+  }
+  check("toda regla larga del catálogo tiene por dónde partirse", largasSinPartir.length === 0, largasSinPartir.join(" · "));
 }
 
 titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecuación se resuelve como ecuación");
@@ -2425,9 +2479,18 @@ titulo("A00a1f. Revisión f515a57: ejercicio completo, marca limpia y proyecció
   );
 
   // 3. LA REGLA Y SU EJEMPLO, CENTRADOS Y DEL MISMO TAMAÑO.
+  // Los compone `FormulaQueCabe`, que además los parte en renglones —y, si aún
+  // no caben, los encoge lo justo— para que nunca se corten contra el borde.
   check(
     "el ejemplo de la regla se compone en modo display, no en línea",
-    /<Formula latex=\{regla\.ejemplo\} display \/>/.test(pizarraClasica),
+    /<FormulaQueCabe\s+latex=\{regla\.ejemplo\}/.test(pizarraClasica) &&
+      /<Formula key=\{`\$\{i\}-\$\{fila\}`\} latex=\{fila\} display \/>/.test(pizarraClasica),
+  );
+  check(
+    "y la regla, igual: las dos por la fórmula que se ajusta a su mitad de la pizarra",
+    (pizarraClasica.match(/<FormulaQueCabe/g) ?? []).length === 2 &&
+      /partirLaMasLarga\(estado\.current\.filas\)/.test(pizarraClasica) &&
+      /Math\.max\(0\.8, estado\.current\.escala/.test(pizarraClasica),
   );
   // El informe pidió después lo contrario de centrar (OBS-10: "definiciones
   // amontonadas al centro… alinear a la izquierda").

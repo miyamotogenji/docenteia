@@ -1944,7 +1944,15 @@ function focoDePotencia(pm) {
   if (!pm) return null;
   const a = Math.abs(pm.a);
   if (pm.n > 1) {
-    return foco("factor", [...(a !== 1 ? [a] : []), pm.n, a * pm.n], `${pm.a} × ${pm.n} = ${pm.a * pm.n}`);
+    // La etiqueta sólo puede hablar de lo que está ESCRITO. En "x²" no hay
+    // ningún 1 que multiplicar —el coeficiente no se escribe—, así que la
+    // etiqueta es el gesto, "× 2", como la de una amplificación; con
+    // coeficiente a la vista sí se muestra la cuenta entera, "2 × 3 = 6".
+    return foco(
+      "factor",
+      [...(a !== 1 ? [a] : []), pm.n, a * pm.n],
+      a !== 1 ? `${pm.a} × ${pm.n} = ${pm.a * pm.n}` : `× ${pm.n}`,
+    );
   }
   return a !== 1 ? foco("factor", [a]) : null;
 }
