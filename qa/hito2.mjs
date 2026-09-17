@@ -57,6 +57,7 @@ import {
 import { resolverEjercicio } from "../lib/leccion/correccion.ts";
 import {
   apareceComoTermino,
+  computeAnswer,
   processLSG,
   repararEquivalencias,
   sincronizarPasosConVoz,
@@ -535,6 +536,74 @@ titulo("A1b2. La cancelación encierra los términos, no el signo igual");
   check(
     "con el rótulo escrito una sola vez (y sólo en el paso activo)",
     panel.includes('conEtiqueta={j === 0 && estado === "activa"}'),
+  );
+}
+
+titulo("A00f. Rigor de cálculo: el rótulo no es parte del ejercicio, y una ecuación se resuelve como ecuación");
+
+{
+  // 1. EL RÓTULO NO ES PARTE DEL EJERCICIO. La tanda de práctica escribe
+  // "Ejercicio 1:  5x" en la pizarra, y eso es lo que llega al corrector: el "1:"
+  // se pegaba al monomio —se leía "15x"— y la derivada daba 15 donde vale 5. El
+  // alumno respondía bien y el servidor lo calificaba como error.
+  check(
+    "«Ejercicio 2:  5x» se corrige como 5x: la derivada es 5, no 25",
+    resolverEjercicio("Ejercicio 2:  5x", "derivadas") === "5",
+    String(resolverEjercicio("Ejercicio 2:  5x", "derivadas")),
+  );
+  check(
+    "«Ejercicio 1: 2x» → 2",
+    resolverEjercicio("Ejercicio 1: 2x", "derivadas") === "2",
+    String(resolverEjercicio("Ejercicio 1: 2x", "derivadas")),
+  );
+  check(
+    "…y lo que no lleva rótulo se sigue corrigiendo igual",
+    resolverEjercicio("5x", "derivadas") === "5" && resolverEjercicio("2x + 5 = 15") === "5" &&
+      resolverEjercicio("Ejercicio 1: 1/4 + 1/6") === "5/12",
+  );
+  check(
+    "el rótulo se quita en el CORRECTOR, que es por donde entra la pizarra",
+    /^\s*ejercicio\\s\*\(\?:n/.test("") ||
+      /sinRotulo\(String\(ejercicio \?\? ""\)\.trim\(\)\)/.test(readFileSync(new URL("../lib/leccion/correccion.ts", import.meta.url), "utf8")),
+  );
+
+  // 2. UNA ECUACIÓN SE RESUELVE COMO ECUACIÓN, nunca evaluando el primer trozo
+  // aritmético que lleve dentro.
+  for (const [pregunta, esperada] of [
+    ["¿Cuánto vale x en x/2 + 5 = 12? Escribe solo el número.", "14"],
+    ["¿Cuánto vale x en x/3 + 7 = 12? Escribe solo el número.", "15"],
+    ["¿Cuánto vale x en 5x/2 - 3 = 2x + 6? Escribe solo el número.", "18"],
+    ["¿Cuánto vale x en x/4 + x/2 = 9? Escribe solo el número.", "12"],
+    ["¿Cuánto vale x en 2(x + 3) = 16? Escribe solo el número.", "5"],
+  ]) {
+    check(`«${pregunta.slice(16, 40)}…» → ${esperada}`, computeAnswer(pregunta) === esperada, String(computeAnswer(pregunta)));
+  }
+  check("y una cuenta sigue siendo una cuenta", computeAnswer("¿Cuánto es 19 + 45?") === "64" && computeAnswer("¿Cuánto es 2/5 + 1/10?") === "1/2");
+
+  // 3. LO QUE SE DICE ES LO QUE SE HACE, en el despeje y en el polinomio.
+  const conMenos = escenaDeDespeje("2x - 6 = 16", "e");
+  check(
+    "con «2x − 6 = 16» el tutor SUMA 6 en los dos lados (no «quitamos»)",
+    /^Sumamos 6 en los dos lados/.test(conMenos.focos[0]?.narracion ?? ""),
+    conMenos.focos[0]?.narracion,
+  );
+  const conMas = escenaDeDespeje("2x + 6 = 16", "e");
+  check(
+    "y con «2x + 6 = 16» resta 6",
+    /^Restamos 6 en los dos lados/.test(conMas.focos[0]?.narracion ?? ""),
+    conMas.focos[0]?.narracion,
+  );
+  const poli = escenaDePolinomio("2x⁵ - 3x⁴ + x²", "e");
+  const dichos = poli.focos.map((f) => f.narracion);
+  check(
+    "el término «- 3x⁴» se nombra con su signo y su coeficiente es menos 3",
+    dichos.includes("Miramos el término menos 3 por x elevado a 4.") && dichos.includes("Su coeficiente es menos 3."),
+    JSON.stringify(dichos.slice(3, 6)),
+  );
+  check(
+    "y «2x⁵» se lee «2 por x elevado a 5», no «2x elevado a 5» (que sería (2x)⁵)",
+    dichos.includes("Miramos el término 2 por x elevado a 5.") && !dichos.some((d) => /término \d+x elevado/.test(d ?? "")),
+    JSON.stringify(dichos.slice(0, 3)),
   );
 }
 

@@ -2341,3 +2341,88 @@ cuatro motores de aritmética); `qa/leccion.mjs`: **825**; `qa/navegador.mjs`:
 por nivel 94, qa 1.462, sesiones 126, aceptación 24, matemáticas 100, frontend
 10 y el barrido de 200 sesiones y 1.800 turnos—: **0 fallos**. `tsc --noEmit` y
 `npm run build`, limpios.
+
+## 35. Rigor de cálculo: cuatro errores matemáticos, y la batería que los habría cazado antes
+
+El cliente señaló errores de cálculo. Tenía razón: había cuatro, y ninguna de
+las baterías anteriores podía verlos, porque todas comprobaban la FORMA de la
+lección —sus fases, sus marcas, sus tamaños— y la calificación de un puñado de
+casos, pero ninguna recalculaba, una por una, las afirmaciones matemáticas que
+el alumno ve y oye.
+
+### 1. Una respuesta CORRECTA calificada como error (el rótulo del ejercicio)
+
+La tanda de práctica escribe en la pizarra `Ejercicio 1:  5x`, y esa línea es la
+que viaja a `/api/practica/corregir`. El `1:` del rótulo se pegaba al monomio
+—`1:  5x` se leía como `15x`— y el corrector esperaba 15 donde la derivada vale
+5: el alumno respondía bien, el tutor cantaba «¡Correcto!» y el servidor lo
+calificaba como error en la misma pantalla. Ahora `resolverEjercicio` quita el
+rótulo antes de resolver: el rótulo numera el ejercicio, no forma parte de él.
+
+### 2. Una ecuación resuelta como si fuera una cuenta suelta
+
+`computeAnswer("¿Cuánto vale x en x/2 + 5 = 12?")` devolvía **7**. La respuesta
+es 14: dentro de la ecuación hay un `2 + 5`, y el buscador de expresiones
+aritméticas lo evaluaba. Lo mismo con `x/3 + 7 = 12` (decía 10, es 15) y con
+`5x/2 - 3 = 2x + 6` (decía −1, es 18). Ahora una ecuación se resuelve con el
+solucionador exacto —que sabe quitar denominadores— antes de buscar ninguna
+cuenta suelta; y si hay incógnita y no se sabe resolver, se devuelve `null`:
+inventar un número es peor que no contestar.
+
+### 3. La pizarra decía «quitamos» mientras sumaba
+
+En `2x − 6 = 16` el pie decía «Quitamos 6 en los dos lados… y a la derecha 16
+más 6 son 22». Se está SUMANDO 6. Ahora el verbo lo decide el signo del término:
+resta con `+6`, suma con `−6`.
+
+### 4. El coeficiente de −3x⁴ no es 3
+
+Al derivar término a término, la pizarra decía «Miramos el término 2x elevado a
+5» —que se lee (2x)⁵, y el coeficiente multiplica, no se eleva— y «Su
+coeficiente es 3» en el término −3x⁴, cuyo coeficiente es −3: justo el signo que
+baja con la regla de la potencia hasta el −12x³ del resultado. Ahora se dice «el
+término 2 por x elevado a 5» y «su coeficiente es menos 3».
+
+### La batería que faltaba: `qa/rigor.mjs`
+
+Verifica CADA afirmación matemática con aritmética racional exacta y álgebra de
+polinomios **escritas en la propia batería**: si el motor y el verificador
+compartieran código, compartirían el error. Recorre 768 lecciones (8 motores × 4
+niveles × 8 vueltas del catálogo × 3 formas), los 640 desgloses de los 388
+ejercicios del banco, 224 lecciones de problemas aplicados y tandas de práctica,
+las 18 preguntas del diagnóstico y el catálogo de reglas. De cada una comprueba:
+
+- cada igualdad escrita en la pizarra, y cada eslabón de sus cadenas;
+- cada cuenta dicha por el tutor («4 más 8 son 12», «16 menos 6 son 10»);
+- **lo que la animación compone por su cuenta**: la compensación del despeje, el
+  reparto del paréntesis, la amplificación, la simplificación y la cuenta en
+  columna dibujada, fila a fila;
+- **cada pie de la pizarra**, contra la línea que está marcando: el factor que
+  dice multiplicar, el coeficiente y el exponente de cada término con su signo,
+  la cifra que escribe y la que se lleva, el préstamo de la resta, la operación
+  que dice hacer en el despeje, la solución que canta;
+- que **cada línea de un despeje conserva la solución** de la ecuación de la que
+  viene —es lo único que autoriza a escribirla debajo—;
+- la respuesta esperada de cada pregunta, recalculada, más el veredicto del
+  corrector sobre ella y sobre las formas equivalentes de escribirla;
+- las identidades del catálogo de reglas, con sustituciones numéricas.
+
+Y se comprueba a sí misma: antes de recorrer nada se le pasan **30 errores
+conocidos** —los cuatro de esta ronda entre ellos— y se exige que los cace
+todos. Una batería que no caza nada da siempre «0 fallos», que es justo lo que
+parece un éxito. Además cuenta cuántas veces dispara cada comprobación y falla
+si alguna no llegó a usarse nunca.
+
+### Comprobado
+
+`qa/rigor.mjs` (nuevo, en `npm test`): **58.677 afirmaciones matemáticas
+recalculadas, 0 incorrectas**, con sus 30 autocomprobaciones cazadas y las 16
+comprobaciones especializadas disparando todas (17 de las 18 preguntas del
+diagnóstico recalculadas —la de `ln(x)` queda fuera de un motor polinómico—, 12
+identidades del catálogo de reglas y 32 pistas de ayuda revisadas). `qa/hito2.mjs`: **666** (bloque
+nuevo A00f con las regresiones de los cuatro errores); `qa/qa.mjs`: **1.465**;
+`qa/leccion.mjs`: **825**; `qa/navegador.mjs`: **87**; `qa/observaciones.mjs`
+(Chrome, cinco clases): **62.203 comprobaciones y 0 fallos**, 126 capturas; las demás baterías
+—diagnóstico 416, paso 1 72, hito 1 124, diagnóstico por nivel 94, sesiones 126,
+aceptación 24, matemáticas 100, frontend 10 y el barrido de 200 sesiones y 1.800
+turnos—: **0 fallos**. `tsc --noEmit` y `npm run build`, limpios.

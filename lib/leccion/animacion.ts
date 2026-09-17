@@ -420,7 +420,16 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
       const exponente = t.exponente ? `^{${marcar(`pz-exp-${i}`, t.exponente)}}` : "";
       const cuerpo = `${coeficiente}${t.variable}${exponente}`;
 
-      const legible = `${t.coeficiente || ""}${t.variable}${t.exponente ? ` elevado a ${t.exponente}` : ""}`;
+      // EL TÉRMINO, DICHO COMO SE LEE. "2x elevado a 5" se oye como (2x)⁵, que es
+      // otra cosa: el coeficiente MULTIPLICA a la potencia, no se eleva con ella.
+      // Y el término de "- 3x⁴" es MENOS 3x⁴: el signo va con el término.
+      const negativo = t.signo === "-";
+      const legible = [
+        negativo ? "menos " : "",
+        t.coeficiente ? `${t.coeficiente}${t.variable ? " por " : ""}` : "",
+        t.variable,
+        t.exponente ? ` elevado a ${t.exponente}` : "",
+      ].join("");
       focos.push({
         clase: `pz-term-${i}`,
         tipo: "caja",
@@ -433,7 +442,9 @@ export function escenaDePolinomio(texto: string, id: string): Escena | null {
         focos.push({
           clase: `pz-coef-${i}`,
           tipo: "caja",
-          narracion: `Su coeficiente es ${t.coeficiente}.`,
+          // CON SU SIGNO: el coeficiente de "- 3x⁴" es menos 3, y es ese menos el
+          // que baja con la regla de la potencia hasta el -12x³ del resultado.
+          narracion: `Su coeficiente es ${negativo ? "menos " : ""}${t.coeficiente}.`,
           etiqueta: "coeficiente",
         });
       }
@@ -599,10 +610,13 @@ export function escenaDeDespeje(texto: string, id: string): Escena | null {
       // estaba y su opuesto. Ninguna marca cruza el igual.
       piezas: ["pz-cancela-termino", "pz-cancela-opuesto"],
       tipo: "tachado",
-      // Sin un "y" pegado a un signo ("+6 y -6"): esa "y" es prosa, pero la
+      // LO QUE SE HACE ES LO QUE SE DICE: con "+6" se RESTA 6 en los dos lados;
+      // con "-6" se SUMA 6. Decir "quitamos 6" y escribir "16 + 6" es contar una
+      // operación y hacer otra.
+      // Y sin un "y" pegado a un signo ("+6 y -6"): esa "y" es prosa, pero la
       // composición de fórmulas dentro de la frase leía "y - 6" como expresión y
       // la escribía en cursiva matemática.
-      narracion: `Quitamos ${Math.abs(b)} en los dos lados: a la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
+      narracion: `${b > 0 ? "Restamos" : "Sumamos"} ${Math.abs(b)} en los dos lados: a la izquierda se cancela ${b > 0 ? "+" : "-"}${Math.abs(b)} con ${b > 0 ? "-" : "+"}${Math.abs(b)}, y a la derecha ${c} ${b > 0 ? "menos" : "más"} ${Math.abs(b)} son ${c - b}.`,
       etiqueta: "se cancelan",
     });
   }
