@@ -3113,3 +3113,68 @@ con incógnita. `qa/qa.mjs`: 1.465; `qa/leccion.mjs`: 826; `qa/navegador.mjs`:
 87; matemáticas 100; hito 1 124; diagnóstico por nivel 94; aceptación **24/24**;
 diagnóstico, sesiones, paso 1 y frontend sin fallos; barrido de **200 sesiones y
 1.800 turnos, 0 violaciones**. `tsc --noEmit` y `npm run build`, limpios.
+
+
+## 44. Novena ronda: dividir también se escribe, y se ve cuándo le toca al alumno
+
+El cliente cerró él mismo el primer punto —«ya verifiqué /api/voz… ya tengo
+identificado dónde cargar la variable en el panel de Vercel»—, así que la voz
+neuronal queda a la espera de su clave. Los otros dos son míos y están hechos.
+
+### 1. Toda acción verbalizada se escribe (ahora también la división)
+
+La regla que puso el cliente es general: *si el avatar dice «multiplicamos por 7
+ambos miembros», la pizarra debe renderizar primero la expresión formal* y en el
+renglón siguiente el resultado. La multiplicación y la resta ya lo hacían; **la
+división no**: el tutor decía «dividimos ambos lados entre 2» y la pizarra
+saltaba a `x = 5`.
+
+Ahora son dos renglones, como todo lo demás:
+
+```
+2x = 10
+2x ÷ 2 = 10 ÷ 2     ← «dividimos ambos lados entre 2»
+x = 5               ← «al dividir queda x = 5»
+[5] ✓
+```
+
+Y la línea nueva lleva su etiqueta —el número entre el que se divide, que ahí sí
+está escrito en los dos miembros—, porque **una línea sin foco no se sincroniza
+con la voz**: sería exactamente el defecto de la ronda anterior. Lo cazó la
+batería en el acto, con `−x ÷ −1 = −9 ÷ −1`, que era el único caso sin cifra que
+señalar.
+
+**El reparto entre los dos ambientes se ha reajustado en consecuencia.** Con dos
+tiempos por operación, un despeje son cinco o seis renglones: dejarlos todos en
+la columna izquierda vaciaba el panel de desarrollo —lo que el cliente pidió
+evitar en su día—. Ahora al enunciado le acompaña **un** paso (el que cierra la
+operación empezada sobre él) y el resto baja por el Ambiente 2, de corrido.
+
+### 2. Se ve —y se oye— cuándo le toca al alumno
+
+En la práctica, la lección se para esperando respuesta. El cliente lo describió
+sin rodeos: el avatar se queda en «Te acompaño» y *«el estudiante no piensa que
+debe interactuar; piensa que el sistema se congeló»*. Tres cosas, y las tres a la
+vez:
+
+- **El avatar lo dice.** Al plantear cualquier pregunta —venga del generador que
+  venga, porque va en el reproductor— añade: «Ahora te toca a ti: resuelve el
+  ejercicio y escribe tu respuesta en la caja de abajo».
+- **El rótulo del avatar cambia** de «Te acompaño» a **«Te toca a ti»** mientras
+  hay una pregunta delante.
+- **El formulario se resalta**: marco grueso, la misma frase en azul sobre la
+  pregunta, un latido de dos pulsos al aparecer y la vista que baja sola hasta
+  él. Con `prefers-reduced-motion` no late, sólo se queda marcado.
+
+### Comprobado
+
+`qa/observaciones.mjs`, siete clases en Chrome: **101.867 comprobaciones y 0
+fallos**, 166 capturas. `qa/voz.mjs`: **13/13**. `qa/hito2.mjs`: **744**, con las
+comprobaciones nuevas —la división escrita y con foco, la invitación al alumno
+en el reproductor, la frase repetida junto al formulario, el resalte, el
+desplazamiento hasta la caja y el respeto a `prefers-reduced-motion`—. Rigor:
+**31.586 afirmaciones matemáticas recalculadas, 0 incorrectas**. `qa/qa.mjs`:
+1.465; `qa/leccion.mjs`: 827; `qa/navegador.mjs`: 87; matemáticas 100; hito 1
+124; diagnóstico por nivel 94; aceptación **24/24**; diagnóstico, sesiones, paso
+1 y frontend sin fallos; barrido de **200 sesiones y 1.800 turnos, 0
+violaciones**. `tsc --noEmit` y `npm run build`, limpios.
