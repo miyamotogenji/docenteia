@@ -4,8 +4,9 @@ Entrega del segundo hito. Todo lo que sigue está implementado, compilado y
 verificado con la suite del proyecto.
 
 > **Estado al cierre** (las cifras de cada ronda están en su sección; éstas son
-> las de la última pasada completa): **101.867 comprobaciones en Chrome y 0
-> fallos** con siete clases y 166 capturas (`qa/observaciones.mjs`), **31.586
+> las de la última pasada completa): **106.635 comprobaciones en Chrome y 0
+> fallos** con ocho clases —incluida una en un móvil de 390 px— y 170 capturas
+> (`qa/observaciones.mjs`), **31.586
 > afirmaciones matemáticas recalculadas y 0 incorrectas** (`qa/rigor.mjs`),
 > **744** del hito (`qa/hito2.mjs`), **19** de los mandos y los estados del
 > avatar en un navegador de verdad (`qa/mandos.mjs`), **13** de la voz
@@ -3237,3 +3238,25 @@ Hito 3 (Colegios y tareas) y Hito 4 (Reportes y cierre) no están empezados, y
 Hito 3 necesita antes tres decisiones del cliente: cómo se une un alumno a un
 aula, si un docente puede pertenecer a varias instituciones y qué cuenta como
 «reintento» en una tarea.
+
+### Y un defecto que apareció al buscar lo que faltaba: la pizarra en un móvil
+
+Repasando qué no se había mirado nunca, salió esto: **la lección no se había
+abierto jamás en una pantalla estrecha**. La batería daba clase a 1366 px y una
+a 1920; nadie la había visto a 390. Y las dos quejas que más ha repetido el
+cliente —cosas que se salen por el borde y barras de desplazamiento— son
+exactamente las que aparecen cuando el sitio se estrecha.
+
+Estaba rota: en modo proyección, el Ambiente 1 **se salía 59,5 px por la
+derecha**. La causa es que el mínimo de 48 px por fórmula que pide el informe
+está pensado para un aula; en 390 px de ancho, media pizarra son 180 px y esa
+fórmula no cabe de ninguna manera.
+
+**Corregido:** por debajo del tamaño de un portátil, el suelo de la fórmula
+proyectada baja (`clamp(1.5rem, 7vw, 3rem)`), así que sigue siendo letra grande
+—por encima de los 24 px que el informe pide para los rótulos— y no se sale
+nada. En 1366 y en 1920 no cambia ni un píxel: ahí el mínimo de aula se respeta
+igual que antes. La batería exige lo uno o lo otro según el ancho de la ventana,
+y lo que no se negocia en ninguna pantalla es que nada se salga.
+
+Y la clase de móvil se queda en la batería: **ocho clases** en lugar de siete.
