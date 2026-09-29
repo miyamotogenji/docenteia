@@ -5826,10 +5826,12 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
   }
 
   // 4c. Alex.pdf §1: Ambiente 2 narrado al proyectarse.
+  //    REGLA GENERAL: el mismo guion (`directivasDePasosLineales`) sirve al
+  //    ejemplo guiado y al desglose del segundo ejercicio.
   {
     const tramo = motor.slice(
+      motor.indexOf("function directivasDePasosLineales"),
       motor.indexOf("export function linealResueltaLSG"),
-      motor.indexOf("export function", motor.indexOf("export function linealResueltaLSG") + 10),
     );
     const dichas = locucionesDistributiva("2(x + 3) = 16");
     check(
@@ -5843,7 +5845,20 @@ titulo("A54. La ronda del vídeo cronometrado: la frase fuera de la columna, el 
       "el taller auxiliar sale antes de narrar el reparto (Ambiente 2 a tiempo)",
       /const apoyoInicial = sol\.steps\[0\]\?\.apoyo;/.test(tramo) &&
         tramo.indexOf("tallerAuxiliar(apoyoInicial)") < tramo.indexOf("for (const frase of reparto") &&
-        tramo.indexOf("explicaEnPizarra(sol.steps[0].explica)") < tramo.indexOf("tallerAuxiliar(apoyoInicial)"),
+        /directivasDePasosLineales\(sol/.test(motor) &&
+        /directivasDePasosLineales\(lin/.test(motor),
+    );
+    // El segundo ejercicio (desglose / «resuélvelo») NO puede quedarse sin
+    // apoyo auxiliar en pantalla 2: misma regla que el ejemplo.
+    const { desgloseDelEjercicioLSG: desglose } = await import("../src/lsgPrompt.js");
+    const des = desglose({ ejercicio: "2x + 6 = 18" });
+    const taller = (des.directivas ?? []).filter((d) => d.ambiente === 2).map((d) => d.contenido);
+    check(
+      "regla general: el desglose del segundo ejercicio también llena Ambiente 2",
+      taller.includes("Por qué se cancela el 6:") &&
+        taller.includes("6 - 6 = 0") &&
+        taller.some((t) => /Por qué dividimos entre 2/.test(t)),
+      JSON.stringify(taller),
     );
   }
 
