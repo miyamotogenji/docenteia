@@ -61,7 +61,13 @@ export default async function PaginaLeccion({
   // para dejar ENTREGAR, porque practicar sin poder entregar después sería
   // trabajo del alumno que no puede llegar a ningún lado.
   const { tareaId } = await searchParams;
-  let tareaActiva: { id: string; cantidadEjercicios: number; temaClave: string | null } | null = null;
+  let tareaActiva: {
+    id: string;
+    cantidadEjercicios: number;
+    temaClave: string | null;
+    limiteReintentos: number;
+    intentosPrevios: number;
+  } | null = null;
 
   if (tareaId) {
     const tarea = await prisma.tarea.findUnique({
@@ -103,6 +109,8 @@ export default async function PaginaLeccion({
       id: tarea.id,
       cantidadEjercicios: tarea.cantidadEjercicios,
       temaClave: tarea.nodo?.motor ? (temaPorMotor(tarea.nodo.motor)?.clave ?? null) : null,
+      limiteReintentos: tarea.limiteReintentos,
+      intentosPrevios: entrega?.intentosUsados ?? 0,
     };
   }
 

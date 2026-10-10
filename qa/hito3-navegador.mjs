@@ -158,7 +158,9 @@ const rTarea = await api("/api/docente/tareas", {
     fechaInicio: ahoraIso,
     fechaVencimiento: mananaIso,
     cantidadEjercicios: 2,
-    limiteReintentos: 0,
+    // 1 = un reintento permitido (tope 2 intentos en total): lo justo para
+    // probar que "Reintentar" aparece la 1ª vez y desaparece la 2ª.
+    limiteReintentos: 1,
     nodoId: nodoAritmetica?.id ?? null,
   }),
 });
@@ -242,6 +244,7 @@ const estadoVisible = () =>
     }
     const texto = document.body.innerText ?? "";
     const contador = texto.match(/Ejercicio (\d+) de (\d+)/);
+    const boton = (patron) => [...document.querySelectorAll("button")].some((b) => patron.test(b.textContent ?? ""));
     return {
       titulo: document.querySelector("h1")?.textContent ?? null,
       contador: contador ? { actual: Number(contador[1]), total: Number(contador[2]) } : null,
@@ -251,6 +254,8 @@ const estadoVisible = () =>
       nota: (texto.match(/Nota:\s*(\d+)\s*\/\s*100/) || [])[1] ?? null,
       cambiarDeTema: /Cambiar de tema/.test(texto),
       selectorDeTemas: /Elige un tema/.test(texto),
+      botonSaltarTeoria: boton(/Saltar a la práctica/),
+      botonReintentar: boton(/Reintentar/),
     };
   });
 
@@ -280,55 +285,94 @@ check(
   JSON.stringify(estado.contador),
 );
 
-// Primer ejercicio.
-estado = await esperar((e) => e.hayInput && e.preguntaLatex, 15_000);
-check("aparece el primer ejercicio con su enunciado", Boolean(estado.preguntaLatex), JSON.stringify(estado));
-const r1 = resolverPregunta(estado.preguntaLatex);
-if (r1 != null) {
-  await pagina.locator("input[placeholder*='respuesta' i]").fill(r1);
-  await pagina.getByRole("button", { name: /Responder/ }).click();
+// "Cada vez que ingreso me sale toda la teoría, quiero poder saltarla"
+// (corrección QA): el botón aparece en cuanto carga la lección, sin esperar
+// a que termine de narrar Concepto/Reglas/Ejemplo.
+estado = await esperar((e) => e.botonSaltarTeoria, 10_000);
+check("aparece 'Saltar a la práctica' mientras narra la teoría", estado.botonSaltarTeoria, JSON.stringify(estado));
+if (estado.botonSaltarTeoria) {
+  await pagina.getByRole("button", { name: /Saltar a la práctica/ }).click();
 }
 
-// El contador pasa a "2 de 2" (o ya se completó, si el motor fue más rápido).
-estado = await esperar((e) => e.contador?.actual === 2 || e.tareaCompletada, 20_000);
-check(
-  "tras el primer ejercicio, el contador pasa a 'Ejercicio 2 de 2'",
-  estado.contador?.actual === 2 || estado.tareaCompletada,
-  JSON.stringify(estado),
-);
-
-// Un ejercicio resuelto no trae el siguiente solo: como en la lección libre,
-// hace falta pedirlo —"Dame otro ejemplo" y los demás botones de apoyo siguen
-// ahí mientras no se llegue al cupo—. Lo que acota la tarea es el TOPE, no
-// que cada ejercicio aparezca sin que nadie lo pida.
-if (!estado.tareaCompletada) {
-  await pagina.getByRole("button", { name: /Dame otro ejemplo/ }).click();
-  estado = await esperar((e) => e.hayInput && e.preguntaLatex, 15_000);
-  const r2 = resolverPregunta(estado.preguntaLatex);
-  if (r2 != null) {
-    await pagina.locator("input[placeholder*='respuesta' i]").fill(r2);
+/** Resuelve UN ejercicio ya visible (enunciado + input) con la respuesta correcta. */
+async function resolverElEjercicioVisible() {
+  const e = await esperar((e) => e.hayInput && e.preguntaLatex, 15_000);
+  const r = resolverPregunta(e.preguntaLatex);
+  if (r != null) {
+    await pagina.locator("input[placeholder*='respuesta' i]").fill(r);
     await pagina.getByRole("button", { name: /Responder/ }).click();
   }
+  return e;
 }
 
-estado = await esperar((e) => e.tareaCompletada, 20_000);
-check("al resolver el cupo entero aparece la pantalla de cierre", estado.tareaCompletada, JSON.stringify(estado));
-// La tarjeta aparece en cuanto se completa el cupo, ANTES de que termine el
-// POST a /entregar ("Registrando tu entrega…"): la nota se pinta un instante
-// después, cuando esa petición responde.
-estado = await esperar((e) => e.nota != null, 10_000);
-check("…con una nota de 100/100 (los dos ejercicios, correctos)", estado.nota === "100", `nota=${estado.nota}`);
-check("la consola del navegador no soltó ningún error", erroresConsola.length === 0, erroresConsola.join(" | "));
+/** Resuelve los N ejercicios de un intento completo (ya con la lección abierta). */
+async function resolverLaTareaEntera() {
+  const primero = await resolverElEjercicioVisible();
+  check("aparece un ejercicio con su enunciado", Boolean(primero.preguntaLatex), JSON.stringify(primero));
 
-// La entrega quedó registrada de verdad, no sólo en pantalla.
-const rTareasAlumno = await apiAlumno("/api/estudiante/tareas");
-const tareasAlumno = await rTareasAlumno.json().catch(() => ({}));
-const laSuya = (tareasAlumno?.tareas ?? []).find((t) => t.id === tarea.tarea.id);
+  let e = await esperar((e) => e.contador?.actual === 2 || e.tareaCompletada, 20_000);
+  if (!e.tareaCompletada) {
+    // Un ejercicio resuelto no trae el siguiente solo: hace falta pedirlo,
+    // igual que en la lección libre. Lo que acota la tarea es el TOPE, no
+    // que cada ejercicio aparezca sin que nadie lo pida.
+    await pagina.getByRole("button", { name: /Dame otro ejemplo/ }).click();
+    await resolverElEjercicioVisible();
+  }
+
+  e = await esperar((e) => e.tareaCompletada, 20_000);
+  check("al resolver el cupo entero aparece la pantalla de cierre", e.tareaCompletada, JSON.stringify(e));
+  // La tarjeta aparece en cuanto se completa el cupo, ANTES de que termine el
+  // POST a /entregar ("Registrando tu entrega…"): la nota se pinta un
+  // instante después, cuando esa petición responde.
+  return esperar((e) => e.nota != null, 10_000);
+}
+
+// ── 1er intento: los dos ejercicios, los dos correctos ──────────────────────
+estado = await resolverLaTareaEntera();
+check("…con una nota de 100/100 (los dos ejercicios, correctos)", estado.nota === "100", `nota=${estado.nota}`);
+
+// "El alumno pueda rehacer la tarea después para mejorar su nota"
+// (corrección QA): con limiteReintentos=1 (tope 2 intentos), tras el 1er
+// intento TODAVÍA debe ofrecerse "Reintentar".
+check("tras el 1er intento, se ofrece 'Reintentar' (queda 1 de 1 reintentos)", estado.botonReintentar, JSON.stringify(estado));
+
+const rTareasAlumno1 = await apiAlumno("/api/estudiante/tareas");
+const laSuya1 = (await rTareasAlumno1.json().catch(() => ({})))?.tareas?.find((t) => t.id === tarea.tarea.id);
 check(
-  "la entrega quedó registrada en el servidor: entregada, con nota 100",
-  laSuya?.estado === "entregada" && laSuya?.puntaje === 100,
-  JSON.stringify(laSuya),
+  "el 1er intento quedó registrado: entregada, nota 100, 1 intento usado",
+  laSuya1?.estado === "entregada" && laSuya1?.puntaje === 100 && laSuya1?.intentosUsados === 1,
+  JSON.stringify(laSuya1),
 );
+
+// ── Reintento: se pulsa "Reintentar" y se resuelve de nuevo ──────────────────
+await pagina.getByRole("button", { name: /Reintentar/ }).click();
+estado = await esperar((e) => e.contador?.actual === 1, 15_000);
+check("al reintentar, el contador vuelve a 'Ejercicio 1 de 2'", estado.contador?.actual === 1, JSON.stringify(estado));
+
+estado = await resolverLaTareaEntera();
+check("…el 2º intento también registra su nota", estado.nota === "100", `nota=${estado.nota}`);
+
+// Con el tope de reintentos ya agotado (2 de 2), "Reintentar" ya NO debe
+// ofrecerse: el servidor lo rechazaría con 409 si se pulsara.
+check("tras agotar los reintentos, NO se ofrece 'Reintentar'", !estado.botonReintentar, JSON.stringify(estado));
+check("la consola del navegador no soltó ningún error en todo el recorrido", erroresConsola.length === 0, erroresConsola.join(" | "));
+
+// La entrega del servidor refleja el 2º intento: dos intentos usados.
+const rTareasAlumno2 = await apiAlumno("/api/estudiante/tareas");
+const laSuya2 = (await rTareasAlumno2.json().catch(() => ({})))?.tareas?.find((t) => t.id === tarea.tarea.id);
+check(
+  "la entrega final quedó registrada: entregada, nota 100, 2 intentos usados",
+  laSuya2?.estado === "entregada" && laSuya2?.puntaje === 100 && laSuya2?.intentosUsados === 2,
+  JSON.stringify(laSuya2),
+);
+
+// Un 3er intento directo contra el servidor confirma que el tope es real, no
+// sólo que la interfaz dejó de ofrecer el botón.
+const rTercerIntento = await apiAlumno(`/api/estudiante/tareas/${tarea.tarea.id}/entregar`, {
+  method: "POST",
+  body: JSON.stringify({ puntaje: 100, completada: true }),
+});
+check("un 3er intento se bloquea de verdad en el servidor (409)", rTercerIntento.status === 409, `HTTP ${rTercerIntento.status}`);
 
 await navegador.close();
 salir();

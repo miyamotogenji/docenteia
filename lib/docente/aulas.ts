@@ -138,15 +138,24 @@ export function estadoDeTarea(
 /**
  * ¿Puede el alumno entregar (o reintentar) esta tarea ahora mismo?
  *
- * Tres puertas, en el orden en que de verdad se comprueban: que no haya
- * pasado la fecha, que no se hayan agotado los reintentos —0 es "sin
- * tope", así que esa puerta no se cierra nunca con 0— y que no esté ya dada
- * por completa. `null` significa "sí puede", y es el valor que se usa para no
- * repetir la frase en cada sitio que lo necesita.
+ * Dos puertas: que no haya pasado la fecha, y que no se hayan agotado los
+ * reintentos —0 es "sin tope", así que esa puerta no se cierra nunca con
+ * 0—. `null` significa "sí puede", y es el valor que se usa para no repetir
+ * la frase en cada sitio que lo necesita.
+ *
+ * ESTAR YA "completada" NO cierra esta puerta (cambio pedido por el
+ * cliente, HITO 3 — corrección QA: "el alumno pueda rehacer la tarea
+ * después para mejorar su nota"). Antes sí lo hacía —una entrega marcaba la
+ * tarea como terminada para siempre, sin importar cuántos reintentos le
+ * quedaran—, y eso es justo lo que volvía inútil a `limiteReintentos`: con
+ * el primer intento ya bastaba para bloquear cualquier otro. Ahora el único
+ * tope de cuántas veces se puede entregar es `limiteReintentos`; qué nota
+ * queda guardada la decide `POST /api/estudiante/tareas/[id]/entregar`
+ * (la del último intento aceptado).
  */
 export function puedeEntregar(
   tarea: { fechaVencimiento: Date; limiteReintentos: number },
-  entrega: { intentosUsados: number; completada: boolean } | null,
+  entrega: { intentosUsados: number } | null,
   ahora: Date = new Date(),
 ): string | null {
   if (tarea.fechaVencimiento.getTime() < ahora.getTime()) {
@@ -157,9 +166,6 @@ export function puedeEntregar(
   // es de REINTENTOS, así que el tope real de intentos es limiteReintentos + 1.
   if (tarea.limiteReintentos > 0 && usados >= tarea.limiteReintentos + 1) {
     return "Ya no te quedan reintentos para esta tarea.";
-  }
-  if (entrega?.completada) {
-    return "Esta tarea ya está entregada.";
   }
   return null;
 }
