@@ -69,6 +69,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           // entregas: un alumno que todavía no entregó no tiene fila en
           // `entregas`, así que restar es lo único que lo cuenta.
           pendientes: Math.max(0, aula.matriculas.length - entregadas),
+          // "Ver ejercicios de la tarea" (corrección QA) sólo tiene sentido
+          // si la tarea viene del banco —con la IA no hay un conjunto FIJO
+          // que mostrar, cada alumno recibe el suyo—.
+          ejercicioIds: t.ejercicioIds,
         };
       }),
     });

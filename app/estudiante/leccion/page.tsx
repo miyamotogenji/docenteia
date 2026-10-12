@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Aula, type ProgresoTema, type ReglaVista } from "@/components/leccion/aula";
+import { TareaDeBanco } from "@/components/estudiante/tarea-de-banco";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cursoDelPerfil, describirCurso } from "@/lib/curriculo/etapas";
@@ -101,6 +102,35 @@ export default async function PaginaLeccion({
           mensaje={
             entrega?.puntaje != null ? `${bloqueo} Tu nota: ${entrega.puntaje}/100.` : bloqueo
           }
+        />
+      );
+    }
+
+    // DEL BANCO DE EJERCICIOS (HITO 3 — corrección QA): una tarea armada
+    // desde `/docente/ejercicios` —automática por dificultad, o elegida a
+    // mano— no pasa por el motor conversacional en absoluto. Es un conjunto
+    // FIJO y ya conocido de `Ejercicio`, así que se resuelve con su propia
+    // pantalla, mucho más simple: sin avatar, sin voz, sin teoría.
+    if (tarea.ejercicioIds.length > 0) {
+      const ejercicios = await prisma.ejercicio.findMany({
+        where: { id: { in: tarea.ejercicioIds } },
+        select: { id: true, enunciado: true, nivel: true },
+      });
+      // El orden es el de `ejercicioIds` —el que se guardó al asignar—, no el
+      // que devuelva la consulta.
+      const porId = new Map(ejercicios.map((e) => [e.id, e]));
+      const ordenados = tarea.ejercicioIds.flatMap((id) => {
+        const e = porId.get(id);
+        return e ? [e] : [];
+      });
+
+      return (
+        <TareaDeBanco
+          tareaId={tarea.id}
+          titulo={tarea.titulo}
+          ejercicios={ordenados}
+          limiteReintentos={tarea.limiteReintentos}
+          intentosPrevios={entrega?.intentosUsados ?? 0}
         />
       );
     }

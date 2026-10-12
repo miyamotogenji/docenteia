@@ -53,15 +53,78 @@ export async function POST(req: Request) {
       return noEncontrado("El aula");
     }
 
+    // DEL BANCO DE EJERCICIOS (HITO 3 — corrección QA): "nivel de dificultad
+    // en la asignación", automático o elegido a mano. `ejercicioIds` vacío
+    // mantiene el comportamiento de siempre —el motor conversacional genera
+    // sobre la marcha—, así que una tarea que no pide el banco no cambia en
+    // nada.
+    let ejercicioIds: string[] = [];
+    if (datos.origenEjercicios === "banco") {
+      if (datos.ejercicioIds && datos.ejercicioIds.length > 0) {
+        // Elegidos a mano: se comprueba que sigan siendo ejercicios de
+        // verdad —publicados, validados por el PRE Light, sin plantilla—.
+        // Nada de esto lo decide el navegador; aquí es donde se confirma.
+        const encontrados = await prisma.ejercicio.findMany({
+          where: {
+            id: { in: datos.ejercicioIds },
+            estado: "PUBLICADO",
+            validado: true,
+            plantilla: false,
+          },
+          select: { id: true },
+        });
+        if (encontrados.length !== datos.ejercicioIds.length) {
+          return NextResponse.json(
+            { error: "Alguno de los ejercicios elegidos ya no está publicado o validado." },
+            { status: 400 },
+          );
+        }
+        ejercicioIds = datos.ejercicioIds;
+      } else {
+        // Automático: al azar, del tema y la dificultad pedidos.
+        if (!datos.nodoId) {
+          return NextResponse.json(
+            { error: "Para armar la tarea desde el banco hace falta elegir un tema." },
+            { status: 400 },
+          );
+        }
+        const cantidad = datos.cantidadEjercicios ?? 5;
+        const candidatos = await prisma.ejercicio.findMany({
+          where: {
+            nodoId: datos.nodoId,
+            estado: "PUBLICADO",
+            validado: true,
+            plantilla: false,
+            ...(datos.dificultad ? { nivel: datos.dificultad } : {}),
+          },
+          select: { id: true },
+        });
+        if (candidatos.length < cantidad) {
+          return NextResponse.json(
+            {
+              error: `El banco sólo tiene ${candidatos.length} ejercicio${candidatos.length === 1 ? "" : "s"} publicado${candidatos.length === 1 ? "" : "s"} para ese tema y dificultad; hacen falta ${cantidad}.`,
+            },
+            { status: 400 },
+          );
+        }
+        // Una baraja simple basta: el banco de un tema no es tan grande
+        // como para que un sesgo de Fisher-Yates importe aquí.
+        const barajados = [...candidatos].sort(() => Math.random() - 0.5);
+        ejercicioIds = barajados.slice(0, cantidad).map((e) => e.id);
+      }
+    }
+
     const tarea = await prisma.tarea.create({
       data: {
         titulo: datos.titulo,
         descripcion: datos.descripcion ?? null,
         fechaInicio: datos.fechaInicio,
         fechaVencimiento: datos.fechaVencimiento,
-        cantidadEjercicios: datos.cantidadEjercicios ?? 5,
+        cantidadEjercicios: ejercicioIds.length > 0 ? ejercicioIds.length : (datos.cantidadEjercicios ?? 5),
         limiteReintentos: datos.limiteReintentos ?? 3,
         nodoId: datos.nodoId ?? null,
+        dificultad: datos.origenEjercicios === "banco" ? (datos.dificultad ?? null) : null,
+        ejercicioIds,
         aulaId: aula.id,
         docenteId: permiso.quien.usuarioId,
       },

@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { NIVELES } from "./curriculo.ts";
+
 /**
  * Aulas y matrículas (HITO 3): forma, validación y los pequeños cálculos que
  * no necesitan la base de datos.
@@ -89,6 +91,30 @@ export const tareaSchema = z
       .max(LIMITE_REINTENTOS_MAX)
       .optional(),
     nodoId: z.string().trim().min(1).optional().nullable(),
+    /**
+     * Dificultad de los ejercicios, para armar la tarea desde el banco
+     * docente. `null`/ausente es "Todos" (mixto): no filtra por nivel. Sin
+     * `nodoId` no tiene con qué cruzarse, así que no hace nada por sí sola.
+     */
+    dificultad: z.enum(NIVELES).optional().nullable(),
+    /**
+     * Elegidos A MANO por el docente, del banco: cuando llega con elementos,
+     * ES la tarea —ni `cantidadEjercicios` ni `dificultad` deciden nada más,
+     * la ruta los toma tal cual—. Vacío o ausente, con `origenEjercicios:
+     * "banco"`, es "automático": la ruta elige al azar del banco.
+     */
+    ejercicioIds: z.array(z.string().trim().min(1)).max(CANTIDAD_EJERCICIOS_MAX).optional(),
+    /**
+     * De dónde salen los ejercicios de la tarea. `"ia"` (el valor por
+     * defecto, y el único que existía antes de esta corrección) es el motor
+     * conversacional generando sobre la marcha; `"banco"` es el banco de
+     * ejercicios del docente —automático por tema/dificultad, o manual con
+     * `ejercicioIds`—. Explícito, y no deducido de si `dificultad` llegó o
+     * no, porque `dificultad: null` ("Todos") es un valor legítimo del modo
+     * banco, y confundirlo con "no mandaron nada" habría hecho caer en modo
+     * IA a una tarea que sí quería el banco, mixto.
+     */
+    origenEjercicios: z.enum(["ia", "banco"]).optional(),
   })
   .transform((t) => {
     const fechaInicio = new Date(t.fechaInicio);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { TextoMatematico } from "@/components/math";
 import { pedir } from "@/lib/docente/cliente";
 import {
   CANTIDAD_EJERCICIOS_MAX,
@@ -16,6 +17,7 @@ import {
   LIMITE_REINTENTOS_MAX,
   LIMITE_REINTENTOS_MIN,
 } from "@/lib/docente/aulas";
+import { ETIQUETA_NIVEL_CURRICULO, NIVELES, type Nivel } from "@/lib/docente/curriculo";
 import { cn } from "@/lib/utils";
 
 export interface AulaOpcion {
@@ -35,6 +37,16 @@ interface Props {
   temas: TemaOpcion[];
   aulaIdInicial?: string;
 }
+
+interface EjercicioOpcion {
+  id: string;
+  enunciado: string;
+  nivel: Nivel | null;
+  plantilla: boolean;
+}
+
+/** "Generación en vivo (IA)" es el único valor que NO usa el banco. */
+type OrigenEjercicios = "ia" | "todos" | Nivel;
 
 /**
  * ASIGNAR TAREA (HITO 3) — programar una tarea para un aula entera.
@@ -60,7 +72,40 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
     fechaVencimiento: "",
     cantidadEjercicios: "5",
     limiteReintentos: "3",
+    dificultad: "ia" as OrigenEjercicios,
   });
+  const usaBanco = datos.dificultad !== "ia";
+
+  // "Elegir ejercicios manualmente" (corrección QA: "Modo Selección Manual
+  // (Opcional)"): sólo tiene sentido con el banco, y sólo con un tema —el
+  // banco se organiza por `nodoId`—.
+  const [manual, setManual] = useState(false);
+  const [disponibles, setDisponibles] = useState<EjercicioOpcion[] | "cargando" | null>(null);
+  const [elegidos, setElegidos] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!manual || !usaBanco || !datos.nodoId) {
+      setDisponibles(null);
+      return;
+    }
+    setDisponibles("cargando");
+    const params = new URLSearchParams({ nodoId: datos.nodoId, estado: "PUBLICADO", validado: "true" });
+    if (datos.dificultad !== "todos") params.set("nivel", datos.dificultad);
+    void pedir<{ ejercicios: EjercicioOpcion[] }>(`/api/docente/ejercicios?${params}`).then((r) => {
+      // Las plantillas no tienen todavía un camino de resolución para el
+      // alumno (ver lib/docente/parametros.ts): no se ofrecen aquí.
+      setDisponibles(r.ok ? r.datos.ejercicios.filter((e) => !e.plantilla) : []);
+    });
+  }, [manual, usaBanco, datos.nodoId, datos.dificultad]);
+
+  const alternarElegido = (id: string) => {
+    setElegidos((prev) => {
+      const siguiente = new Set(prev);
+      if (siguiente.has(id)) siguiente.delete(id);
+      else siguiente.add(id);
+      return siguiente;
+    });
+  };
 
   const asignar = () => {
     if (!datos.aulaId) {
@@ -73,6 +118,14 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
     }
     if (!datos.fechaVencimiento) {
       setAviso({ tono: "mal", texto: "Elige una fecha de vencimiento." });
+      return;
+    }
+    if (usaBanco && !manual && !datos.nodoId) {
+      setAviso({ tono: "mal", texto: "Para armar la tarea desde el banco, elige un tema." });
+      return;
+    }
+    if (usaBanco && manual && elegidos.size === 0) {
+      setAviso({ tono: "mal", texto: "Elige al menos un ejercicio del banco." });
       return;
     }
 
@@ -96,6 +149,13 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
           cantidadEjercicios: Number(datos.cantidadEjercicios) || 5,
           limiteReintentos: Number(datos.limiteReintentos) || 0,
           nodoId: datos.nodoId || null,
+          ...(usaBanco
+            ? {
+                origenEjercicios: "banco" as const,
+                dificultad: datos.dificultad === "todos" ? null : datos.dificultad,
+                ...(manual ? { ejercicioIds: [...elegidos] } : {}),
+              }
+            : {}),
         },
       });
       if (r.ok) {
@@ -175,6 +235,81 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
           </div>
 
           <div className="space-y-1.5">
+            <Label htmlFor="tarea-dificultad">Dificultad de los ejercicios</Label>
+            <Select
+              id="tarea-dificultad"
+              value={datos.dificultad}
+              onChange={(e) => {
+                const dificultad = e.target.value as OrigenEjercicios;
+                setDatos({ ...datos, dificultad });
+                if (dificultad === "ia") setManual(false);
+              }}
+            >
+              <option value="ia">Generación en vivo (IA) — como antes</option>
+              <option value="todos">Todos (banco de ejercicios, mixto)</option>
+              {NIVELES.map((n) => (
+                <option key={n} value={n}>
+                  {ETIQUETA_NIVEL_CURRICULO[n]} (banco de ejercicios)
+                </option>
+              ))}
+            </Select>
+            {usaBanco && (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Los ejercicios salen de tu banco (<code>/docente/ejercicios</code>), no de la IA. Hace
+                  falta elegir un tema arriba para que sepa de dónde tomarlos.
+                </p>
+                <label className="flex items-center gap-2 pt-1 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={manual}
+                    onChange={(e) => setManual(e.target.checked)}
+                    className="h-4 w-4 rounded border-input"
+                  />
+                  Elegir ejercicios manualmente
+                </label>
+              </>
+            )}
+          </div>
+
+          {usaBanco && manual && (
+            <div className="space-y-1.5 rounded-md border p-3">
+              <Label>Ejercicios disponibles{datos.nodoId ? "" : " (elige un tema primero)"}</Label>
+              {disponibles === "cargando" ? (
+                <p className="text-sm text-muted-foreground">Cargando…</p>
+              ) : !disponibles || disponibles.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {datos.nodoId
+                    ? "No hay ejercicios publicados de ese tema y dificultad."
+                    : "Elige un tema para ver sus ejercicios."}
+                </p>
+              ) : (
+                <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {disponibles.map((e) => (
+                    <li key={e.id} className="flex items-start gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={elegidos.has(e.id)}
+                        onChange={() => alternarElegido(e.id)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-input"
+                      />
+                      <span className="leading-snug">
+                        <TextoMatematico texto={e.enunciado} />
+                        {e.nivel && (
+                          <span className="ml-1 text-xs text-muted-foreground">
+                            ({ETIQUETA_NIVEL_CURRICULO[e.nivel]})
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-xs text-muted-foreground">{elegidos.size} elegido(s).</p>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
             <Label htmlFor="tarea-titulo">Título</Label>
             <Input
               id="tarea-titulo"
@@ -225,9 +360,13 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
                 type="number"
                 min={CANTIDAD_EJERCICIOS_MIN}
                 max={CANTIDAD_EJERCICIOS_MAX}
-                value={datos.cantidadEjercicios}
+                value={usaBanco && manual ? elegidos.size : datos.cantidadEjercicios}
+                disabled={usaBanco && manual}
                 onChange={(e) => setDatos({ ...datos, cantidadEjercicios: e.target.value })}
               />
+              {usaBanco && manual && (
+                <p className="text-xs text-muted-foreground">La decide cuántos elegiste arriba.</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="tarea-reintentos">Límite de reintentos</Label>
