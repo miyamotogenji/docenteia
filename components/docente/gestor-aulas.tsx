@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TextoMatematico } from "@/components/math";
 import { pedir } from "@/lib/docente/cliente";
 import { GRADO_MAX, GRADO_MIN } from "@/lib/docente/aulas";
 import { cn } from "@/lib/utils";
@@ -45,11 +46,19 @@ interface TareaVista {
   limiteReintentos: number;
   entregadas: number;
   pendientes: number;
+  /** Del banco de ejercicios, si la tarea se armó así. Vacío = la IA los genera. */
+  ejercicioIds: string[];
 }
 
 interface FichaAula {
   estudiantes: { nombre: string; email: string }[];
   tareas: TareaVista[];
+}
+
+interface EjercicioVista {
+  enunciado: string;
+  respuestaCorrecta: string;
+  nivel: string | null;
 }
 
 interface Props {
@@ -145,6 +154,33 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
           ...f,
           [aulaId]: r.ok ? { estudiantes: r.datos.estudiantes, tareas: r.datos.tareas } : { estudiantes: [], tareas: [] },
         }));
+        if (!r.ok) setAviso({ tono: "mal", texto: r.error });
+      });
+    }
+  };
+
+  // "Ver ejercicios de la tarea" (corrección QA): sólo existe para una tarea
+  // armada desde el banco —`ejercicioIds` no vacío—; con la IA cada alumno
+  // recibe el suyo, generado en el momento, así que no hay un conjunto fijo
+  // que previsualizar.
+  const [verEjerciciosDe, setVerEjerciciosDe] = useState<string | null>(null);
+  const [ejerciciosVistos, setEjerciciosVistos] = useState<
+    Record<string, EjercicioVista[] | "cargando">
+  >({});
+
+  const verEjerciciosDeLaTarea = (tareaId: string, ejercicioIds: string[]) => {
+    if (verEjerciciosDe === tareaId) {
+      setVerEjerciciosDe(null);
+      return;
+    }
+    setVerEjerciciosDe(tareaId);
+    if (!ejerciciosVistos[tareaId]) {
+      setEjerciciosVistos((e) => ({ ...e, [tareaId]: "cargando" }));
+      iniciar(async () => {
+        const r = await pedir<{ ejercicios: EjercicioVista[] }>(
+          `/api/docente/ejercicios?ids=${ejercicioIds.join(",")}`,
+        );
+        setEjerciciosVistos((e) => ({ ...e, [tareaId]: r.ok ? r.datos.ejercicios : [] }));
         if (!r.ok) setAviso({ tono: "mal", texto: r.error });
       });
     }
@@ -373,6 +409,37 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                                   {t.pendientes} pendiente{t.pendientes === 1 ? "" : "s"}
                                 </span>
                               </p>
+                              {t.ejercicioIds.length > 0 && (
+                                <>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => verEjerciciosDeLaTarea(t.id, t.ejercicioIds)}
+                                  >
+                                    {verEjerciciosDe === t.id ? "Ocultar ejercicios" : "Ver ejercicios de la tarea"}
+                                  </Button>
+                                  {verEjerciciosDe === t.id && (
+                                    <div className="rounded border bg-background p-2 text-xs">
+                                      {ejerciciosVistos[t.id] === "cargando" ? (
+                                        <p className="text-muted-foreground">Cargando…</p>
+                                      ) : (
+                                        <ul className="space-y-2">
+                                          {(ejerciciosVistos[t.id] as EjercicioVista[]).map((e, i) => (
+                                            <li key={i} className="space-y-0.5">
+                                              <TextoMatematico texto={e.enunciado} />
+                                              <p className="text-muted-foreground">
+                                                Respuesta: {e.respuestaCorrecta}
+                                                {e.nivel ? ` · ${e.nivel}` : ""}
+                                              </p>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      )}
+                                    </div>
+                                  )}
+                                </>
+                              )}
                             </li>
                           ))}
                         </ul>

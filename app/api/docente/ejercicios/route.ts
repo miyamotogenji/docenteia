@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { conflicto, exigirDocente, fallo, leerCuerpo, noEncontrado } from "@/lib/docente/api";
-import { ESTADOS, ejercicioSchema, type Estado, type Motor } from "@/lib/docente/curriculo";
+import { ESTADOS, NIVELES, ejercicioSchema, type Estado, type Motor, type Nivel } from "@/lib/docente/curriculo";
 import { resolverAlcancePropio } from "@/lib/docente/alcance";
 import {
   SELECCION_EJERCICIO,
@@ -38,13 +38,21 @@ export async function GET(req: Request) {
   const nodoId = url.searchParams.get("nodoId");
   const estado = url.searchParams.get("estado");
   const validado = url.searchParams.get("validado");
+  const nivel = url.searchParams.get("nivel");
   const busqueda = (url.searchParams.get("q") ?? "").trim();
+  // "Ver ejercicios de la tarea" (HITO 3 — corrección QA) pide un conjunto
+  // EXACTO y ya conocido —los `ejercicioIds` de una tarea—, no un filtro.
+  const ids = url.searchParams.get("ids");
 
   const where: Prisma.EjercicioWhereInput = {};
+  if (ids) where.id = { in: ids.split(",").filter(Boolean) };
   if (nodoId) where.nodoId = nodoId;
   if (estado && (ESTADOS as readonly string[]).includes(estado)) where.estado = estado as Estado;
   if (validado === "true") where.validado = true;
   if (validado === "false") where.validado = false;
+  // Para armar una tarea desde el banco, por dificultad —antes sólo se podía
+  // filtrar en el navegador, después de traer TODO el banco—.
+  if (nivel && (NIVELES as readonly string[]).includes(nivel)) where.nivel = nivel as Nivel;
   if (busqueda) where.enunciado = { contains: busqueda, mode: "insensitive" };
 
   try {

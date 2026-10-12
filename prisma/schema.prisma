@@ -315,6 +315,20 @@ model Tarea {
   /// libre no tiene por qué colgar de ningún nodo formal.
   nodoId             String?
   nodo               NodoConocimiento? @relation(fields: [nodoId], references: [id], onDelete: SetNull)
+  /// Dificultad de los ejercicios del banco que se le asignaron. `null` es
+  /// "Todos" (mixto): no filtra por nivel. Sólo aplica cuando la tarea se
+  /// arma desde el banco —ver `ejercicioIds`—; una tarea sin banco (el motor
+  /// conversacional decide la dificultad por su cuenta) no la usa.
+  dificultad         NivelAcademico?
+  /// LOS EJERCICIOS DEL BANCO que le tocan a esta tarea, en el orden en que
+  /// se armó —automático (aleatorio por tema/dificultad) o manual (elegidos
+  /// uno a uno por el docente)—. Vacío significa "esta tarea no viene del
+  /// banco": la practica el motor conversacional, generando sobre la marcha,
+  /// como hacía toda tarea antes de esta corrección. Es un arreglo y no una
+  /// tabla intermedia a propósito: el ORDEN en que se guardó no importa para
+  /// resolverla —la miga de pan es de navegación libre—, pero si importa para
+  /// que "Ver ejercicios de la tarea" liste siempre lo mismo.
+  ejercicioIds       String[]          @default([])
   creadoEn           DateTime          @default(now())
 
   aulaId String
