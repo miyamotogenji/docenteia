@@ -985,6 +985,17 @@ export function Aula({
          * vivo y el ejercicio que el alumno está resolviendo no se toca.
          */
         soloExplicacion?: boolean;
+        /**
+         * "Al hacer clic en un ejercicio (1,2,3,4,5), el sistema debe
+         * posicionar al alumno DIRECTAMENTE en el modo de resolución… sin
+         * disparar locuciones ni pantallas teóricas intermedias" (corrección
+         * QA): la miga de pan lo activa para que la lección cargada no se
+         * reproduzca desde Concepto/Ejemplo, sino que salte derecho a la
+         * Práctica —el mismo mecanismo de `seek()` que ya usa "Saltar a la
+         * práctica", sólo que aplicado SOLO, sin esperar a que el alumno
+         * pulse nada—.
+         */
+        irDirectoAPractica?: boolean;
       } = {},
     ) => {
       // La pregunta que el alumno tenía delante, si pide una explicación en
@@ -1332,7 +1343,19 @@ export function Aula({
           estado.ejercicio = pizarras[pizarras.length - 1];
         }
 
-        pseRef.current?.play(lsg);
+        if (opciones.irDirectoAPractica) {
+          const reproductor = pseRef.current;
+          if (reproductor) {
+            reproductor.load(lsg);
+            const indice = reproductor.timeline.findIndex(
+              (d) => d.tipo === "modulo" && esFaseDePractica(String(d.id ?? "")),
+            );
+            if (indice !== -1) reproductor.seek(indice);
+            void reproductor.play();
+          }
+        } else {
+          pseRef.current?.play(lsg);
+        }
       } catch {
         setError("No se pudo contactar con el servidor. Revisa tu conexión.");
       } finally {
@@ -1498,7 +1521,10 @@ export function Aula({
       if (cargando) return;
       setRevisando(null);
       setSlotActivo(i);
-      void pedirLeccion("Dame otro ejemplo", { seguimiento: "continuacion" });
+      void pedirLeccion("Dame otro ejemplo", {
+        seguimiento: "continuacion",
+        irDirectoAPractica: true,
+      });
     },
     [slotActivo, detallesEjercicios, cargando, terminoLaLeccion, pedirLeccion],
   );

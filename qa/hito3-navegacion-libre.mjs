@@ -242,6 +242,11 @@ const estadoVisible = () =>
       tareaCompletada: /Tarea completada/.test(texto),
       nota: (texto.match(/Nota:\s*(\d+)\s*\/\s*100/) || [])[1] ?? null,
       migas,
+      // "El sistema debe posicionar al alumno DIRECTAMENTE en el modo de
+      // resolución (fase = 'practica')… sin disparar… pantallas teóricas
+      // intermedias": la fase activa de la pizarra, tal como la marca el
+      // propio componente.
+      faseActiva: document.querySelector(".pz-pizarra")?.getAttribute("data-fase") ?? null,
       revision: (texto.match(/Tu respuesta: ([^\n(]+)\(([^)]+)\)/) || null)?.slice(1) ?? null,
       narrando: [...document.querySelectorAll("button")].some((b) => /^Pausa$/.test((b.textContent ?? "").trim())),
     };
@@ -298,6 +303,17 @@ check(
   /pendiente/.test(estado.migas.find((m) => m.numero === 2)?.estado ?? ""),
   JSON.stringify(estado.migas),
 );
+
+// "El sistema debe posicionar al alumno DIRECTAMENTE en el modo de
+// resolución… sin disparar… pantallas teóricas intermedias" (corrección
+// QA): nunca debe pasar por Concepto/Ejemplo al saltar por la miga de pan.
+estado = await esperar((e) => e.hayInput && e.preguntaLatex, 20_000);
+check(
+  "el salto a un ejercicio pendiente va DIRECTO a Práctica, sin pasar por Ejemplo/Concepto",
+  /practica|práctica/i.test(estado.faseActiva ?? ""),
+  `faseActiva=${estado.faseActiva}`,
+);
+
 await resolverElVisible();
 estado = await esperar((e) => (e.migas.find((m) => m.numero === 3)?.estado ?? "") === "completado", 20_000);
 check("el ejercicio 3 queda 'completado' fuera de orden", /completado/.test(estado.migas.find((m) => m.numero === 3)?.estado ?? ""), JSON.stringify(estado.migas));
