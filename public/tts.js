@@ -308,6 +308,23 @@ export class TTS {
     if (this._desbloqueado) return;
     const a = this._elemento();
     if (!a) return;
+    // SI YA ESTÁ SONANDO ALGO DE VERDAD, EL AUDIO YA ESTÁ DESBLOQUEADO.
+    //
+    // Bug reportado por el cliente: "al hacer clic en cualquier zona de la
+    // pantalla, la locución se corta y el avatar se queda en silencio sin
+    // reanudar". Causa confirmada: una tarea con tema asociado arranca la
+    // lección SOLA (sin que el alumno haya hecho clic en nada), así que la
+    // narración de verdad ya está sonando por este MISMO elemento <audio>
+    // cuando llega el primer clic del alumno —en cualquier parte de la
+    // pantalla, el gesto que este oyente espera—. Sin esta guarda, se le
+    // pisaba el `src` con el silencio de desbloqueo; pisar `src` no dispara
+    // "ended" ni "error", así que la promesa que `_reproducir` tiene
+    // pendiente para ESA frase real se queda colgada para siempre: de ahí
+    // el corte que no se recupera solo.
+    if (!a.paused && !a.ended) {
+      this._desbloqueado = true;
+      return;
+    }
     this._desbloqueado = true;
     try {
       a.muted = true;

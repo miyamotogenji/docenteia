@@ -156,6 +156,13 @@ export interface TareaActiva {
   intentosPrevios: number;
 }
 
+/** Un ejercicio ya resuelto de la tarea, para la miga de pan y su revisión. */
+interface DetalleEjercicio {
+  enunciado: string;
+  correcto: boolean;
+  respuestaDada: string | null;
+}
+
 export function Aula({
   temas = TEMAS_LECCION,
   reglas = [],
@@ -242,16 +249,28 @@ export function Aula({
    */
   const ultimoEnunciadoContadoRef = useRef<string | null>(null);
 
-  /** Ejercicios resueltos y aciertos de la tarea en curso, para el cupo y la nota. */
-  const [progresoTarea, setProgresoTarea] = useState({ hechos: 0, aciertos: 0 });
   /**
-   * El resultado DE CADA ejercicio, en orden (true = acierto), para la miga de
-   * pan numerada: "el alumno no sabe cuáles son los ejercicios que le tocan
-   * ni puede ver su progreso global" (corrección QA). Un elemento por
-   * ejercicio ya resuelto; su longitud es la misma cuenta que
-   * `progresoTarea.hechos`, llevada aparte para no tener que reconstruirla.
+   * Los ejercicios YA RESUELTOS de la tarea, indexados por su puesto en la
+   * miga de pan (0-based). Se llena en el orden en que el alumno los
+   * resuelve —no necesariamente 0,1,2…—, porque la miga de pan es de
+   * NAVEGACIÓN LIBRE (corrección QA: "si desea saltarse el ejercicio 2 para
+   * resolver primero el 3… la interfaz no responde").
    */
-  const [resultadosEjercicios, setResultadosEjercicios] = useState<boolean[]>([]);
+  const [detallesEjercicios, setDetallesEjercicios] = useState<Record<number, DetalleEjercicio>>(
+    {},
+  );
+  /**
+   * Qué puesto de la miga de pan está ocupando la pizarra AHORA MISMO: el
+   * que se está narrando o esperando respuesta. Clic en un círculo PENDIENTE
+   * lo cambia y pide un ejercicio nuevo PARA ESE puesto —no el siguiente de
+   * la fila—; al resolverse, avanza solo al próximo pendiente, para que
+   * quien nunca toca la miga de pan siga viviendo la fila de siempre.
+   */
+  const [slotActivo, setSlotActivo] = useState(0);
+  const slotActivoRef = useRef(0);
+  slotActivoRef.current = slotActivo;
+  /** Qué ejercicio YA RESUELTO se está REVISANDO (sólo lectura), o ninguno. */
+  const [revisando, setRevisando] = useState<number | null>(null);
   const [envioTarea, setEnvioTarea] = useState<"pendiente" | "enviando" | "lista" | "error">(
     "pendiente",
   );
@@ -869,9 +888,11 @@ export function Aula({
         // CUPO DE LA TAREA (HITO 3 — corrección QA). Sólo cuenta una ronda que
         // termina en PRÁCTICA —ni Concepto ni Reglas ni el ejemplo que resuelve
         // el tutor son ejercicios del alumno— y cuyo enunciado es distinto del
-        // último contado, para no contar dos veces la misma aclaración. Pasado
-        // el cupo no se sigue sumando: "Reiniciar lección" no debe poder
-        // inflarlo.
+        // último contado, para no contar dos veces la misma aclaración. Se
+        // anota en el puesto ACTIVO de la miga de pan —el que se pidió, no
+        // necesariamente "el siguiente"—, y luego se avanza sola al próximo
+        // puesto pendiente, para que quien nunca toca la miga de pan siga
+        // viviendo la fila de siempre.
         const tareaActual = tareaRef.current;
         if (tareaActual) {
           const ultimaFase = fasesRef.current[fasesRef.current.length - 1]?.id ?? "";
@@ -882,14 +903,30 @@ export function Aula({
             enunciadoActual !== ultimoEnunciadoContadoRef.current
           ) {
             ultimoEnunciadoContadoRef.current = enunciadoActual;
-            setProgresoTarea((prev) =>
-              prev.hechos >= tareaActual.cantidadEjercicios
-                ? prev
-                : { hechos: prev.hechos + 1, aciertos: prev.aciertos + (acerto ? 1 : 0) },
-            );
-            setResultadosEjercicios((prev) =>
-              prev.length >= tareaActual.cantidadEjercicios ? prev : [...prev, Boolean(acerto)],
-            );
+            const puesto = slotActivoRef.current;
+            setDetallesEjercicios((prev) => {
+              if (prev[puesto] || Object.keys(prev).length >= tareaActual.cantidadEjercicios) {
+                return prev;
+              }
+              const siguiente = {
+                ...prev,
+                [puesto]: {
+                  enunciado: enunciadoActual,
+                  correcto: Boolean(acerto),
+                  respuestaDada: respuesta ?? null,
+                },
+              };
+              // El próximo puesto PENDIENTE, en orden: el que ocupará la
+              // pizarra si el alumno simplemente sigue adelante sin tocar la
+              // miga de pan.
+              for (let i = 0; i < tareaActual.cantidadEjercicios; i++) {
+                if (!siguiente[i]) {
+                  setSlotActivo(i);
+                  break;
+                }
+              }
+              return siguiente;
+            });
           }
         }
 
@@ -1358,17 +1395,21 @@ export function Aula({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tarea?.temaClave]);
 
+  /** Cuántos de los ejercicios de la tarea ya tienen un resultado anotado. */
+  const ejerciciosHechos = Object.keys(detallesEjercicios).length;
+  const ejerciciosAcertados = Object.values(detallesEjercicios).filter((d) => d.correcto).length;
+
   // Al llegar al cupo, la tarea se entrega sola —"la sesión debe detenerse,
   // calcular el puntaje, registrar la entrega… y mostrar una pantalla de
   // cierre con la calificación obtenida"—, con la nota de aciertos sobre el
   // total de ejercicios de la tarea. `envioTarea` evita reenviarla si el
-  // efecto se repite (p. ej. al cambiar `progresoTarea` por otro motivo).
+  // efecto se repite (p. ej. al cambiar `detallesEjercicios` por otro motivo).
   useEffect(() => {
     if (!tarea) return;
-    if (progresoTarea.hechos < tarea.cantidadEjercicios) return;
+    if (ejerciciosHechos < tarea.cantidadEjercicios) return;
     if (envioTarea !== "pendiente") return;
     setEnvioTarea("enviando");
-    const puntaje = Math.round((progresoTarea.aciertos / tarea.cantidadEjercicios) * 100);
+    const puntaje = Math.round((ejerciciosAcertados / tarea.cantidadEjercicios) * 100);
     fetch(`/api/estudiante/tareas/${tarea.id}/entregar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1380,7 +1421,7 @@ export function Aula({
         setEnvioTarea("lista");
       })
       .catch(() => setEnvioTarea("error"));
-  }, [tarea, progresoTarea, envioTarea]);
+  }, [tarea, ejerciciosHechos, ejerciciosAcertados, envioTarea]);
 
   /**
    * ¿Tiene sentido ofrecer "Reintentar" tras esta entrega? Misma cuenta que
@@ -1397,8 +1438,9 @@ export function Aula({
    * práctica de nuevo—.
    */
   const reintentarTarea = useCallback(() => {
-    setProgresoTarea({ hechos: 0, aciertos: 0 });
-    setResultadosEjercicios([]);
+    setDetallesEjercicios({});
+    setSlotActivo(0);
+    setRevisando(null);
     setEnvioTarea("pendiente");
     ultimoEnunciadoContadoRef.current = null;
     if (tema) empezarTema(tema);
@@ -1424,6 +1466,42 @@ export function Aula({
     reproductor.seek(indice);
     void reproductor.play();
   }, []);
+
+  /**
+   * Clic en un círculo de la miga de pan (corrección QA: "el alumno debe
+   * tener libre navegación para hacer clic en cualquiera de los ejercicios
+   * de la tarea… y cargarlo en la pizarra para resolverlo en el orden que
+   * prefiera").
+   *
+   * Pendiente → se pide un ejercicio nuevo PARA ESE puesto (el mismo camino
+   * que "Dame otro ejemplo", sólo que apuntado a un número concreto en vez
+   * de "el que sigue"). Ya resuelto → se abre (o se cierra, si ya estaba
+   * abierta) su revisión de sólo lectura, sin tocar el reproductor: lo que
+   * la pizarra esté narrando ahora mismo sigue como estaba. El puesto
+   * activo no hace nada —ya es el que se ve—.
+   */
+  const irAlEjercicio = useCallback(
+    (i: number) => {
+      if (detallesEjercicios[i]) {
+        setRevisando((actual) => (actual === i ? null : i));
+        return;
+      }
+      // Ya es el activo Y ya tiene algo en curso —una pregunta en pantalla,
+      // o la narración de su propio ejemplo— : no hay nada que volver a
+      // pedir. `terminoLaLeccion` es la señal correcta, no sólo "es el mismo
+      // número": el avance automático al siguiente pendiente (ver el
+      // `onLessonEnd` más arriba) deja `slotActivo` apuntando a un puesto
+      // que YA es "el activo" pero que TODAVÍA no tiene ejercicio pedido —si
+      // se tratara aquí como "ya en curso", un clic sobre su propio círculo
+      // no hacía nada en absoluto.
+      if (i === slotActivo && !terminoLaLeccion) return;
+      if (cargando) return;
+      setRevisando(null);
+      setSlotActivo(i);
+      void pedirLeccion("Dame otro ejemplo", { seguimiento: "continuacion" });
+    },
+    [slotActivo, detallesEjercicios, cargando, terminoLaLeccion, pedirLeccion],
+  );
 
   // ── Envío de la respuesta del alumno ───────────────────────────────────────
   const responder = useCallback(async () => {
@@ -1643,7 +1721,7 @@ export function Aula({
   }, [ejercicio, desarrollo, reglasDelTema, subtitulo]);
 
   /** La tarea llegó a su cupo de ejercicios: se acabó la práctica, toca el cierre. */
-  const tareaCompleta = Boolean(tarea) && progresoTarea.hechos >= (tarea?.cantidadEjercicios ?? 0);
+  const tareaCompleta = Boolean(tarea) && ejerciciosHechos >= (tarea?.cantidadEjercicios ?? 0);
 
   /**
    * ¿Está sonando el tutor AHORA MISMO? (corrección QA, "bug crítico de
@@ -1758,36 +1836,64 @@ export function Aula({
           {tarea && !tareaCompleta && (
             <div className="space-y-1.5">
               <p className="text-sm font-medium text-muted-foreground">
-                Ejercicio {Math.min(progresoTarea.hechos + 1, tarea.cantidadEjercicios)} de{" "}
-                {tarea.cantidadEjercicios}
+                Ejercicio {slotActivo + 1} de {tarea.cantidadEjercicios}
               </p>
               {/* "El alumno no sabe cuáles son los ejercicios que le tocan ni
-                  puede ver su progreso global" (corrección QA): miga de pan
-                  numerada, un círculo por ejercicio de la tarea. */}
-              <div className="flex items-center gap-1.5" aria-hidden="true">
+                  puede ver su progreso global… debe tener libre navegación
+                  para hacer clic en cualquiera de los ejercicios de la
+                  tarea" (corrección QA): miga de pan numerada y CLICABLE —un
+                  pendiente pide ese ejercicio, uno ya resuelto abre su
+                  revisión—. */}
+              <div className="flex items-center gap-1.5">
                 {Array.from({ length: tarea.cantidadEjercicios }, (_, i) => {
                   const estado =
-                    i < resultadosEjercicios.length
-                      ? "completado"
-                      : i === resultadosEjercicios.length
-                        ? "actual"
-                        : "pendiente";
+                    i === slotActivo ? "actual" : detallesEjercicios[i] ? "completado" : "pendiente";
                   return (
-                    <span
+                    <button
                       key={i}
+                      type="button"
                       title={`Ejercicio ${i + 1}: ${estado}`}
+                      aria-current={i === slotActivo ? "step" : undefined}
+                      aria-pressed={revisando === i}
+                      disabled={estado === "pendiente" && cargando}
+                      onClick={() => irAlEjercicio(i)}
                       className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
-                        estado === "completado" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+                        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors",
+                        "disabled:cursor-not-allowed disabled:opacity-50",
+                        estado === "completado" &&
+                          cn(
+                            "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400",
+                            revisando === i && "ring-2 ring-emerald-600",
+                          ),
                         estado === "actual" && "bg-primary text-primary-foreground",
-                        estado === "pendiente" && "bg-muted text-muted-foreground",
+                        estado === "pendiente" && "bg-muted text-muted-foreground hover:bg-muted/70",
                       )}
                     >
                       {i + 1}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
+              {/* La revisión de un ejercicio ya resuelto: sólo lectura, no
+                  toca el reproductor —lo que esté narrando el puesto activo
+                  sigue sonando igual—. */}
+              {revisando != null && detallesEjercicios[revisando] && (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">Ejercicio {revisando + 1}</p>
+                  <p className="text-muted-foreground">{detallesEjercicios[revisando].enunciado}</p>
+                  <p
+                    className={cn(
+                      "mt-1 font-medium",
+                      detallesEjercicios[revisando].correcto
+                        ? "text-emerald-700 dark:text-emerald-400"
+                        : "text-amber-700 dark:text-amber-500",
+                    )}
+                  >
+                    Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"} (
+                    {detallesEjercicios[revisando].correcto ? "correcta" : "incorrecta"})
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -2096,10 +2202,10 @@ export function Aula({
                 {envioTarea === "lista" && (
                   <>
                     <p className="text-lg font-semibold">
-                      Nota: {Math.round((progresoTarea.aciertos / tarea.cantidadEjercicios) * 100)}/100
+                      Nota: {Math.round((ejerciciosAcertados / tarea.cantidadEjercicios) * 100)}/100
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      {progresoTarea.aciertos} de {tarea.cantidadEjercicios} ejercicios correctos.
+                      {ejerciciosAcertados} de {tarea.cantidadEjercicios} ejercicios correctos.
                     </p>
                     <div className="flex flex-wrap gap-2">
                       <Button asChild size="sm">
