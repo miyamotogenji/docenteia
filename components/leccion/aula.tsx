@@ -244,6 +244,14 @@ export function Aula({
 
   /** Ejercicios resueltos y aciertos de la tarea en curso, para el cupo y la nota. */
   const [progresoTarea, setProgresoTarea] = useState({ hechos: 0, aciertos: 0 });
+  /**
+   * El resultado DE CADA ejercicio, en orden (true = acierto), para la miga de
+   * pan numerada: "el alumno no sabe cuáles son los ejercicios que le tocan
+   * ni puede ver su progreso global" (corrección QA). Un elemento por
+   * ejercicio ya resuelto; su longitud es la misma cuenta que
+   * `progresoTarea.hechos`, llevada aparte para no tener que reconstruirla.
+   */
+  const [resultadosEjercicios, setResultadosEjercicios] = useState<boolean[]>([]);
   const [envioTarea, setEnvioTarea] = useState<"pendiente" | "enviando" | "lista" | "error">(
     "pendiente",
   );
@@ -879,6 +887,9 @@ export function Aula({
                 ? prev
                 : { hechos: prev.hechos + 1, aciertos: prev.aciertos + (acerto ? 1 : 0) },
             );
+            setResultadosEjercicios((prev) =>
+              prev.length >= tareaActual.cantidadEjercicios ? prev : [...prev, Boolean(acerto)],
+            );
           }
         }
 
@@ -1387,6 +1398,7 @@ export function Aula({
    */
   const reintentarTarea = useCallback(() => {
     setProgresoTarea({ hechos: 0, aciertos: 0 });
+    setResultadosEjercicios([]);
     setEnvioTarea("pendiente");
     ultimoEnunciadoContadoRef.current = null;
     if (tema) empezarTema(tema);
@@ -1633,6 +1645,29 @@ export function Aula({
   /** La tarea llegó a su cupo de ejercicios: se acabó la práctica, toca el cierre. */
   const tareaCompleta = Boolean(tarea) && progresoTarea.hechos >= (tarea?.cantidadEjercicios ?? 0);
 
+  /**
+   * ¿Está sonando el tutor AHORA MISMO? (corrección QA, "bug crítico de
+   * audio/avatar"). El cliente reportó que interactuar —responder, pedir
+   * otro ejercicio— mientras el tutor todavía está narrando deja la lección
+   * "congelada": el siguiente ejercicio no llega, o el avatar se queda
+   * hablando sin parar. Confirmado en vivo: el mismo recorrido, esperando a
+   * que CADA locución termine antes de tocar algo, nunca falla; haciéndolo
+   * de prisa, sí. En vez de perseguir la condición de carrera exacta dentro
+   * del reproductor —código ya validado en producción, que no es de este
+   * módulo—, se cierra la puerta por la que se entra a ella: mientras suena,
+   * los botones que avanzan la lección se desactivan un instante.
+   *
+   * `hablando` —no `controles.playing`— es la señal correcta: `playing`
+   * sigue en `true` todo el rato que el motor espera la respuesta del
+   * alumno (la pregunta QUEDÓ planteada, la "reproducción" de la lección no
+   * ha terminado), así que atarse a él dejaba "Responder" desactivado para
+   * siempre en cuanto aparecía la pregunta. `hablando` es el mismo booleano
+   * que ya gobierna el avatar —tutor Y pizarra comparten un único
+   * sintetizador, ver `lib/leccion/voz.ts`—: sólo es verdadero mientras
+   * ALGUIEN tiene la voz, que es exactamente la ventana que hay que cerrar.
+   */
+  const narrando = hablando;
+
   // ── Elección de tema ───────────────────────────────────────────────────────
   if (!tema) {
     return (
@@ -1721,10 +1756,39 @@ export function Aula({
               tarea, no la fase. Desaparece al llegar al cupo —ahí lo que toca
               ver es la pantalla de cierre, más abajo—. */}
           {tarea && !tareaCompleta && (
-            <p className="text-sm font-medium text-muted-foreground">
-              Ejercicio {Math.min(progresoTarea.hechos + 1, tarea.cantidadEjercicios)} de{" "}
-              {tarea.cantidadEjercicios}
-            </p>
+            <div className="space-y-1.5">
+              <p className="text-sm font-medium text-muted-foreground">
+                Ejercicio {Math.min(progresoTarea.hechos + 1, tarea.cantidadEjercicios)} de{" "}
+                {tarea.cantidadEjercicios}
+              </p>
+              {/* "El alumno no sabe cuáles son los ejercicios que le tocan ni
+                  puede ver su progreso global" (corrección QA): miga de pan
+                  numerada, un círculo por ejercicio de la tarea. */}
+              <div className="flex items-center gap-1.5" aria-hidden="true">
+                {Array.from({ length: tarea.cantidadEjercicios }, (_, i) => {
+                  const estado =
+                    i < resultadosEjercicios.length
+                      ? "completado"
+                      : i === resultadosEjercicios.length
+                        ? "actual"
+                        : "pendiente";
+                  return (
+                    <span
+                      key={i}
+                      title={`Ejercicio ${i + 1}: ${estado}`}
+                      className={cn(
+                        "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium",
+                        estado === "completado" && "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400",
+                        estado === "actual" && "bg-primary text-primary-foreground",
+                        estado === "pendiente" && "bg-muted text-muted-foreground",
+                      )}
+                    >
+                      {i + 1}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
           )}
         </div>
         {/* Con una tarea en curso no hay "otro tema" al que cambiarse: el
@@ -1943,7 +2007,7 @@ export function Aula({
                   className="flex gap-2"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void responder();
+                    if (!narrando) void responder();
                   }}
                 >
                   <Input
@@ -1953,10 +2017,16 @@ export function Aula({
                     placeholder="Tu respuesta"
                     aria-label="Tu respuesta"
                   />
-                  <Button type="submit" disabled={!borrador.trim()}>
+                  <Button type="submit" disabled={!borrador.trim() || narrando}>
                     Responder
                   </Button>
                 </form>
+                {/* Se puede escribir la respuesta desde ya —la tarjeta no se
+                    "congela"—; lo único que espera un instante es el envío,
+                    para no competir con la voz que todavía está narrando. */}
+                {narrando && (
+                  <p className="text-xs text-muted-foreground">Espera a que termine de hablar…</p>
+                )}
               </CardContent>
             </Card>
           )}
@@ -2061,46 +2131,57 @@ export function Aula({
             </Card>
           ) : (
             /* Botones contextuales de apoyo */
-            <div className="flex flex-wrap gap-2">
-              {BOTONES_APOYO.map((b) => (
+            <div className="space-y-2">
+              <div className="flex flex-wrap gap-2">
+                {BOTONES_APOYO.map((b) => (
+                  <Button
+                    key={b.etiqueta}
+                    variant="secondary"
+                    size="sm"
+                    disabled={cargando || !listo || narrando}
+                    onClick={() =>
+                      void pedirLeccion(b.consulta, {
+                        seguimiento: b.seguimiento,
+                        parte: b.parte,
+                        soloExplicacion: b.soloExplicacion,
+                      })
+                    }
+                  >
+                    {b.etiqueta}
+                  </Button>
+                ))}
                 <Button
-                  key={b.etiqueta}
                   variant="secondary"
                   size="sm"
-                  disabled={cargando || !listo}
+                  disabled={cargando || !listo || narrando}
                   onClick={() =>
-                    void pedirLeccion(b.consulta, {
-                      seguimiento: b.seguimiento,
-                      parte: b.parte,
-                      soloExplicacion: b.soloExplicacion,
+                    void pedirLeccion("Proponme un problema más difícil", {
+                      seguimiento: "mas_dificil",
                     })
                   }
                 >
-                  {b.etiqueta}
+                  Más difícil
                 </Button>
-              ))}
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={cargando || !listo}
-                onClick={() =>
-                  void pedirLeccion("Proponme un problema más difícil", {
-                    seguimiento: "mas_dificil",
-                  })
-                }
-              >
-                Más difícil
-              </Button>
-              <Button
-                variant="secondary"
-                size="sm"
-                disabled={cargando || !listo}
-                onClick={() =>
-                  void pedirLeccion("Ahora uno más fácil", { seguimiento: "mas_facil" })
-                }
-              >
-                Más fácil
-              </Button>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  disabled={cargando || !listo || narrando}
+                  onClick={() =>
+                    void pedirLeccion("Ahora uno más fácil", { seguimiento: "mas_facil" })
+                  }
+                >
+                  Más fácil
+                </Button>
+              </div>
+              {/* "Al hacer clic en cualquier zona de la pantalla durante la
+                  lección... el avatar entra en un estado de habla infinito"
+                  (corrección QA): pedir el siguiente paso MIENTRAS el tutor
+                  sigue narrando el anterior es lo que lo dispara. Se espera
+                  aquí, no en el reproductor —código ya validado, ajeno a
+                  este módulo—. */}
+              {narrando && (
+                <p className="text-xs text-muted-foreground">Espera a que termine de hablar…</p>
+              )}
             </div>
           )}
         </div>

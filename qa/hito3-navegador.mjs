@@ -245,6 +245,11 @@ const estadoVisible = () =>
     const texto = document.body.innerText ?? "";
     const contador = texto.match(/Ejercicio (\d+) de (\d+)/);
     const boton = (patron) => [...document.querySelectorAll("button")].some((b) => patron.test(b.textContent ?? ""));
+    const botonHabilitado = (patron) =>
+      [...document.querySelectorAll("button")].some((b) => patron.test(b.textContent ?? "") && !b.disabled);
+    // La miga de pan numerada (corrección QA): un círculo por ejercicio de la
+    // tarea, con su estado codificado en el título (`title="Ejercicio N: …"`).
+    const migas = [...document.querySelectorAll("[title^='Ejercicio ']")].map((s) => s.getAttribute("title"));
     return {
       titulo: document.querySelector("h1")?.textContent ?? null,
       contador: contador ? { actual: Number(contador[1]), total: Number(contador[2]) } : null,
@@ -256,6 +261,12 @@ const estadoVisible = () =>
       selectorDeTemas: /Elige un tema/.test(texto),
       botonSaltarTeoria: boton(/Saltar a la práctica/),
       botonReintentar: boton(/Reintentar/),
+      // "Pausa" sólo se ve mientras el tutor está narrando (el botón pasa a
+      // "Reproducir" en cuanto calla): es la misma señal que usa la interfaz
+      // para desactivar Responder/Dame otro ejemplo mientras suena.
+      narrando: boton(/^Pausa$/),
+      responderHabilitado: botonHabilitado(/^Responder$/),
+      migas,
     };
   });
 
@@ -269,6 +280,18 @@ async function esperar(cond, ms, cada = 300) {
   return e;
 }
 
+/**
+ * Espera a que el tutor TERMINE de narrar antes de devolver el control.
+ *
+ * "Al hacer clic... mientras el tutor todavía está narrando, la lección se
+ * congela" (corrección QA, bug crítico de audio/avatar): confirmado en vivo
+ * contra el despliegue real —el mismo recorrido, sin prisa, nunca falla—.
+ * Esta batería ya no le gana la carrera a la voz a propósito.
+ */
+async function esperarSilencio(ms = 30_000) {
+  return esperar((e) => !e.narrando, ms);
+}
+
 /** "19 + 45" → "64". Misma función que qa/navegador.mjs, para aritmética simple. */
 function resolverPregunta(latex) {
   const e = String(latex ?? "").replace(/\s+/g, "");
@@ -276,13 +299,21 @@ function resolverPregunta(latex) {
   return s ? String(s[2] === "+" ? Number(s[1]) + Number(s[3]) : Number(s[1]) - Number(s[3])) : null;
 }
 
-let estado = await esperar((e) => e.contador != null || e.hayInput, 15_000);
+let estado = await esperar((e) => e.contador != null || e.hayInput, 20_000);
 check("la lección arranca DIRECTA en el tema de la tarea, sin el selector", !estado.selectorDeTemas, JSON.stringify(estado));
 check("no se ofrece 'Cambiar de tema' con una tarea en curso", !estado.cambiarDeTema);
 check(
   "el contador arranca en 'Ejercicio 1 de 2'",
   estado.contador?.actual === 1 && estado.contador?.total === 2,
   JSON.stringify(estado.contador),
+);
+
+// "El alumno no sabe cuáles son los ejercicios que le tocan ni puede ver su
+// progreso global" (corrección QA): la miga de pan, un círculo por ejercicio.
+check(
+  "la miga de pan trae un círculo por cada ejercicio de la tarea, el 1º 'actual'",
+  estado.migas.length === 2 && /actual/.test(estado.migas[0]) && /pendiente/.test(estado.migas[1]),
+  JSON.stringify(estado.migas),
 );
 
 // "Cada vez que ingreso me sale toda la teoría, quiero poder saltarla"
@@ -294,12 +325,25 @@ if (estado.botonSaltarTeoria) {
   await pagina.getByRole("button", { name: /Saltar a la práctica/ }).click();
 }
 
+let yaSeComprobóElCandado = false;
+
 /** Resuelve UN ejercicio ya visible (enunciado + input) con la respuesta correcta. */
 async function resolverElEjercicioVisible() {
-  const e = await esperar((e) => e.hayInput && e.preguntaLatex, 15_000);
+  const e = await esperar((e) => e.hayInput && e.preguntaLatex, 45_000);
+  // "Bug crítico de audio/avatar" (corrección QA): mientras el tutor narra la
+  // PREGUNTA, Responder debe verse pero estar desactivado —es justo la
+  // ventana en la que interactuar dejaba la lección atascada—. Se comprueba
+  // una sola vez, con la primera pregunta que llega todavía narrando.
+  if (!yaSeComprobóElCandado && e.narrando) {
+    yaSeComprobóElCandado = true;
+    check("mientras el tutor narra la pregunta, 'Responder' está desactivado", !e.responderHabilitado, JSON.stringify(e));
+  }
+  // Escribir la respuesta no espera —la tarjeta no se "congela"—, pero
+  // ENVIARLA sí: Responder queda desactivado mientras el tutor narra.
   const r = resolverPregunta(e.preguntaLatex);
   if (r != null) {
     await pagina.locator("input[placeholder*='respuesta' i]").fill(r);
+    await esperar((e) => e.responderHabilitado, 45_000);
     await pagina.getByRole("button", { name: /Responder/ }).click();
   }
   return e;
@@ -310,16 +354,24 @@ async function resolverLaTareaEntera() {
   const primero = await resolverElEjercicioVisible();
   check("aparece un ejercicio con su enunciado", Boolean(primero.preguntaLatex), JSON.stringify(primero));
 
-  let e = await esperar((e) => e.contador?.actual === 2 || e.tareaCompletada, 20_000);
+  let e = await esperar((e) => e.contador?.actual === 2 || e.tareaCompletada, 45_000);
   if (!e.tareaCompletada) {
+    check(
+      "tras el 1er ejercicio, su círculo pasa a 'completado' y el 2º a 'actual'",
+      /completado/.test(e.migas[0] ?? "") && /actual/.test(e.migas[1] ?? ""),
+      JSON.stringify(e.migas),
+    );
     // Un ejercicio resuelto no trae el siguiente solo: hace falta pedirlo,
     // igual que en la lección libre. Lo que acota la tarea es el TOPE, no
-    // que cada ejercicio aparezca sin que nadie lo pida.
+    // que cada ejercicio aparezca sin que nadie lo pida. Y, de nuevo, se
+    // espera a que la retroalimentación del anterior termine de sonar antes
+    // de pedirlo.
+    await esperarSilencio();
     await pagina.getByRole("button", { name: /Dame otro ejemplo/ }).click();
     await resolverElEjercicioVisible();
   }
 
-  e = await esperar((e) => e.tareaCompletada, 20_000);
+  e = await esperar((e) => e.tareaCompletada, 45_000);
   check("al resolver el cupo entero aparece la pantalla de cierre", e.tareaCompletada, JSON.stringify(e));
   // La tarjeta aparece en cuanto se completa el cupo, ANTES de que termine el
   // POST a /entregar ("Registrando tu entrega…"): la nota se pinta un
@@ -346,7 +398,7 @@ check(
 
 // ── Reintento: se pulsa "Reintentar" y se resuelve de nuevo ──────────────────
 await pagina.getByRole("button", { name: /Reintentar/ }).click();
-estado = await esperar((e) => e.contador?.actual === 1, 15_000);
+estado = await esperar((e) => e.contador?.actual === 1, 30_000);
 check("al reintentar, el contador vuelve a 'Ejercicio 1 de 2'", estado.contador?.actual === 1, JSON.stringify(estado));
 
 estado = await resolverLaTareaEntera();
