@@ -10,6 +10,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  SkipForward,
   Volume2,
   VolumeX,
 } from "lucide-react";
@@ -149,6 +150,10 @@ export interface TareaActiva {
   id: string;
   cantidadEjercicios: number;
   temaClave: string | null;
+  /** 0 = sin tope de reintentos. Igual que `Tarea.limiteReintentos` en el servidor. */
+  limiteReintentos: number;
+  /** Cuántos intentos de esta tarea ya había registrados ANTES de abrir esta página. */
+  intentosPrevios: number;
 }
 
 export function Aula({
@@ -242,6 +247,14 @@ export function Aula({
   const [envioTarea, setEnvioTarea] = useState<"pendiente" | "enviando" | "lista" | "error">(
     "pendiente",
   );
+  /**
+   * Cuántos intentos de la tarea hay en total, contando los de antes de abrir
+   * esta página. Crece con cada entrega aceptada (ver el `useEffect` de envío
+   * más abajo) y es lo que decide si "Reintentar" tiene sentido ofrecerlo:
+   * `puedeEntregar` en el servidor es la autoridad real, esto es sólo para no
+   * mostrar el botón cuando ya se sabe que el servidor lo va a rechazar.
+   */
+  const [intentosHechos, setIntentosHechos] = useState(() => tarea?.intentosPrevios ?? 0);
 
   /** Todo lo que el tutor ha narrado en la lección, para detectar la regla. */
   const narrado = useRef<string[]>([]);
@@ -1351,9 +1364,54 @@ export function Aula({
       body: JSON.stringify({ puntaje, completada: true }),
     })
       .then((r) => (r.ok ? r : Promise.reject(r)))
-      .then(() => setEnvioTarea("lista"))
+      .then(() => {
+        setIntentosHechos((n) => n + 1);
+        setEnvioTarea("lista");
+      })
       .catch(() => setEnvioTarea("error"));
   }, [tarea, progresoTarea, envioTarea]);
+
+  /**
+   * ¿Tiene sentido ofrecer "Reintentar" tras esta entrega? Misma cuenta que
+   * `puedeEntregar` en el servidor, vista desde DESPUÉS de la entrega que se
+   * acaba de aceptar: si el próximo intento todavía entraría en el tope.
+   */
+  const puedenQuedarReintentos =
+    tarea != null && (tarea.limiteReintentos === 0 || intentosHechos < tarea.limiteReintentos + 1);
+
+  /**
+   * Vuelve a intentar la tarea desde el principio: mismo tema, cupo y
+   * contador en cero. `puedeEntregar` en el servidor es quien de verdad
+   * decide si el reintento se acepta al terminar —esto sólo abre la
+   * práctica de nuevo—.
+   */
+  const reintentarTarea = useCallback(() => {
+    setProgresoTarea({ hechos: 0, aciertos: 0 });
+    setEnvioTarea("pendiente");
+    ultimoEnunciadoContadoRef.current = null;
+    if (tema) empezarTema(tema);
+  }, [tema, empezarTema]);
+
+  /**
+   * "Saltar a la práctica" (corrección QA): el cliente, con una tarea
+   * asignada, veía Concepto/Reglas/Ejemplo completos CADA VEZ que entraba, sin
+   * forma de saltarlos ("quiero poder saltarla"). El LSG de la lección ya
+   * trae TODA la lección de una vez —`pseRef.current.timeline` tiene, desde
+   * el principio, el módulo de Práctica aunque la voz todavía esté en
+   * Concepto—, así que no hace falta pedir nada nuevo al servidor: basta con
+   * saltar (`seek`) al primer módulo de práctica y reanudar la reproducción
+   * desde ahí.
+   */
+  const saltarTeoria = useCallback(() => {
+    const reproductor = pseRef.current;
+    if (!reproductor) return;
+    const indice = reproductor.timeline.findIndex(
+      (d) => d.tipo === "modulo" && esFaseDePractica(String(d.id ?? "")),
+    );
+    if (indice === -1) return;
+    reproductor.seek(indice);
+    void reproductor.play();
+  }, []);
 
   // ── Envío de la respuesta del alumno ───────────────────────────────────────
   const responder = useCallback(async () => {
@@ -1744,6 +1802,22 @@ export function Aula({
                 <RotateCcw className="h-4 w-4" />
                 Reiniciar lección
               </Button>
+              {/* "No he visualizado ningún cambio... cada vez que ingreso me
+                  sale toda la teoría, quiero poder saltarla" (corrección QA):
+                  con una tarea en curso, el alumno puede ir directo a la
+                  práctica sin esperar a que termine Concepto/Reglas/Ejemplo. */}
+              {tarea && !tareaCompleta && controles.hasLesson && !esFaseDePractica(faseAbierta) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="w-full"
+                  disabled={cargando}
+                  onClick={saltarTeoria}
+                >
+                  <SkipForward className="h-4 w-4" />
+                  Saltar a la práctica
+                </Button>
+              )}
               <p className="text-center text-[11px] leading-tight text-muted-foreground">
                 {estadoVoz}
               </p>
@@ -1957,9 +2031,21 @@ export function Aula({
                     <p className="text-sm text-muted-foreground">
                       {progresoTarea.aciertos} de {tarea.cantidadEjercicios} ejercicios correctos.
                     </p>
-                    <Button asChild size="sm">
-                      <Link href="/estudiante/tareas">Volver a mis tareas</Link>
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button asChild size="sm">
+                        <Link href="/estudiante/tareas">Volver a mis tareas</Link>
+                      </Button>
+                      {/* "El alumno pueda rehacer la tarea después para
+                          mejorar su nota" (corrección QA): sólo se ofrece si
+                          todavía hay reintentos — el servidor es quien de
+                          verdad lo decide al entregar. */}
+                      {puedenQuedarReintentos && (
+                        <Button size="sm" variant="outline" onClick={reintentarTarea}>
+                          <RotateCcw className="h-4 w-4" />
+                          Reintentar para mejorar la nota
+                        </Button>
+                      )}
+                    </div>
                   </>
                 )}
                 {envioTarea === "error" && (

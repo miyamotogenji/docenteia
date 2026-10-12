@@ -172,7 +172,7 @@ check("entregaSchema admite un puntaje entre 0 y 100", entregaSchema.safeParse({
   );
 }
 
-// puedeEntregar: las tres puertas.
+// puedeEntregar: las dos puertas.
 {
   const ahora = new Date("2026-06-15T12:00:00.000Z");
   const tarea = { fechaVencimiento: new Date("2026-06-20T00:00:00.000Z"), limiteReintentos: 2 };
@@ -181,19 +181,27 @@ check("entregaSchema admite un puntaje entre 0 y 100", entregaSchema.safeParse({
   check("tarea vencida, no se puede", puedeEntregar(vencida, null, ahora) !== null);
   check(
     "con limiteReintentos=2 (tope 3 intentos), al 3er intento usado ya no se puede",
-    puedeEntregar(tarea, { intentosUsados: 3, completada: false }, ahora) !== null,
+    puedeEntregar(tarea, { intentosUsados: 3 }, ahora) !== null,
   );
   check(
     "…pero al 2º intento usado SÍ, todavía le queda uno",
-    puedeEntregar(tarea, { intentosUsados: 2, completada: false }, ahora) === null,
+    puedeEntregar(tarea, { intentosUsados: 2 }, ahora) === null,
   );
   check(
     "limiteReintentos=0 es SIN TOPE: muchos intentos usados y sigue pudiendo",
-    puedeEntregar({ ...tarea, limiteReintentos: 0 }, { intentosUsados: 50, completada: false }, ahora) === null,
+    puedeEntregar({ ...tarea, limiteReintentos: 0 }, { intentosUsados: 50 }, ahora) === null,
+  );
+  // Corrección QA: "el alumno pueda rehacer la tarea después para mejorar su
+  // nota". Antes `completada: true` bloqueaba cualquier otra entrega sin
+  // importar los reintentos que quedaran —eso volvía inútil configurar
+  // `limiteReintentos` a más de 1—; ahora sólo el tope de reintentos decide.
+  check(
+    "una tarea ya completada SÍ se puede reentregar, si quedan reintentos",
+    puedeEntregar(tarea, { intentosUsados: 1, completada: true }, ahora) === null,
   );
   check(
-    "una tarea ya completada no se puede volver a entregar",
-    puedeEntregar(tarea, { intentosUsados: 1, completada: true }, ahora) !== null,
+    "…pero no más allá del tope de reintentos, completada o no",
+    puedeEntregar(tarea, { intentosUsados: 3, completada: true }, ahora) !== null,
   );
 }
 
@@ -416,11 +424,19 @@ if (!salud) {
     check("la tarea aparece en el listado del alumno, pendiente", laSuya?.estado === "pendiente", JSON.stringify(laSuya));
 
     // 7. Se entrega dos veces (1 + 1 reintento = tope 2) y la tercera se bloquea.
+    //
+    // El primer intento ya llega COMPLETADA: true —"el alumno pueda rehacer la
+    // tarea después para mejorar su nota" (corrección QA)—, y aun así el
+    // reintento se acepta: `completada` ya no es, por sí sola, un candado.
     const entregar = (cuerpo) => apiAlumno(`/api/estudiante/tareas/${tareaId}/entregar`, { method: "POST", body: JSON.stringify(cuerpo) });
-    const rE1 = await entregar({ puntaje: 60, completada: false });
-    check("1er intento se acepta", rE1.status === 200, `HTTP ${rE1.status}`);
+    const rE1 = await entregar({ puntaje: 60, completada: true });
+    check("1er intento se acepta (y ya marca completada: true)", rE1.status === 200, `HTTP ${rE1.status}`);
     const rE2 = await entregar({ puntaje: 80, completada: true });
-    check("2º intento (el reintento permitido) se acepta", rE2.status === 200, `HTTP ${rE2.status}`);
+    check(
+      "2º intento (el reintento permitido) se acepta IGUAL, aunque el 1º ya estaba completada",
+      rE2.status === 200,
+      `HTTP ${rE2.status}`,
+    );
     const rE3 = await entregar({ puntaje: 90, completada: true });
     check("3er intento, sin reintentos que quedan, se bloquea con 409", rE3.status === 409, `HTTP ${rE3.status}`);
 
