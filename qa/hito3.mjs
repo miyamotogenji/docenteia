@@ -603,6 +603,24 @@ if (!salud) {
       body: JSON.stringify({ nombre: "X", grado: GRADO_MAX + 1, seccion: "A" }),
     });
     check("un grado fuera de rango no se guarda", rGradoMalo.status === 400, `HTTP ${rGradoMalo.status}`);
+
+    // 15. Borrar un aula (corrección QA: lo necesita la limpieza de las aulas
+    //     de prueba que dejaron en la cuenta de demostración las baterías
+    //     corridas contra el sitio publicado). Va al final: borra el aula
+    //     que toda la batería viene usando.
+    if (sesionDirector) {
+      const rBorrarAjena = await fetch(`${BASE}/api/docente/aulas/${aulaId}`, {
+        method: "DELETE",
+        headers: { cookie: sesionDirector },
+      });
+      check("un no-titular no puede borrar el aula de otro docente", rBorrarAjena.status === 404, `HTTP ${rBorrarAjena.status}`);
+    }
+    const rBorrar = await api(`/api/docente/aulas/${aulaId}`, { method: "DELETE" });
+    check("el docente titular SÍ puede borrar su propia aula", rBorrar.status === 200, `HTTP ${rBorrar.status}`);
+    const rFichaTrasBorrar = await api(`/api/docente/aulas/${aulaId}`);
+    check("…y tras borrarla, su ficha ya no existe", rFichaTrasBorrar.status === 404, `HTTP ${rFichaTrasBorrar.status}`);
+    const rBorrarDeNuevo = await api(`/api/docente/aulas/${aulaId}`, { method: "DELETE" });
+    check("borrar un aula ya borrada da 404, no un error de servidor", rBorrarDeNuevo.status === 404, `HTTP ${rBorrarDeNuevo.status}`);
   }
 }
 
