@@ -359,6 +359,16 @@ model EntregaTarea {
   intentosUsados Int       @default(0)
   completada     Boolean   @default(false)
   fechaEntrega   DateTime?
+  /// El desglose del ÚLTIMO intento: un array de {enunciado, respuestaDada,
+  /// respuestaCorrecta, correcto}, en el orden en que se resolvieron.
+  ///
+  /// Sin esto, "Ver resultado" sólo podía mostrar algo el mismo rato en que
+  /// el alumno terminaba la tarea —el desglose vivía nada más que en el
+  /// estado de React de esa sesión—; en cuanto volvía más tarde desde "Mis
+  /// tareas", no había NADA que recuperar. Guardar el texto resuelto en vez
+  /// de sólo ids es deliberado: a una tarea del motor conversacional no hay
+  /// `Ejercicio` al que volver a consultar después.
+  detalle        Json      @default("[]")
   creadoEn       DateTime  @default(now())
   actualizadoEn  DateTime  @updatedAt
 

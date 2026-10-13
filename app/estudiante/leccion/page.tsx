@@ -6,11 +6,12 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { Aula, type ProgresoTema, type ReglaVista } from "@/components/leccion/aula";
 import { TareaDeBanco } from "@/components/estudiante/tarea-de-banco";
+import { ResultadoTarea } from "@/components/estudiante/resultado-tarea";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cursoDelPerfil, describirCurso } from "@/lib/curriculo/etapas";
 import { temasDisponiblesPara } from "@/lib/leccion/disponibles";
-import { puedeEntregar } from "@/lib/docente/aulas";
+import { puedeEntregar, type DetalleEjercicio } from "@/lib/docente/aulas";
 import { temaPorMotor } from "@/lib/leccion/temas";
 
 export const metadata: Metadata = { title: "Lección" };
@@ -42,7 +43,7 @@ function EstadoDeTarea({ titulo, mensaje }: { titulo: string; mensaje: string })
 export default async function PaginaLeccion({
   searchParams,
 }: {
-  searchParams: Promise<{ tareaId?: string }>;
+  searchParams: Promise<{ tareaId?: string; intentar?: string }>;
 }) {
   const sesion = await auth();
   if (!sesion?.user) redirect("/login");
@@ -61,7 +62,7 @@ export default async function PaginaLeccion({
   // —`puedeEntregar`—: no hay una regla para dejar PRACTICAR y otra distinta
   // para dejar ENTREGAR, porque practicar sin poder entregar después sería
   // trabajo del alumno que no puede llegar a ningún lado.
-  const { tareaId } = await searchParams;
+  const { tareaId, intentar } = await searchParams;
   let tareaActiva: {
     id: string;
     cantidadEjercicios: number;
@@ -95,6 +96,29 @@ export default async function PaginaLeccion({
     });
 
     const bloqueo = puedeEntregar(tarea, entrega);
+
+    // "VER RESULTADO" (HITO 3 — corrección QA): una tarea YA entregada se
+    // revisita por este mismo enlace —`/estudiante/tareas` manda aquí tanto
+    // para empezarla como para repasarla—, y lo que antes recibía era, o la
+    // tarjeta de bloqueo en texto plano (si ya no quedaban reintentos o
+    // venció), o un intento nuevo silencioso (si sí quedaban): ninguno de los
+    // dos vuelve a mostrar el desglose del intento ya hecho. `intentar=1` es
+    // el único camino que lo salta a propósito —el botón "Reintentar" de esta
+    // misma pantalla—, y sólo cuenta si `puedeEntregar` lo permite.
+    const quiereReintentar = intentar === "1" && !bloqueo;
+    if (entrega?.completada && !quiereReintentar) {
+      return (
+        <ResultadoTarea
+          titulo={tarea.titulo}
+          puntaje={entrega.puntaje}
+          detalle={Array.isArray(entrega.detalle) ? (entrega.detalle as unknown as DetalleEjercicio[]) : []}
+          puedeReintentar={!bloqueo}
+          tareaId={tarea.id}
+          mensajeBloqueo={bloqueo}
+        />
+      );
+    }
+
     if (bloqueo) {
       return (
         <EstadoDeTarea

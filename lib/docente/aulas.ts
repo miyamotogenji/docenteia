@@ -133,9 +133,33 @@ export type EntradaTarea = z.infer<typeof tareaSchema>;
  * Con cuánta ejecución queda una entrega: lo que manda el alumno al terminar
  * su intento (o uno de sus reintentos).
  */
+/**
+ * Un ejercicio resuelto, para el desglose que "Ver resultado" vuelve a
+ * mostrar más tarde.
+ *
+ * `ejercicioId`, cuando viene de una tarea del banco, es lo que deja que el
+ * SERVIDOR rellene `respuestaCorrecta` él mismo al entregar —nunca lo que
+ * mande el navegador—: revelarla antes de ese momento sería el mismo atajo
+ * que ya cierra `GET .../resultado`.
+ */
+export const detalleEjercicioSchema = z.object({
+  ejercicioId: z.string().optional().nullable(),
+  enunciado: z.string(),
+  respuestaDada: z.string().nullable(),
+  respuestaCorrecta: z.string().nullable(),
+  correcto: z.boolean(),
+});
+export type DetalleEjercicio = z.infer<typeof detalleEjercicioSchema>;
+
 export const entregaSchema = z.object({
   puntaje: z.number().min(0).max(100).optional(),
   completada: z.boolean().optional(),
+  /**
+   * El desglose del intento: opcional —una entrega manual, de otra vía,
+   * puede no traerlo—, y cuando llega REEMPLAZA al anterior entero: es del
+   * último intento, no se acumula entre reintentos.
+   */
+  detalle: z.array(detalleEjercicioSchema).optional(),
 });
 export type EntradaEntrega = z.infer<typeof entregaSchema>;
 

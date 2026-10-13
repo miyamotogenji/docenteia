@@ -99,6 +99,15 @@ export default async function PaginaMisTareas() {
                   {entrega?.puntaje != null && (
                     <p className="text-sm font-medium">Nota: {entrega.puntaje}/100</p>
                   )}
+                  {/* "El estudiante no puede saber cuántos intentos tiene
+                      permitidos ni cuántos le quedan" (corrección QA). */}
+                  {estado !== "vencida" && (
+                    <p className="text-xs text-muted-foreground">
+                      {t.limiteReintentos === 0
+                        ? "Reintentos sin límite"
+                        : `${t.limiteReintentos + 1 - (entrega?.intentosUsados ?? 0)} de ${t.limiteReintentos + 1} intento${t.limiteReintentos === 0 ? "" : "s"} disponibles`}
+                    </p>
+                  )}
                   {estado === "vencida" ? (
                     <Button size="sm" disabled className="w-full">
                       Ya venció

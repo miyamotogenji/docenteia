@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -69,6 +70,35 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       return NextResponse.json({ error: bloqueo }, { status: 409 });
     }
 
+    // El desglose es del intento que se acaba de entregar: reemplaza al
+    // anterior entero, no se acumula ("Ver resultado" muestra el ÚLTIMO
+    // intento, igual que `puntaje" ya hacía).
+    let detalle = parsed.data.detalle ?? (existente?.detalle as Prisma.InputJsonValue | undefined) ?? [];
+
+    // RESPUESTA CORRECTA, SÓLO DEL SERVIDOR. Un ejercicio del banco trae su
+    // `ejercicioId`; el navegador nunca manda su `respuestaCorrecta` —la
+    // tarea ya está entregada a esta altura, así que revelarla aquí ya no
+    // es un atajo para adivinar—. Se pisa lo que haya llegado, no se confía
+    // en lo que mande el cliente para este campo en concreto.
+    if (Array.isArray(detalle) && tarea.ejercicioIds.length > 0) {
+      const idsDelDetalle = detalle
+        .map((d) => (d && typeof d === "object" && "ejercicioId" in d ? (d as { ejercicioId?: string }).ejercicioId : null))
+        .filter((id): id is string => Boolean(id));
+      if (idsDelDetalle.length > 0) {
+        const ejercicios = await prisma.ejercicio.findMany({
+          where: { id: { in: idsDelDetalle } },
+          select: { id: true, respuestaCorrecta: true },
+        });
+        const respuestaPorId = new Map(ejercicios.map((e) => [e.id, e.respuestaCorrecta]));
+        detalle = detalle.map((d) => {
+          if (!d || typeof d !== "object" || !("ejercicioId" in d)) return d;
+          const entrada = d as { ejercicioId?: string; respuestaCorrecta?: string | null };
+          const real = entrada.ejercicioId ? respuestaPorId.get(entrada.ejercicioId) : undefined;
+          return real !== undefined ? { ...entrada, respuestaCorrecta: real } : d;
+        });
+      }
+    }
+
     const entrega = await prisma.entregaTarea.upsert({
       where: { tareaId_estudianteId: { tareaId, estudianteId: sesion.user.id } },
       create: {
@@ -78,12 +108,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         puntaje: parsed.data.puntaje ?? null,
         completada: parsed.data.completada ?? false,
         fechaEntrega: parsed.data.completada ? new Date() : null,
+        detalle,
       },
       update: {
         intentosUsados: { increment: 1 },
         puntaje: parsed.data.puntaje ?? existente?.puntaje ?? null,
         completada: parsed.data.completada ?? existente?.completada ?? false,
         fechaEntrega: parsed.data.completada ? new Date() : (existente?.fechaEntrega ?? null),
+        detalle,
       },
     });
 
