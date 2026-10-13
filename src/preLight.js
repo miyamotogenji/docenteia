@@ -293,8 +293,18 @@ export function computeDerivative(text) {
   // fuera x (daba "1") y calificar mal. Solo se soportan polinomios en x.
   if (/\b(sen|sin|cos|tan|cot|sec|csc|log|ln|exp|ra[ií]z|sqrt)\b|√|e\s*\^|[a-hj-z]\s*\(/i.test(fn)) return null;
   if (fn.includes("=")) return null; // "x³ = 3x²" es ambiguo → no derivar
+  // Coeficientes fraccionarios entre paréntesis ("(5/2)x²") se evalúan a su decimal
+  // ANTES de aislar los caracteres matemáticos de abajo: ese paso borra "(", ")" y "/"
+  // sin dejar nada en su lugar, así que "(5/2)x²" quedaba "52x²" —las cifras de los dos
+  // lados de la fracción pegadas en una sola, "52"— y la regla de la potencia devolvía
+  // un coeficiente por completo inventado (×2 de "52", no de "2.5"). Encontrado con
+  // "x³ - (5/2)x² + 10x": daba "3x² - 104x + 10" en vez de "3x² - 5x + 10".
+  const fnConFracciones = fn.replace(
+    /\(\s*(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*\)/g,
+    (_, a, b) => String(Number(a) / Number(b)),
+  );
   // Aísla SOLO los caracteres matemáticos (quita conectores "de", "la"… que quedan delante).
-  const s = fn.replace(/[^0-9x+\-*·^.]/gi, "");
+  const s = fnConFracciones.replace(/[^0-9x+\-*·^.]/gi, "");
   if (!s || !/x/.test(s)) return null; // sin variable x → no es una función derivable aquí
   // PRODUCTO DE DOS FACTORES CON x ("x³ · x⁴", "x·x", "3x² * x"): eso es la REGLA DEL PRODUCTO, que
   // este motor NO calcula. El tokenizador de abajo admite el "*" como separador del coeficiente

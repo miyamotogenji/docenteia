@@ -37,6 +37,7 @@ import {
   type ReglaPizarra,
 } from "@/components/leccion/pizarra";
 import { TextoTutor } from "@/components/leccion/texto-tutor";
+import { TextoMatematico } from "@/components/math";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -921,6 +922,10 @@ export function Aula({
           ) {
             ultimoEnunciadoContadoRef.current = enunciadoActual;
             const puesto = slotActivoRef.current;
+            // "La tarjeta del ejercicio previo no se desmonta" (corrección
+            // QA): al avanzar SOLO tras resolver uno, nada cerraba una
+            // revisión que hubiera quedado abierta de un ejercicio anterior.
+            setRevisando(null);
             setDetallesEjercicios((prev) => {
               if (prev[puesto] || Object.keys(prev).length >= tareaActual.cantidadEjercicios) {
                 return prev;
@@ -1451,10 +1456,16 @@ export function Aula({
     if (envioTarea !== "pendiente") return;
     setEnvioTarea("enviando");
     const puntaje = Math.round((ejerciciosAcertados / tarea.cantidadEjercicios) * 100);
+    // El desglose, en el mismo orden en que se resolvieron: lo que "Ver
+    // resultado" vuelve a mostrar más tarde, cuando ya no quede nada de esto
+    // en el estado de React de esta visita.
+    const detalle = Array.from({ length: tarea.cantidadEjercicios }, (_, i) => detallesEjercicios[i]).filter(
+      (d): d is DetalleEjercicio => Boolean(d),
+    );
     fetch(`/api/estudiante/tareas/${tarea.id}/entregar`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ puntaje, completada: true }),
+      body: JSON.stringify({ puntaje, completada: true, detalle }),
     })
       .then((r) => (r.ok ? r : Promise.reject(r)))
       .then(() => {
@@ -1462,7 +1473,7 @@ export function Aula({
         setEnvioTarea("lista");
       })
       .catch(() => setEnvioTarea("error"));
-  }, [tarea, ejerciciosHechos, ejerciciosAcertados, envioTarea]);
+  }, [tarea, ejerciciosHechos, ejerciciosAcertados, envioTarea, detallesEjercicios]);
 
   /**
    * ¿Tiene sentido ofrecer "Reintentar" tras esta entrega? Misma cuenta que
@@ -1883,6 +1894,13 @@ export function Aula({
               <p className="text-sm font-medium text-muted-foreground">
                 Ejercicio {slotActivo + 1} de {tarea.cantidadEjercicios}
               </p>
+              {/* "El estudiante no puede saber cuántos intentos tiene
+                  permitidos ni cuántos le quedan" (corrección QA). */}
+              <p className="text-xs text-muted-foreground">
+                {tarea.limiteReintentos === 0
+                  ? `Intento ${intentosHechos + 1} (sin límite de reintentos)`
+                  : `Intento ${intentosHechos + 1} de ${tarea.limiteReintentos + 1}`}
+              </p>
               {/* "El alumno no sabe cuáles son los ejercicios que le tocan ni
                   puede ver su progreso global… debe tener libre navegación
                   para hacer clic en cualquiera de los ejercicios de la
@@ -1933,9 +1951,11 @@ export function Aula({
               {revisando != null && detallesEjercicios[revisando] && (
                 <div className="rounded-md border bg-muted/30 p-3 text-sm">
                   <p className="font-medium">Ejercicio {revisando + 1}</p>
-                  <p className="text-muted-foreground">{detallesEjercicios[revisando].enunciado}</p>
+                  <p className="text-muted-foreground">
+                    <TextoMatematico texto={detallesEjercicios[revisando].enunciado} />
+                  </p>
                   <p className="mt-1 font-medium">
-                    Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"}
+                    Tu respuesta: <TextoMatematico texto={detallesEjercicios[revisando].respuestaDada ?? "—"} />
                   </p>
                 </div>
               )}
@@ -2285,11 +2305,17 @@ export function Aula({
                     {revisando != null && detallesEjercicios[revisando] && (
                       <div className="rounded-md border bg-muted/30 p-3 text-sm">
                         <p className="font-medium">Ejercicio {revisando + 1}</p>
-                        <p className="text-muted-foreground">{detallesEjercicios[revisando].enunciado}</p>
-                        <p className="mt-1">Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"}</p>
+                        <p className="text-muted-foreground">
+                          <TextoMatematico texto={detallesEjercicios[revisando].enunciado} />
+                        </p>
+                        <p className="mt-1">
+                          Tu respuesta:{" "}
+                          <TextoMatematico texto={detallesEjercicios[revisando].respuestaDada ?? "—"} />
+                        </p>
                         {!detallesEjercicios[revisando].correcto && (
                           <p className="text-emerald-700 dark:text-emerald-400">
-                            Respuesta correcta: {detallesEjercicios[revisando].respuestaCorrecta ?? "—"}
+                            Respuesta correcta:{" "}
+                            <TextoMatematico texto={detallesEjercicios[revisando].respuestaCorrecta ?? "—"} />
                           </p>
                         )}
                       </div>

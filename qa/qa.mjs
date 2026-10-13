@@ -2151,6 +2151,21 @@ async function unitTests() {
   check("derivada: polinomio de grado 4 (3x⁴-6x²+9x-2 → 12x³-12x+9)", computeDerivative("derivada de g(x) = 3x⁴ - 6x² + 9x - 2") === "12x³ - 12x + 9");
   check("derivada: función NO polinómica (sen) sigue → null", computeDerivative("derivada de sen(x)") === null);
   check("derivada: computeAnswer también la calcula", computeAnswer("¿Cuál es la derivada de x³?") === "3x²");
+  // Reportado por el cliente (HITO 3 — corrección QA): "x³ - (5/2)x² + 10x" daba
+  // "3x² - 104x + 10". La causa era que, al aislar los caracteres matemáticos, se
+  // borraban "(", ")" y "/" sin dejar nada en su lugar, así que "(5/2)x²" quedaba
+  // "52x²" —el 5 y el 2 de la fracción pegados en una sola cifra— y la regla de la
+  // potencia multiplicaba 52×2 = 104 en vez de 2.5×2 = 5.
+  check(
+    "derivada: coeficiente fraccionario entre paréntesis ('(5/2)x² → -5x', no '-104x')",
+    computeDerivative("derivada de x^3 - (5/2)x^2 + 10x") === "3x² - 5x + 10",
+    `→ ${JSON.stringify(computeDerivative("derivada de x^3 - (5/2)x^2 + 10x"))}`,
+  );
+  check(
+    "derivada: otra fracción entre paréntesis ('x² + (1/3)x³ → x² + 2x', no dígitos pegados)",
+    computeDerivative("derivada de x^2 + (1/3)x^3") === "x² + 2x",
+    `→ ${JSON.stringify(computeDerivative("derivada de x^2 + (1/3)x^3"))}`,
+  );
   check("califica derivada: '2x' es INCORRECTO para 3x²", checkAnswer("2x", "3x²").correct === false);
   check("califica derivada: '3' NO cuela para 3x²", checkAnswer("3", "3x²").correct === false);
   check("califica derivada: '3x' NO cuela para 3x²", checkAnswer("3x", "3x²").correct === false);

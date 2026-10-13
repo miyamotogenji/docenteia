@@ -396,17 +396,94 @@ check(
   JSON.stringify(laSuya1),
 );
 
-// ── Reintento: se pulsa "Reintentar" y se resuelve de nuevo ──────────────────
-await pagina.getByRole("button", { name: /Reintentar/ }).click();
+/**
+ * Lee la pantalla de "Ver resultado" persistida: una NUEVA carga de página en
+ * `/estudiante/leccion?tareaId=…`, como hace el enlace homónimo de
+ * `/estudiante/tareas` —no el cierre en-sesión de la propia lección—.
+ */
+const leerResultadoPersistido = () =>
+  pagina.evaluate(() => {
+    const texto = document.body.innerText ?? "";
+    const detalles = [...document.querySelectorAll("details")];
+    const resumenes = detalles.map((d) => d.querySelector("summary")?.textContent ?? "");
+    // `.textContent`, no `document.body.innerText`: cada fila es un `<details>`
+    // CERRADO por defecto (se abre con un clic), y lo de dentro de un
+    // `<details>` cerrado no cuenta para `innerText` —que sólo lee lo
+    // visible—, aunque sí está en el documento.
+    const textoDelDesglose = detalles.map((d) => d.textContent ?? "").join(" ");
+    return {
+      tareaCompletada: /Tarea completada/.test(texto),
+      nota: (texto.match(/Nota:\s*(\d+)\s*\/\s*100/) || [])[1] ?? null,
+      cantidadDesglose: detalles.length,
+      desgloseTodoCorrecto: resumenes.length > 0 && resumenes.every((r) => /✓/.test(r)),
+      tieneRespuestaRenderizada: /Tu respuesta:/.test(textoDelDesglose),
+      enlaceReintentar: [...document.querySelectorAll("a")].some((a) =>
+        /Reintentar para mejorar la nota/.test(a.textContent ?? ""),
+      ),
+      mensajeSinReintentos: /ya no te quedan reintentos|esta tarea ya venció/i.test(texto),
+    };
+  });
+
+// "Ver resultado" persistido (corrección QA, punto 4): navegar FUERA de la
+// lección y volver —el mismo camino que usa ese botón desde /estudiante/tareas,
+// en vez del cierre en-sesión que ya prueba otra cosa— debe mostrar el
+// desglose completo del intento ya entregado (KaTeX, respuesta del alumno,
+// círculos ✓/✗), no la tarjeta de bloqueo en texto plano ni un intento nuevo
+// silencioso.
+await pagina.goto(`${BASE}/estudiante/tareas`, { waitUntil: "networkidle" });
+await pagina.goto(`${BASE}/estudiante/leccion?tareaId=${tarea.tarea.id}`, { waitUntil: "networkidle" });
+let resultado = await leerResultadoPersistido();
+check(
+  "al volver más tarde (nueva carga de página) se ve el resultado persistido, no la tarjeta de bloqueo",
+  resultado.tareaCompletada && resultado.nota === "100",
+  JSON.stringify(resultado),
+);
+check(
+  "…con un desglose de los 2 ejercicios, los dos marcados ✓",
+  resultado.cantidadDesglose === 2 && resultado.desgloseTodoCorrecto,
+  JSON.stringify(resultado),
+);
+check("…con la respuesta del alumno visible (renderizada, no bloqueada)", resultado.tieneRespuestaRenderizada, JSON.stringify(resultado));
+check(
+  "…y como quedan reintentos, se ofrece 'Reintentar para mejorar la nota'",
+  resultado.enlaceReintentar,
+  JSON.stringify(resultado),
+);
+
+// ── Reintento: desde la vista persistida (confirma que `intentar=1` de
+// verdad reanuda la práctica, no sólo que el enlace aparece) ────────────────
+await pagina.getByRole("link", { name: /Reintentar para mejorar la nota/ }).click();
 estado = await esperar((e) => e.contador?.actual === 1, 30_000);
 check("al reintentar, el contador vuelve a 'Ejercicio 1 de 2'", estado.contador?.actual === 1, JSON.stringify(estado));
+check(
+  "…y el contador del intento muestra 'Intento 2 de 2'",
+  /Intento\s*2\s*de\s*2/.test((await pagina.evaluate(() => document.body.innerText)) ?? ""),
+);
 
 estado = await resolverLaTareaEntera();
 check("…el 2º intento también registra su nota", estado.nota === "100", `nota=${estado.nota}`);
 
 // Con el tope de reintentos ya agotado (2 de 2), "Reintentar" ya NO debe
-// ofrecerse: el servidor lo rechazaría con 409 si se pulsara.
+// ofrecerse en el cierre en-sesión: el servidor lo rechazaría con 409 si se
+// pulsara.
 check("tras agotar los reintentos, NO se ofrece 'Reintentar'", !estado.botonReintentar, JSON.stringify(estado));
+
+// …ni al volver más tarde a la vista persistida: en vez del enlace, el aviso
+// de que ya no quedan reintentos, pero CON el desglose igual de completo.
+await pagina.goto(`${BASE}/estudiante/tareas`, { waitUntil: "networkidle" });
+await pagina.goto(`${BASE}/estudiante/leccion?tareaId=${tarea.tarea.id}`, { waitUntil: "networkidle" });
+resultado = await leerResultadoPersistido();
+check(
+  "agotados los reintentos, 'Ver resultado' sigue mostrando el desglose completo",
+  resultado.tareaCompletada && resultado.nota === "100" && resultado.cantidadDesglose === 2,
+  JSON.stringify(resultado),
+);
+check(
+  "…pero sin ofrecer 'Reintentar', con el aviso de que ya no quedan",
+  !resultado.enlaceReintentar && resultado.mensajeSinReintentos,
+  JSON.stringify(resultado),
+);
+
 check("la consola del navegador no soltó ningún error en todo el recorrido", erroresConsola.length === 0, erroresConsola.join(" | "));
 
 // La entrega del servidor refleja el 2º intento: dos intentos usados.

@@ -78,6 +78,12 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
       return;
     }
     setBorrador("");
+    // "La tarjeta del ejercicio previo no se desmonta" (corrección QA): no
+    // era un problema de reconciliación de React —era que, al avanzar SOLO
+    // tras responder, nada cerraba una revisión que hubiera quedado abierta
+    // de un ejercicio anterior, así que su tarjeta seguía viéndose junto a
+    // la del nuevo ejercicio activo.
+    setRevisando(null);
     setResultados((prev) => {
       if (prev[slotActivo]) return prev;
       const siguiente = { ...prev, [slotActivo]: { correcto: r.datos.correcto, respuestaDada: respuesta } };
@@ -118,14 +124,25 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     if (!tareaCompleta || envioTarea !== "pendiente") return;
     setEnvioTarea("enviando");
     const puntaje = Math.round((aciertos / total) * 100);
+    // `respuestaCorrecta` va en null a propósito: el navegador nunca la supo
+    // —ver `GET .../corregir`, que nunca la devuelve—, así que no hay nada
+    // que pueda mandar. El servidor la rellena él mismo al entregar, con
+    // `ejercicioId` como la llave.
+    const detalle = ejercicios.map((e, i) => ({
+      ejercicioId: e.id,
+      enunciado: e.enunciado,
+      respuestaDada: resultados[i]?.respuestaDada ?? null,
+      respuestaCorrecta: null,
+      correcto: resultados[i]?.correcto ?? false,
+    }));
     void pedir(`/api/estudiante/tareas/${tareaId}/entregar`, {
       metodo: "POST",
-      cuerpo: { puntaje, completada: true },
+      cuerpo: { puntaje, completada: true, detalle },
     }).then((r) => {
       setIntentosHechos((n) => n + 1);
       setEnvioTarea(r.ok ? "lista" : "error");
     });
-  }, [tareaCompleta, envioTarea, aciertos, total, tareaId]);
+  }, [tareaCompleta, envioTarea, aciertos, total, tareaId, ejercicios, resultados]);
 
   // El desglose de resultados pide la respuesta correcta SÓLO una vez
   // entregada —el servidor hace cumplir esto igual, por si acaso—: antes
@@ -149,6 +166,13 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
           <div className="mt-1.5 space-y-1.5">
             <p className="text-sm font-medium text-muted-foreground">
               Ejercicio {slotActivo + 1} de {total}
+            </p>
+            {/* "El estudiante no puede saber cuántos intentos tiene
+                permitidos ni cuántos le quedan" (corrección QA). */}
+            <p className="text-xs text-muted-foreground">
+              {limiteReintentos === 0
+                ? `Intento ${intentosHechos + 1} (sin límite de reintentos)`
+                : `Intento ${intentosHechos + 1} de ${limiteReintentos + 1}`}
             </p>
             <div className="flex items-center gap-1.5">
               {ejercicios.map((_, i) => {
@@ -186,7 +210,9 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                 <p className="text-muted-foreground">
                   <TextoMatematico texto={ejercicios[revisando].enunciado} />
                 </p>
-                <p className="mt-1 font-medium">Tu respuesta: {resultados[revisando].respuestaDada}</p>
+                <p className="mt-1 font-medium">
+                  Tu respuesta: <TextoMatematico texto={resultados[revisando].respuestaDada} />
+                </p>
               </div>
             )}
           </div>
@@ -243,11 +269,13 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                     <p className="text-muted-foreground">
                       <TextoMatematico texto={ejercicios[revisando].enunciado} />
                     </p>
-                    <p className="mt-1">Tu respuesta: {resultados[revisando].respuestaDada}</p>
+                    <p className="mt-1">
+                      Tu respuesta: <TextoMatematico texto={resultados[revisando].respuestaDada} />
+                    </p>
                     {!resultados[revisando].correcto && (
                       <p className="text-emerald-700 dark:text-emerald-400">
                         Respuesta correcta:{" "}
-                        {respuestasCorrectas[ejercicios[revisando].id] ?? "…"}
+                        <TextoMatematico texto={respuestasCorrectas[ejercicios[revisando].id] ?? "…"} />
                       </p>
                     )}
                   </div>
@@ -278,7 +306,10 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
         </Card>
       ) : (
         activo && (
-          <Card className="mx-auto max-w-2xl">
+          // `key={activo.id}` por si acaso: fuerza un remontaje limpio del
+          // formulario al cambiar de ejercicio, en vez de depender de que
+          // cada pieza de estado se reinicie a mano una por una.
+          <Card key={activo.id} className="mx-auto max-w-2xl">
             <CardContent className="space-y-4 pt-6">
               <div className="text-base">
                 <TextoMatematico texto={activo.enunciado} />
