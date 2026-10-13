@@ -27,7 +27,7 @@ import katex from "katex";
 import { analizar, escribir, evaluar, variablesDe } from "../lib/matematicas/expresiones.ts";
 import { derivarExpresion, REGLAS } from "../lib/matematicas/derivar.ts";
 import { compararRespuesta, equivalentes, esFactorizacion } from "../lib/matematicas/equivalencia.ts";
-import { planoALatex } from "../lib/matematicas/index.ts";
+import { planoALatex, separarProsaYMatematicas } from "../lib/matematicas/index.ts";
 import { resolverEjercicio, resolverConDetalle } from "../lib/leccion/correccion.ts";
 import { validarEjercicio } from "../lib/docente/validador.ts";
 
@@ -310,6 +310,45 @@ check("exp(2x) se escribe como potencia de e", planoALatex("exp(2x)") === "e^{2x
 for (const expresion of ["12x³", "e^x", "1/x", "ln(x) + 1", "2e^(2x)", "(1 - ln(x))/x²", "cos(x)e^x"]) {
   check(`KaTeX compone "${expresion}"`, componeBien(expresion) !== null);
 }
+
+// Exponentes en notación de teclado (HITO 3 — corrección QA): "20x^3 + 6x^2",
+// la respuesta tal cual la escribe el alumno —sin superíndice a mano—, se
+// mostraba en texto plano en las tarjetas de revisión. La causa: el
+// detector automático de fórmulas (sin `$…$`, el camino de las respuestas
+// del alumno) sólo reconocía el superíndice Unicode ("x²"), nunca "^2"; el
+// "^" no encajaba en ningún átomo ni operador, así que la expresión se
+// partía en jirones en vez de componerse entera.
+check(
+  "detecta '20x^3 + 6x^2' como UNA sola fórmula, no partida por el '^'",
+  JSON.stringify(separarProsaYMatematicas("20x^3 + 6x^2")) ===
+    JSON.stringify([{ tipo: "linea", contenido: "20x^3 + 6x^2" }]),
+  JSON.stringify(separarProsaYMatematicas("20x^3 + 6x^2")),
+);
+check(
+  "…y se compone con KaTeX como 20x³ + 6x² (con llaves, no sólo el primer dígito)",
+  planoALatex("20x^3 + 6x^2") === "20x^{3} + 6x^{2}" && componeBien("20x^3 + 6x^2") !== null,
+  planoALatex("20x^3 + 6x^2"),
+);
+check(
+  "exponente de dos cifras con '^': 'x^10' se abraza en llaves ('x^{10}'), si no KaTeX sólo sube el '1'",
+  planoALatex("x^10") === "x^{10}",
+  planoALatex("x^10"),
+);
+check(
+  "exponente negativo con '^': 'x^-2' → 'x^{-2}'",
+  planoALatex("x^-2") === "x^{-2}",
+  planoALatex("x^-2"),
+);
+check(
+  "una fracción literal con exponente en notación de teclado también se reconoce: 'x^2/4' → \\frac{x^{2}}{4}",
+  planoALatex("x^2/4") === "\\frac{x^{2}}{4}",
+  planoALatex("x^2/4"),
+);
+check(
+  "el superíndice Unicode sigue funcionando igual que antes: '20x³ + 6x²' en una sola fórmula",
+  JSON.stringify(separarProsaYMatematicas("20x³ + 6x²")) ===
+    JSON.stringify([{ tipo: "linea", contenido: "20x³ + 6x²" }]),
+);
 
 console.log("\n═══════════════════════════════════════════════════════════");
 console.log(` ${ok} comprobaciones superadas · ${fallos.length} fallidas`);

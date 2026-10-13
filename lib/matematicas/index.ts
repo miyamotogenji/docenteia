@@ -163,6 +163,16 @@ export function planoALatex(expresion: string): string {
     return exp ? `^{${exp}}` : "";
   });
 
+  // Exponentes en notación de teclado, los que escribe el alumno porque no
+  // tiene superíndice a mano: "x^3" → "x^{3}", "x^-2" → "x^{-2}", "x^10" →
+  // "x^{10}". Sin las llaves, KaTeX ya entiende "x^3" —un solo carácter—, pero
+  // la sintaxis REAL de LaTeX sólo sube ESE carácter: "x^10" se componía "x¹0",
+  // con el "0" a la altura normal. Y, más abajo, las fracciones literales
+  // ("x^{2}/4") sólo reconocen el exponente ya puesto entre llaves, igual que
+  // el de un superíndice Unicode: sin este paso, "x^2/4" no se detecta como
+  // fracción en absoluto.
+  s = s.replace(/\^(-?\d+)/g, "^{$1}");
+
   // Operadores. El asterisco es notación de consola: en la pizarra se escribe ×
   // (el cliente: "cero caracteres / o * en el DOM visual del alumno").
   s = s
@@ -238,6 +248,14 @@ export function planoALatex(expresion: string): string {
 // operador entre operandos, o un coeficiente pegado a la variable ("2x").
 
 const SUPERINDICE = "[⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ⁻⁺]";
+// El exponente de un átomo: una tanda de superíndices Unicode ("x³", "xⁿ⁻¹"),
+// o el mismo exponente en notación de teclado ("x^3", "x^-2", "x^{10}") —la
+// que escribe de verdad el alumno, que no tiene superíndice a mano—. Sin esta
+// segunda forma, "20x^3 + 6x^2" no se reconocía como fórmula en absoluto: el
+// "^" no encajaba en ningún átomo ni operador, así que la expresión se
+// partía en jirones ("20x" por un lado, "^" suelto de prosa, "3 + 6x" vuelto
+// a leer como otra fórmula distinta, "^2" suelto) en vez de componerse entera.
+const EXPONENTE = `(?:${SUPERINDICE}+|\\^\\{?-?\\d+\\}?)`;
 /** Una variable es UNA letra suelta, no la inicial de una palabra. */
 const VARIABLE = "(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])[a-z](?![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])";
 // El orden de las alternativas importa: "coeficiente + variable" va PRIMERO
@@ -245,14 +263,14 @@ const VARIABLE = "(?<![A-Za-zÁÉÍÓÚÜÑáéíóúüñ])[a-z](?![A-Za-zÁÉÍ
 // "3x²" se partía en un "3" suelto —que luego se descartaba por no ser
 // expresión— y un "x²" huérfano, de modo que el coeficiente desaparecía de la
 // fórmula compuesta.
-const ATOMO_SIMPLE = `(?:\\d*${VARIABLE}${SUPERINDICE}*|\\d+(?:[.,]\\d+)?${SUPERINDICE}*)`;
+const ATOMO_SIMPLE = `(?:\\d*${VARIABLE}${EXPONENTE}?|\\d+(?:[.,]\\d+)?${EXPONENTE}?)`;
 const OPERADOR = "\\s*[-+*/=·×÷≈≠≤≥]\\s*";
 // Un PARÉNTESIS con una expresión dentro, con su factor delante: "2(x + 3)",
 // "(3 + 2)". Sin él, "2(x + 3) = 16" se partía en "2(" de prosa, "x + 3" de
 // fórmula y ") = 16" de prosa otra vez: la mitad de la ecuación en la letra del
 // tutor. Dentro sólo caben átomos y operadores, así que un paréntesis de prosa
 // —"(primero las unidades)"— no se toma por fórmula.
-const GRUPO = `(?:\\d*\\(\\s*-?\\s*${ATOMO_SIMPLE}(?:${OPERADOR}${ATOMO_SIMPLE})*\\s*\\)${SUPERINDICE}*)`;
+const GRUPO = `(?:\\d*\\(\\s*-?\\s*${ATOMO_SIMPLE}(?:${OPERADOR}${ATOMO_SIMPLE})*\\s*\\)${EXPONENTE}?)`;
 // El grupo va primero: con el número delante, "2(x + 3)" se quedaba en el "2".
 const ATOMO = `(?:${GRUPO}|${ATOMO_SIMPLE})`;
 
@@ -260,7 +278,7 @@ const EXPRESION = new RegExp(`${ATOMO}(?:${OPERADOR}${ATOMO})*`, "gu");
 
 /** ¿El fragmento capturado es de verdad una expresión, o sólo un número suelto? */
 function mereceComposicion(fragmento: string): boolean {
-  const tieneExponente = new RegExp(SUPERINDICE).test(fragmento);
+  const tieneExponente = new RegExp(SUPERINDICE).test(fragmento) || /\^\{?-?\d+\}?/.test(fragmento);
   const tieneOperador = /[-+*/=·×÷≈≠≤≥]/.test(fragmento);
   const coeficientePegado = /\d[a-z]/.test(fragmento);
   return tieneExponente || tieneOperador || coeficientePegado;

@@ -267,6 +267,11 @@ const estadoVisible = () =>
       narrando: boton(/^Pausa$/),
       responderHabilitado: botonHabilitado(/^Responder$/),
       migas,
+      // El rótulo del avatar (corrección QA: "al hacer clic en los círculos de
+      // los ejercicios previos, el avatar vuelve a solicitar que se resuelva
+      // el ejercicio como si estuviera pendiente").
+      rotuloAvatar: document.querySelector('svg[role="img"]')?.getAttribute("aria-label") ?? null,
+      revisandoVisible: /Tu respuesta:/.test(texto),
     };
   });
 
@@ -368,6 +373,33 @@ async function resolverLaTareaEntera() {
     // de pedirlo.
     await esperarSilencio();
     await pagina.getByRole("button", { name: /Dame otro ejemplo/ }).click();
+
+    // "Al hacer clic en los círculos de los ejercicios previos, el avatar
+    // vuelve a solicitar que se resuelva el ejercicio como si estuviera
+    // pendiente" (corrección QA): se espera a que el 2º esté REALMENTE
+    // pendiente —su pregunta cargada, todavía sin responder—, que es el
+    // único instante en el que el defecto se notaba, y se revisa el 1º ahí.
+    await esperar((e) => e.hayInput && e.preguntaLatex, 45_000);
+    await pagina.locator("button[title^='Ejercicio 1:']").click();
+    const revisando1 = await esperar((e) => e.revisandoVisible, 10_000);
+    check(
+      "al revisar un ejercicio anterior mientras el siguiente está pendiente, se abre su revisión",
+      revisando1.revisandoVisible,
+      JSON.stringify(revisando1),
+    );
+    check(
+      "…y el avatar YA NO dice 'Te toca a ti': dice de cuál se trata ('Revisando el ejercicio 1')",
+      /Revisando el ejercicio 1/.test(revisando1.rotuloAvatar ?? "") && !/Te toca a ti/.test(revisando1.rotuloAvatar ?? ""),
+      JSON.stringify(revisando1.rotuloAvatar),
+    );
+    check(
+      "…sin tocar el ejercicio activo: el 2º sigue siendo el actual, con su pregunta intacta",
+      revisando1.contador?.actual === 2 && revisando1.hayInput && Boolean(revisando1.preguntaLatex),
+      JSON.stringify(revisando1),
+    );
+    await pagina.locator("button[title^='Ejercicio 1:']").click();
+    await esperar((e) => !e.revisandoVisible, 5_000);
+
     await resolverElEjercicioVisible();
   }
 

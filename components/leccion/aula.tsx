@@ -1998,8 +1998,17 @@ export function Aula({
               <Avatar2D
                 estado={avatarPizarra ?? estadoAvatar}
                 hablando={hablando}
-                // Con una pregunta delante, el rótulo dice lo que toca hacer.
-                etiqueta={pregunta ? "Te toca a ti" : undefined}
+                // "Al hacer clic en los círculos de los ejercicios previos, el
+                // avatar vuelve a solicitar que se resuelva el ejercicio como
+                // si estuviera pendiente" (corrección QA): `pregunta` sigue
+                // siendo la del puesto ACTIVO mientras se revisa uno anterior
+                // —revisar no lo toca, ver el propio `irAlEjercicio`—, así que
+                // el rótulo seguía diciendo "Te toca a ti" encima de una
+                // revisión de sólo lectura. Mientras se revisa, el rótulo lo
+                // dice: no hay nada que resolver.
+                etiqueta={
+                  revisando != null ? `Revisando el ejercicio ${revisando + 1}` : pregunta ? "Te toca a ti" : undefined
+                }
               />
               <div className="flex gap-2">
                 {controles.playing && !controles.paused ? (
