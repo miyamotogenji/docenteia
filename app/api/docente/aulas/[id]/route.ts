@@ -80,3 +80,31 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     return fallo(e, "docente/aulas/[id]:leer");
   }
 }
+
+/**
+ * Borra un aula propia —y, en cascada, sus matrículas, tareas y entregas (ver
+ * `onDelete: Cascade` en el esquema)—.
+ *
+ * No la pidió el cliente como funcionalidad: la necesita esta corrección QA
+ * para poder limpiar las aulas de prueba que las baterías de verificación
+ * contra el sitio publicado dejaron en la cuenta de demostración —"el
+ * docente no debe crear nuevas aulas para cada tarea" es la interfaz
+ * comportándose bien; lo confuso eran esas aulas de prueba—. Mismo candado
+ * de titularidad que el resto de esta ruta: sólo el docente DUEÑO del aula
+ * puede borrarla.
+ */
+export async function DELETE(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  const permiso = await exigirDocente();
+  if (!permiso.ok) return permiso.respuesta;
+  const { id } = await params;
+
+  try {
+    const aula = await prisma.aula.findUnique({ where: { id }, select: { docenteId: true } });
+    if (!aula || aula.docenteId !== permiso.quien.usuarioId) return noEncontrado("El aula");
+
+    await prisma.aula.delete({ where: { id } });
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return fallo(e, "docente/aulas/[id]:borrar");
+  }
+}
