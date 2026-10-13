@@ -5517,7 +5517,14 @@ if (!vivo) {
     );
     check(
       "y el rótulo del avatar dice de quién es el turno, no sólo que acompaña",
-      /etiqueta=\{pregunta \? "Te toca a ti" : undefined\}/.test(aulaSrc) &&
+      // HITO 3 — corrección QA: "al hacer clic en los círculos de los
+      // ejercicios previos, el avatar vuelve a solicitar que se resuelva el
+      // ejercicio como si estuviera pendiente". `revisando` —ya puesto, no la
+      // pregunta activa— decide ahora el rótulo primero, así que "Te toca a
+      // ti" ya no se enseña encima de una revisión de sólo lectura.
+      /revisando != null \? `Revisando el ejercicio \$\{revisando \+ 1\}` : pregunta \? "Te toca a ti" : undefined/.test(
+        aulaSrc,
+      ) &&
         /const rotulo = etiqueta\?\.trim\(\) \|\| ETIQUETA\[modo\]/.test(
           readFileSync(new URL("../components/leccion/avatar-2d.tsx", import.meta.url), "utf8"),
         ),
