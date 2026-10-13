@@ -161,6 +161,8 @@ interface DetalleEjercicio {
   enunciado: string;
   correcto: boolean;
   respuestaDada: string | null;
+  /** La que calcula el motor. No se muestra mientras la tarea sigue en curso. */
+  respuestaCorrecta: string | null;
 }
 
 export function Aula({
@@ -329,6 +331,15 @@ export function Aula({
   const practicaResuelta = useRef(false);
   /** La última pregunta planteada: dice QUÉ se pedía —derivar, factorizar— para poder cerrarla. */
   const ultimaPregunta = useRef<string | null>(null);
+  /**
+   * Lo último que el alumno ESCRIBIÓ como respuesta —no lo que el motor
+   * esperaba—, para la pantalla de resultados de una tarea (corrección QA:
+   * "la respuesta ingresada por el alumno vs. la respuesta correcta"). Se
+   * sobrescribe en cada intento; si hubo reintentos internos antes de
+   * acertar o agotarlos, queda el último, que es el que de verdad decidió el
+   * veredicto final.
+   */
+  const ultimaRespuestaDelAlumnoRef = useRef<string | null>(null);
   /** Cuántos «no entendí» seguidos: la escalera de simplificación del concepto. */
   const insistencia = useRef(0);
   /**
@@ -870,7 +881,13 @@ export function Aula({
       // feedback del tutor, que ya nombra el resultado final.
       onExerciseResolved: ({ respuesta, pregunta: textoPregunta }) =>
         cerrarEjercicio(respuesta, textoPregunta ?? ultimaPregunta.current),
-      onLessonEnd: ({ acerto, respuesta } = { respondio: false, acerto: false }) => {
+      // `respuesta`, aquí, es la que CALCULA EL MOTOR —`this._respuesta` en
+      // pseLight.js, fijada con la esperada antes de cerrar el ejercicio—,
+      // NO lo que el alumno escribió: sirve para enmarcar el resultado final
+      // en la pizarra. Se llama `respuestaEsperada` por eso, para no
+      // repetir la confusión que hizo que la pantalla de revisión mostrara
+      // la respuesta DEL MOTOR rotulada como "Tu respuesta".
+      onLessonEnd: ({ acerto, respuesta: respuestaEsperada } = { respondio: false, acerto: false }) => {
         setPregunta(null);
         setEstadoAvatar("sonriendo");
         setTerminoLaLeccion(true);
@@ -883,7 +900,7 @@ export function Aula({
         // Y POR SI ACASO, AL TERMINAR. El cierre ya se escribió al resolver el
         // ejercicio; si por lo que sea no llegó —una lección de otra versión
         // del reproductor—, se escribe aquí. Si ya está, no hace nada.
-        if (respuesta) cerrarEjercicio(respuesta, ultimaPregunta.current);
+        if (respuestaEsperada) cerrarEjercicio(respuestaEsperada, ultimaPregunta.current);
 
         // CUPO DE LA TAREA (HITO 3 — corrección QA). Sólo cuenta una ronda que
         // termina en PRÁCTICA —ni Concepto ni Reglas ni el ejemplo que resuelve
@@ -913,7 +930,8 @@ export function Aula({
                 [puesto]: {
                   enunciado: enunciadoActual,
                   correcto: Boolean(acerto),
-                  respuestaDada: respuesta ?? null,
+                  respuestaDada: ultimaRespuestaDelAlumnoRef.current,
+                  respuestaCorrecta: respuestaEsperada ?? null,
                 },
               };
               // El próximo puesto PENDIENTE, en orden: el que ocupará la
@@ -1533,6 +1551,7 @@ export function Aula({
   const responder = useCallback(async () => {
     const respuesta = borrador.trim();
     if (!respuesta) return;
+    ultimaRespuestaDelAlumnoRef.current = respuesta;
 
     const estado = conversacion.current;
 
@@ -1886,13 +1905,20 @@ export function Aula({
                       className={cn(
                         "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors",
                         "disabled:cursor-not-allowed disabled:opacity-50",
+                        // "Mientras la tarea está en curso, el indicador debe
+                        // ser NEUTRAL… sólo debe reflejar 'respondido', sin
+                        // calificar la validez" (corrección QA): verde aquí
+                        // es justo el sesgo que el cliente reportó —el
+                        // alumno asumía que había acertado—. El veredicto de
+                        // verdad, ejercicio por ejercicio, vive en la
+                        // pantalla de cierre, no aquí.
                         estado === "completado" &&
                           cn(
-                            "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400",
-                            revisando === i && "ring-2 ring-emerald-600",
+                            "bg-primary/20 text-primary hover:bg-primary/30",
+                            revisando === i && "ring-2 ring-primary",
                           ),
                         estado === "actual" && "bg-primary text-primary-foreground",
-                        estado === "pendiente" && "bg-muted text-muted-foreground hover:bg-muted/70",
+                        estado === "pendiente" && "border bg-muted text-muted-foreground hover:bg-muted/70",
                       )}
                     >
                       {i + 1}
@@ -1902,21 +1928,14 @@ export function Aula({
               </div>
               {/* La revisión de un ejercicio ya resuelto: sólo lectura, no
                   toca el reproductor —lo que esté narrando el puesto activo
-                  sigue sonando igual—. */}
+                  sigue sonando igual—. Sin el veredicto: eso es lo que
+                  genera el sesgo que reportó el cliente. */}
               {revisando != null && detallesEjercicios[revisando] && (
                 <div className="rounded-md border bg-muted/30 p-3 text-sm">
                   <p className="font-medium">Ejercicio {revisando + 1}</p>
                   <p className="text-muted-foreground">{detallesEjercicios[revisando].enunciado}</p>
-                  <p
-                    className={cn(
-                      "mt-1 font-medium",
-                      detallesEjercicios[revisando].correcto
-                        ? "text-emerald-700 dark:text-emerald-400"
-                        : "text-amber-700 dark:text-amber-500",
-                    )}
-                  >
-                    Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"} (
-                    {detallesEjercicios[revisando].correcto ? "correcta" : "incorrecta"})
+                  <p className="mt-1 font-medium">
+                    Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"}
                   </p>
                 </div>
               )}
@@ -2233,6 +2252,48 @@ export function Aula({
                     <p className="text-sm text-muted-foreground">
                       {ejerciciosAcertados} de {tarea.cantidadEjercicios} ejercicios correctos.
                     </p>
+                    {/* "El estudiante no tiene forma de saber en qué
+                        preguntas acertó y en cuáles se equivocó" (corrección
+                        QA): el desglose, AHORA que la tarea ya terminó —antes
+                        habría sido el mismo sesgo que el indicador de
+                        progreso—, con el enunciado y las dos respuestas al
+                        desplegarlo. */}
+                    <div className="flex flex-wrap gap-1.5">
+                      {Array.from({ length: tarea.cantidadEjercicios }, (_, i) => {
+                        const detalle = detallesEjercicios[i];
+                        if (!detalle) return null;
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setRevisando((actual) => (actual === i ? null : i))}
+                            aria-pressed={revisando === i}
+                            title={`Ejercicio ${i + 1}: ${detalle.correcto ? "correcto" : "incorrecto"}`}
+                            className={cn(
+                              "flex h-7 min-w-7 items-center justify-center gap-1 rounded-full px-2 text-xs font-semibold",
+                              detalle.correcto
+                                ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400"
+                                : "bg-destructive/15 text-destructive hover:bg-destructive/25",
+                              revisando === i && "ring-2 ring-offset-1",
+                            )}
+                          >
+                            {i + 1} {detalle.correcto ? "✓" : "✗"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {revisando != null && detallesEjercicios[revisando] && (
+                      <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                        <p className="font-medium">Ejercicio {revisando + 1}</p>
+                        <p className="text-muted-foreground">{detallesEjercicios[revisando].enunciado}</p>
+                        <p className="mt-1">Tu respuesta: {detallesEjercicios[revisando].respuestaDada ?? "—"}</p>
+                        {!detallesEjercicios[revisando].correcto && (
+                          <p className="text-emerald-700 dark:text-emerald-400">
+                            Respuesta correcta: {detallesEjercicios[revisando].respuestaCorrecta ?? "—"}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Button asChild size="sm">
                         <Link href="/estudiante/tareas">Volver a mis tareas</Link>

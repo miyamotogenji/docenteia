@@ -352,6 +352,35 @@ check(
   JSON.stringify(laSuya),
 );
 
+// 15b. El desglose de resultados ("la respuesta correcta calculada por el
+//      motor") sólo se revela una vez entregada —antes sería un atajo para
+//      adivinar a fuerza de intentos—.
+const rResultadoAntes = await apiAlumno(`/api/estudiante/tareas/${tareaManual.tarea.id}/resultado`);
+check(
+  "el resultado de una tarea TODAVÍA NO entregada se bloquea con 409",
+  rResultadoAntes.status === 409,
+  `HTTP ${rResultadoAntes.status}`,
+);
+
+const rResultadoDespues = await apiAlumno(`/api/estudiante/tareas/${tareaAuto.tarea.id}/resultado`);
+const resultadoDespues = await rResultadoDespues.json().catch(() => ({}));
+check(
+  "una vez entregada, el resultado SÍ trae la respuesta correcta de cada ejercicio",
+  rResultadoDespues.status === 200 &&
+    (resultadoDespues?.ejercicios ?? []).length === 3 &&
+    resultadoDespues.ejercicios.every((e) => typeof e.respuestaCorrecta === "string"),
+  JSON.stringify(resultadoDespues),
+);
+
+const rResultadoAjeno = await fetch(`${BASE}/api/estudiante/tareas/${tareaAuto.tarea.id}/resultado`, {
+  headers: { cookie: ajeno.sesion },
+});
+check(
+  "un alumno no matriculado no puede ver el resultado de esta tarea",
+  rResultadoAjeno.status === 403,
+  `HTTP ${rResultadoAjeno.status}`,
+);
+
 // 16. Un estudiante no puede ver el banco de ejercicios del docente.
 const rBancoComoAlumno = await apiAlumno(`/api/docente/ejercicios?nodoId=${nodoAritmetica.id}`);
 check("un estudiante no puede listar el banco de ejercicios del docente", rBancoComoAlumno.status === 403, `HTTP ${rBancoComoAlumno.status}`);

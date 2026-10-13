@@ -52,6 +52,8 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     "pendiente",
   );
   const [intentosHechos, setIntentosHechos] = useState(intentosPrevios);
+  /** Respuesta correcta por ejercicio: sólo llega una vez entregada la tarea. */
+  const [respuestasCorrectas, setRespuestasCorrectas] = useState<Record<string, string>>({});
 
   const total = ejercicios.length;
   const hechos = Object.keys(resultados).length;
@@ -107,6 +109,7 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
     setBorrador("");
     setAviso(null);
     setEnvioTarea("pendiente");
+    setRespuestasCorrectas({});
   };
 
   // Al llegar al cupo, se entrega sola — mismo contrato que la tarea
@@ -123,6 +126,20 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
       setEnvioTarea(r.ok ? "lista" : "error");
     });
   }, [tareaCompleta, envioTarea, aciertos, total, tareaId]);
+
+  // El desglose de resultados pide la respuesta correcta SÓLO una vez
+  // entregada —el servidor hace cumplir esto igual, por si acaso—: antes
+  // sería un atajo para adivinar la respuesta a fuerza de intentos.
+  useEffect(() => {
+    if (envioTarea !== "lista") return;
+    void pedir<{ ejercicios: { id: string; respuestaCorrecta: string }[] }>(
+      `/api/estudiante/tareas/${tareaId}/resultado`,
+    ).then((r) => {
+      if (r.ok) {
+        setRespuestasCorrectas(Object.fromEntries(r.datos.ejercicios.map((e) => [e.id, e.respuestaCorrecta])));
+      }
+    });
+  }, [envioTarea, tareaId]);
 
   return (
     <div className="space-y-4">
@@ -145,13 +162,17 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                     onClick={() => irAlEjercicio(i)}
                     className={cn(
                       "flex h-6 w-6 items-center justify-center rounded-full text-xs font-medium transition-colors",
+                      // Neutral mientras la tarea sigue en curso: verde aquí
+                      // era el sesgo que reportó el cliente —el alumno
+                      // asumía que había acertado con sólo ver el color—. El
+                      // veredicto de verdad vive en la pantalla de cierre.
                       estado === "completado" &&
                         cn(
-                          "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400",
-                          revisando === i && "ring-2 ring-emerald-600",
+                          "bg-primary/20 text-primary hover:bg-primary/30",
+                          revisando === i && "ring-2 ring-primary",
                         ),
                       estado === "actual" && "bg-primary text-primary-foreground",
-                      estado === "pendiente" && "bg-muted text-muted-foreground hover:bg-muted/70",
+                      estado === "pendiente" && "border bg-muted text-muted-foreground hover:bg-muted/70",
                     )}
                   >
                     {i + 1}
@@ -165,17 +186,7 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                 <p className="text-muted-foreground">
                   <TextoMatematico texto={ejercicios[revisando].enunciado} />
                 </p>
-                <p
-                  className={cn(
-                    "mt-1 font-medium",
-                    resultados[revisando].correcto
-                      ? "text-emerald-700 dark:text-emerald-400"
-                      : "text-amber-700 dark:text-amber-500",
-                  )}
-                >
-                  Tu respuesta: {resultados[revisando].respuestaDada} (
-                  {resultados[revisando].correcto ? "correcta" : "incorrecta"})
-                </p>
+                <p className="mt-1 font-medium">Tu respuesta: {resultados[revisando].respuestaDada}</p>
               </div>
             )}
           </div>
@@ -183,7 +194,7 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
       </div>
 
       {tareaCompleta ? (
-        <Card className="mx-auto max-w-md border-2 border-primary">
+        <Card className="mx-auto max-w-lg border-2 border-primary">
           <CardHeader>
             <CardTitle>Tarea completada</CardTitle>
           </CardHeader>
@@ -200,6 +211,47 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                 <p className="text-sm text-muted-foreground">
                   {aciertos} de {total} ejercicios correctos.
                 </p>
+                {/* "El estudiante no tiene forma de saber en qué preguntas
+                    acertó y en cuáles se equivocó" (corrección QA). */}
+                <div className="flex flex-wrap gap-1.5">
+                  {ejercicios.map((_, i) => {
+                    const r = resultados[i];
+                    if (!r) return null;
+                    return (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => setRevisando((actual) => (actual === i ? null : i))}
+                        aria-pressed={revisando === i}
+                        title={`Ejercicio ${i + 1}: ${r.correcto ? "correcto" : "incorrecto"}`}
+                        className={cn(
+                          "flex h-7 min-w-7 items-center justify-center gap-1 rounded-full px-2 text-xs font-semibold",
+                          r.correcto
+                            ? "bg-emerald-500/15 text-emerald-700 hover:bg-emerald-500/25 dark:text-emerald-400"
+                            : "bg-destructive/15 text-destructive hover:bg-destructive/25",
+                          revisando === i && "ring-2 ring-offset-1",
+                        )}
+                      >
+                        {i + 1} {r.correcto ? "✓" : "✗"}
+                      </button>
+                    );
+                  })}
+                </div>
+                {revisando != null && resultados[revisando] && (
+                  <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                    <p className="font-medium">Ejercicio {revisando + 1}</p>
+                    <p className="text-muted-foreground">
+                      <TextoMatematico texto={ejercicios[revisando].enunciado} />
+                    </p>
+                    <p className="mt-1">Tu respuesta: {resultados[revisando].respuestaDada}</p>
+                    {!resultados[revisando].correcto && (
+                      <p className="text-emerald-700 dark:text-emerald-400">
+                        Respuesta correcta:{" "}
+                        {respuestasCorrectas[ejercicios[revisando].id] ?? "…"}
+                      </p>
+                    )}
+                  </div>
+                )}
                 <div className="flex flex-wrap gap-2">
                   <Button asChild size="sm">
                     <Link href="/estudiante/tareas">Volver a mis tareas</Link>
