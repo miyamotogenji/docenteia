@@ -234,6 +234,7 @@ const estadoVisible = () =>
     const migas = [...document.querySelectorAll("[title^='Ejercicio ']")].map((s) => ({
       numero: Number((s.getAttribute("title") ?? "").match(/Ejercicio (\d+)/)?.[1] ?? 0),
       estado: (s.getAttribute("title") ?? "").split(": ")[1] ?? null,
+      clase: s.className,
     }));
     return {
       contador: contador ? { actual: Number(contador[1]), total: Number(contador[2]) } : null,
@@ -247,7 +248,12 @@ const estadoVisible = () =>
       // intermedias": la fase activa de la pizarra, tal como la marca el
       // propio componente.
       faseActiva: document.querySelector(".pz-pizarra")?.getAttribute("data-fase") ?? null,
-      revision: (texto.match(/Tu respuesta: ([^\n(]+)\(([^)]+)\)/) || null)?.slice(1) ?? null,
+      revision: /Tu respuesta:/.test(texto),
+      // "Mientras la tarea está en curso, el indicador debe ser NEUTRAL...
+      // sin calificar la validez" (corrección QA): la revisión de un
+      // ejercicio YA RESUELTO nunca debe decir si acertó o no mientras la
+      // tarea sigue abierta.
+      revisionFiltraVeredicto: /Tu respuesta:[^\n]*\((correcta|incorrecta)\)/.test(texto),
       narrando: [...document.querySelectorAll("button")].some((b) => /^Pausa$/.test((b.textContent ?? "").trim())),
     };
   });
@@ -293,6 +299,14 @@ check("arranca en el ejercicio 1 de 3", estado.contador?.actual === 1 && estado.
 await resolverElVisible();
 estado = await esperar((e) => (e.migas.find((m) => m.numero === 1)?.estado ?? "") === "completado", 20_000);
 check("tras resolverlo, el círculo 1 pasa a 'completado'", /completado/.test(estado.migas.find((m) => m.numero === 1)?.estado ?? ""), JSON.stringify(estado.migas));
+// "Mientras la tarea está en curso, el indicador debe ser NEUTRAL (azul o
+// gris oscuro)... sin calificar la validez" (corrección QA): verde es
+// justo el sesgo que reportó el cliente.
+check(
+  "…y su color es NEUTRAL, no verde (el veredicto se revela recién al cerrar)",
+  !/emerald/.test(estado.migas.find((m) => m.numero === 1)?.clase ?? ""),
+  estado.migas.find((m) => m.numero === 1)?.clase,
+);
 
 // 3. "Saltarse el 2 para resolver primero el 3" — clic directo en el círculo 3.
 await clicCirculo(3);
@@ -328,17 +342,22 @@ check("la tarea NO se da por completa: todavía falta el 2", !estado.tareaComple
 estado = await esperar((e) => e.contador?.actual === 2, 15_000);
 const activoAntesDeRevisar = estado.contador?.actual;
 await clicCirculo(1);
-estado = await esperar((e) => e.revision != null, 10_000);
-check("un clic en el círculo 1 (ya resuelto) abre su revisión", estado.revision != null, JSON.stringify(estado.revision));
+estado = await esperar((e) => e.revision, 10_000);
+check("un clic en el círculo 1 (ya resuelto) abre su revisión", estado.revision === true);
 check(
   "…sin tocar el ejercicio activo: sigue siendo el mismo de antes de revisar",
   estado.contador?.actual === activoAntesDeRevisar,
   JSON.stringify(estado.contador),
 );
+check(
+  "…y la revisión NO dice si acertó o no —la tarea sigue en curso—",
+  estado.revisionFiltraVeredicto === false,
+  JSON.stringify(estado),
+);
 // Se cierra la revisión clicando el mismo círculo otra vez.
 await clicCirculo(1);
-estado = await esperar((e) => e.revision == null, 5_000);
-check("un segundo clic en el mismo círculo cierra la revisión", estado.revision == null);
+estado = await esperar((e) => !e.revision, 5_000);
+check("un segundo clic en el mismo círculo cierra la revisión", estado.revision === false);
 
 // 5. Resolver el que faltaba (el 2) completa la tarea, aunque fue el último en orden real.
 await clicCirculo(2);
@@ -349,6 +368,19 @@ estado = await esperar((e) => e.tareaCompletada, 20_000);
 check("al completar el último pendiente, la tarea se da por completa", estado.tareaCompletada, JSON.stringify(estado));
 estado = await esperar((e) => e.nota != null, 10_000);
 check("…con nota 100/100 (los tres, correctos, en cualquier orden)", estado.nota === "100", `nota=${estado.nota}`);
+
+// "El estudiante no tiene forma de saber en qué preguntas acertó y en
+// cuáles se equivocó" (corrección QA): el desglose de la pantalla de
+// cierre, con los tres marcados "correcto" —se resolvieron todos bien—.
+check(
+  "la pantalla de cierre trae el desglose de los 3 ejercicios, todos 'correcto'",
+  estado.migas.length === 3 && estado.migas.every((m) => m.estado === "correcto"),
+  JSON.stringify(estado.migas),
+);
+await clicCirculo(1);
+estado = await esperar((e) => e.revision, 5_000);
+check("un clic en el desglose del cierre despliega el detalle del ejercicio", estado.revision === true);
+
 check("la consola del navegador no soltó ningún error", erroresConsola.length === 0, erroresConsola.join(" | "));
 
 const rTareasAlumno = await apiAlumno("/api/estudiante/tareas");
