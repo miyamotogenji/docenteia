@@ -100,12 +100,18 @@ export default async function PaginaMisTareas() {
                     <p className="text-sm font-medium">Nota: {entrega.puntaje}/100</p>
                   )}
                   {/* "El estudiante no puede saber cuántos intentos tiene
-                      permitidos ni cuántos le quedan" (corrección QA). */}
+                      permitidos ni cuántos le quedan" (corrección QA).
+                      `limiteReintentos` es el TOTAL de intentos, no
+                      "adicionales al primero" (corrección QA: "si el
+                      docente configura 2 intentos, el alumno debe tener
+                      exactamente 2 intentos en total" —antes esto decía "3"
+                      con 2 configurados, la contradicción exacta que
+                      reportó entre esta vista y la del docente—). */}
                   {estado !== "vencida" && (
                     <p className="text-xs text-muted-foreground">
                       {t.limiteReintentos === 0
-                        ? "Reintentos sin límite"
-                        : `${t.limiteReintentos + 1 - (entrega?.intentosUsados ?? 0)} de ${t.limiteReintentos + 1} intento${t.limiteReintentos === 0 ? "" : "s"} disponibles`}
+                        ? "Intentos sin límite"
+                        : `${t.limiteReintentos - (entrega?.intentosUsados ?? 0)} de ${t.limiteReintentos} intento${t.limiteReintentos === 1 ? "" : "s"} disponibles`}
                     </p>
                   )}
                   {estado === "vencida" ? (

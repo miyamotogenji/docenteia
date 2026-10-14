@@ -53,7 +53,7 @@ type OrigenEjercicios = "ia" | "todos" | Nivel;
  *
  * Selector de aula, tema opcional, ventana de fechas y los dos controles
  * numéricos que pidió el pliego: cantidad de ejercicios y límite de
- * reintentos. El servidor vuelve a validar las fechas y la propiedad del
+ * intentos. El servidor vuelve a validar las fechas y la propiedad del
  * aula —ver `POST /api/docente/tareas`—; aquí sólo se evita el viaje de ida y
  * vuelta por un error que se ve a simple vista.
  */
@@ -199,7 +199,7 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
       <Card>
         <CardHeader>
           <CardTitle>Nueva tarea</CardTitle>
-          <CardDescription>Programa una tarea para toda un aula, con su plazo y sus reintentos.</CardDescription>
+          <CardDescription>Programa una tarea para toda un aula, con su plazo y su límite de intentos.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
@@ -369,16 +369,20 @@ export function FormularioTarea({ aulas, temas, aulaIdInicial }: Props) {
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="tarea-reintentos">Límite de reintentos</Label>
+              <Label htmlFor="tarea-intentos">Límite de intentos</Label>
               <Input
-                id="tarea-reintentos"
+                id="tarea-intentos"
                 type="number"
                 min={LIMITE_REINTENTOS_MIN}
                 max={LIMITE_REINTENTOS_MAX}
                 value={datos.limiteReintentos}
                 onChange={(e) => setDatos({ ...datos, limiteReintentos: e.target.value })}
               />
-              <p className="text-xs text-muted-foreground">0 = sin límite de reintentos.</p>
+              {/* "Reintentos" sugería intentos ADICIONALES al primero; el
+                  número es el TOTAL (corrección QA: "si el docente
+                  configura 2 intentos, el alumno debe tener exactamente 2
+                  en total"), así que la etiqueta lo dice con esa palabra. */}
+              <p className="text-xs text-muted-foreground">0 = sin límite de intentos.</p>
             </div>
           </div>
 

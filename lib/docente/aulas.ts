@@ -27,7 +27,11 @@ export const GRADO_MAX = 12;
 export const CANTIDAD_EJERCICIOS_MIN = 1;
 export const CANTIDAD_EJERCICIOS_MAX = 50;
 
-/** Reintentos permitidos tras el primer intento. 0 = sin tope. */
+/**
+ * Intentos totales permitidos para una tarea (no "reintentos además del
+ * primero": corrección QA, "si el docente configura 2 intentos, el alumno
+ * debe tener exactamente 2 intentos en total"). 0 = sin tope.
+ */
 export const LIMITE_REINTENTOS_MIN = 0;
 export const LIMITE_REINTENTOS_MAX = 20;
 
@@ -189,7 +193,7 @@ export function estadoDeTarea(
  * ¿Puede el alumno entregar (o reintentar) esta tarea ahora mismo?
  *
  * Dos puertas: que no haya pasado la fecha, y que no se hayan agotado los
- * reintentos —0 es "sin tope", así que esa puerta no se cierra nunca con
+ * intentos —0 es "sin tope", así que esa puerta no se cierra nunca con
  * 0—. `null` significa "sí puede", y es el valor que se usa para no repetir
  * la frase en cada sitio que lo necesita.
  *
@@ -212,10 +216,16 @@ export function puedeEntregar(
     return "Esta tarea ya venció.";
   }
   const usados = entrega?.intentosUsados ?? 0;
-  // intentosUsados cuenta TODOS los intentos, incluido el primero: el límite
-  // es de REINTENTOS, así que el tope real de intentos es limiteReintentos + 1.
-  if (tarea.limiteReintentos > 0 && usados >= tarea.limiteReintentos + 1) {
-    return "Ya no te quedan reintentos para esta tarea.";
+  // `limiteReintentos` es el TOTAL de intentos permitidos, no "intentos
+  // adicionales al primero" (corrección QA: "si el docente configura 2
+  // intentos, el alumno debe tener EXACTAMENTE 2 intentos en total, no
+  // sumarle 1 adicional como intento inicial" —la contradicción exacta que
+  // reportó entre lo que mostraba la vista del docente, "2 reintentos", y
+  // lo que veía el alumno, "0 de 3 intentos disponibles"—. `intentosUsados`
+  // ya cuenta TODOS los intentos, incluido el primero, así que se compara
+  // directo contra `limiteReintentos`, sin sumarle nada.
+  if (tarea.limiteReintentos > 0 && usados >= tarea.limiteReintentos) {
+    return "Ya no te quedan intentos para esta tarea.";
   }
   return null;
 }

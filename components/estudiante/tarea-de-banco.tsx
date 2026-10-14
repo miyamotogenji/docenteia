@@ -59,7 +59,10 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
   const hechos = Object.keys(resultados).length;
   const aciertos = Object.values(resultados).filter((r) => r.correcto).length;
   const tareaCompleta = hechos >= total;
-  const puedenQuedarReintentos = limiteReintentos === 0 || intentosHechos < limiteReintentos + 1;
+  // `limiteReintentos` es el TOTAL de intentos, no "adicionales al primero"
+  // (corrección QA: "si el docente configura 2 intentos, el alumno debe
+  // tener exactamente 2 en total").
+  const puedenQuedarReintentos = limiteReintentos === 0 || intentosHechos < limiteReintentos;
 
   const activo = ejercicios[slotActivo];
 
@@ -171,8 +174,8 @@ export function TareaDeBanco({ tareaId, titulo, ejercicios, limiteReintentos, in
                 permitidos ni cuántos le quedan" (corrección QA). */}
             <p className="text-xs text-muted-foreground">
               {limiteReintentos === 0
-                ? `Intento ${intentosHechos + 1} (sin límite de reintentos)`
-                : `Intento ${intentosHechos + 1} de ${limiteReintentos + 1}`}
+                ? `Intento ${intentosHechos + 1} (sin límite de intentos)`
+                : `Intento ${intentosHechos + 1} de ${limiteReintentos}`}
             </p>
             <div className="flex items-center gap-1.5">
               {ejercicios.map((_, i) => {
