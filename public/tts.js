@@ -463,7 +463,10 @@ export class TTS {
     if (signal?.aborted) return -1;
     const trozos = chunkForSpeech(spoken);
     for (let i = 0; i < trozos.length; i++) {
-      if (signal?.aborted || fueraDeTurno()) return -1;
+      // `this.enabled` también se revisa EN CADA VUELTA, no sólo al entrar:
+      // silenciar a mitad de una frase de varios trozos no debe dejar que el
+      // trozo siguiente se pida y suene igual.
+      if (signal?.aborted || fueraDeTurno() || !this.enabled) return -1;
       // Un tropiezo de red no cambia de voz a mitad de clase: se reintenta una
       // vez, y sólo si vuelve a fallar se cede el resto a la del navegador.
       let url = await this._audioDe(trozos[i], signal);
@@ -537,12 +540,23 @@ export class TTS {
       const terminado = () => fin(true);
       const fallo = () => fin(false);
       const abortar = () => { try { audio.pause(); } catch {} fin(true); };
+      // CALLADO DESDE FUERA —el botón de silenciar, u otra locución que
+      // empieza y manda callar la que sonaba (`callarLoQueSuena`)—: un
+      // `pause()` directo sobre el elemento no dispara "ended" ni "error",
+      // así que sin esto la promesa se quedaba colgada para siempre. El
+      // cliente lo vio con la pantalla delante: "al silenciar el avatar, la
+      // caja de respuesta no llega a mostrarse" —el motor pedagógico estaba
+      // esperando precisamente esta promesa antes de pedirle al alumno su
+      // respuesta—. `ok=true`: se trata como una locución servida, no como
+      // un fallo que haya que repetir con la voz del navegador.
+      const pausado = () => fin(true);
       const fin = (ok) => {
         if (acabado) return;
         acabado = true;
         audio.removeEventListener("playing", sonando);
         audio.removeEventListener("ended", terminado);
         audio.removeEventListener("error", fallo);
+        audio.removeEventListener("pause", pausado);
         signal?.removeEventListener?.("abort", abortar);
         resolve(ok);
       };
@@ -550,6 +564,7 @@ export class TTS {
       audio.addEventListener("playing", sonando);
       audio.addEventListener("ended", terminado);
       audio.addEventListener("error", fallo);
+      audio.addEventListener("pause", pausado);
       signal?.addEventListener?.("abort", abortar, { once: true });
       try {
         audio.muted = false;
@@ -593,7 +608,9 @@ export class TTS {
       let aborted = false;
       signal?.addEventListener("abort", () => { aborted = true; try { this.synth.cancel(); } catch {} }, { once: true });
       const speakNext = (i) => {
-        if (aborted || i >= chunks.length) return resolve();
+        // Mismo resguardo que en `_hablarNeural`: silenciar a mitad de una
+        // frase de varios trozos no debe dejar que el siguiente suene igual.
+        if (aborted || i >= chunks.length || !this.enabled) return resolve();
         // El arranque se avisa una sola vez, con el primer trozo: los demás son
         // continuación de la misma frase.
         this._speakOne(chunks[i], () => aborted, i === desde ? onStart : null).then(() =>
