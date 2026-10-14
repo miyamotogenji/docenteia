@@ -103,6 +103,7 @@ export default async function PaginaDirector() {
                       <th className="py-2 pr-4 font-medium">Alumnos</th>
                       <th className="py-2 pr-4 font-medium">Tareas</th>
                       <th className="py-2 pr-4 font-medium">Entregas</th>
+                      <th className="py-2 pr-4 font-medium">Rendimiento</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -126,6 +127,15 @@ export default async function PaginaDirector() {
                             </Badge>
                           )}
                         </td>
+                        <td className="py-2.5 pr-4">
+                          {a.tasaAciertos === null ? (
+                            <Badge variant="contorno">Sin datos</Badge>
+                          ) : (
+                            <Badge variant={a.tasaAciertos >= 70 ? "exito" : "aviso"}>
+                              {a.tasaAciertos}%
+                            </Badge>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -133,6 +143,43 @@ export default async function PaginaDirector() {
               </div>
             )}
           </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Temas con mayor tasa de error</CardTitle>
+            <CardDescription>
+              {resumen.temasConMasErrores.length === 0
+                ? "Aún no hay errores registrados en todo el colegio."
+                : "En qué se atasca el colegio, de lo más frecuente a lo menos, de cualquier aula."}
+            </CardDescription>
+          </CardHeader>
+          {resumen.temasConMasErrores.length > 0 && (
+            <CardContent className="space-y-3">
+              {resumen.temasConMasErrores.map((d) => (
+                <div key={`${d.tema}-${d.tipoError}`} className="space-y-1">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span>
+                      {d.tema.toLowerCase().replace(/_/g, " ")}
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {d.tipoError.replace(/_/g, " ")}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {d.peso}% ({d.ocurrencias})
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(2, Math.min(100, d.peso))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          )}
         </Card>
       </main>
     </div>
