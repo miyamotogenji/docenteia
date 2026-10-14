@@ -154,7 +154,7 @@ export default async function PanelEstudiante() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button asChild size="lg" variant="outline">
+            <Button asChild size="lg">
               <Link href="/estudiante/tareas">Ver mis tareas</Link>
             </Button>
           </CardContent>

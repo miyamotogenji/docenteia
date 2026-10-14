@@ -272,10 +272,16 @@ export class PSELight {
    *    askAnswer(questionText)->Promise<string>, showFeedback(ok, msg),
    *    setPlaying(bool)
    */
-  constructor({ avatar, tts, ui }) {
+  constructor({ avatar, tts, ui, intentosPorEjercicio }) {
     this.avatar = avatar;
     this.tts = tts;
     this.ui = ui;
+    // Tope de intentos POR EJERCICIO (distinto del tope de REINTENTOS de la
+    // tarea entera, que vive fuera de este motor): el mismo número que el
+    // docente configura al asignar la tarea. `0` es "sin límite" —la misma
+    // convención del formulario—, y sin número (lección libre) se conserva
+    // el de siempre, 3.
+    this.intentosPorEjercicio = intentosPorEjercicio;
     this._abort = null;
     this.lsg = null;
     this.timeline = [];
@@ -572,8 +578,14 @@ export class PSELight {
     }
 
     // RAMIFICACIÓN LIGERA ante un error: en vez de repetir el mismo ejercicio a secas o revelar la
-    // respuesta, damos una PISTA (cada vez más concreta) del MÉTODO y permitimos REINTENTAR. La caja
-    // de respuesta NO desaparece: se reabre de inmediato y la voz suena en paralelo.
+    // respuesta, damos una PISTA (cada vez más concreta) del MÉTODO y permitimos REINTENTAR, hasta el
+    // tope de intentos POR EJERCICIO configurado para esta lección (`this.intentosPorEjercicio`: "el
+    // avatar debe ceñirse estrictamente al número de intentos que el docente configuró… si el docente
+    // definió 2 intentos, sólo deben permitirse esos 2", corrección QA). Antes era SIEMPRE 2 reintentos
+    // más —3 intentos en total—, sin mirar ese número. `0` es "sin límite" —se reintenta sin tope,
+    // misma convención que ya usa el campo del formulario—; sin número (lección libre, sin tarea que
+    // lo configure) se conserva el tope de siempre, 3. La caja de respuesta NO desaparece entre
+    // intentos: se reabre de inmediato y la voz suena en paralelo.
     const boardText = this._exerciseBoard(timeline, index);
     const acerto = async (msg) => {
       this._acerto = true;
@@ -581,6 +593,22 @@ export class PSELight {
       this.ui.showFeedback(true, msg + conclusion);
       await this._speak(msg + conclusion, "sonriendo", signal);
     };
+    const cierraSinAcertar = async () => {
+      // Se acabaron los intentos. Mientras quedaban, la respuesta no se revelaba —se daban pistas del
+      // método—; agotados, el ejercicio NO se queda a medias: la pizarra lo cierra con el resultado
+      // final enmarcado y el tutor lo dice, para que el alumno vea a dónde había que llegar.
+      cierra(false);
+      const cierre = `No te preocupes, así se aprende. Mira la pizarra: el resultado final es ${String(expected)}. Repasa cómo se llega hasta él y lo intentamos con otro. ¡Tú puedes!`;
+      this.ui.showFeedback(false, cierre);
+      await this._speak(cierre, "hablando", signal);
+    };
+
+    const totalIntentos = this.intentosPorEjercicio === 0 ? Infinity : this.intentosPorEjercicio || 3;
+    if (totalIntentos <= 1) {
+      // Ni un reintento permitido: el primer error ya agota el tope.
+      await cierraSinAcertar();
+      return;
+    }
 
     // 1er error → mostrar OTRO EJEMPLO resuelto (si lo hay) o una pista; luego permitir REINTENTAR.
     if (d.otro_ejemplo) {
@@ -597,21 +625,19 @@ export class PSELight {
     if (signal.aborted || retry == null) return;
     if (checkAnswer(retry, expected).correct) { await acerto("¡Eso es! Ahora sí. 🎉"); return; }
 
-    // 2º error → pista más concreta del método + otro reintento.
-    const hint2 = buildHint(d.texto, boardText, 2);
-    this.ui.showFeedback(false, `Aún no, pero vas bien. ${hint2} Prueba una vez más.`);
-    this._speak(`Aún no. ${hint2}`, "preguntando", signal);
-    retry = await this.ui.askAnswer(d.texto, { signal });
-    if (signal.aborted || retry == null) return;
-    if (checkAnswer(retry, expected).correct) { await acerto("¡Muy bien, lo lograste! 🎉"); return; }
+    // 2º error en adelante → pista más concreta del método + otro reintento, uno por cada intento que
+    // quede dentro del tope. `buildHint` ya trata cualquier nivel ≥2 como "el más concreto", así que un
+    // 3er o 4º reintento repite la misma pista de más detalle en vez de quedarse sin nada que decir.
+    for (let hechos = 2; hechos < totalIntentos; hechos++) {
+      const hint2 = buildHint(d.texto, boardText, 2);
+      this.ui.showFeedback(false, `Aún no, pero vas bien. ${hint2} Prueba una vez más.`);
+      this._speak(`Aún no. ${hint2}`, "preguntando", signal);
+      retry = await this.ui.askAnswer(d.texto, { signal });
+      if (signal.aborted || retry == null) return;
+      if (checkAnswer(retry, expected).correct) { await acerto("¡Muy bien, lo lograste! 🎉"); return; }
+    }
 
-    // Sigue sin acertar y ya no quedan intentos. Mientras quedaban, la respuesta no se revelaba —se daban
-    // pistas del método—; agotados, el ejercicio NO se queda a medias: la pizarra lo cierra con el
-    // resultado final enmarcado y el tutor lo dice, para que el alumno vea a dónde había que llegar.
-    cierra(false);
-    const cierre = `No te preocupes, así se aprende. Mira la pizarra: el resultado final es ${String(expected)}. Repasa cómo se llega hasta él y lo intentamos con otro. ¡Tú puedes!`;
-    this.ui.showFeedback(false, cierre);
-    await this._speak(cierre, "hablando", signal);
+    await cierraSinAcertar();
   }
 
   /** La pregunta que espera respuesta del alumno, o null. La lee la interfaz antes de pedir una explicación. */
