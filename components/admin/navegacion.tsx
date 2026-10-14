@@ -8,13 +8,15 @@ import { cn } from "@/lib/utils";
 /**
  * Barra de secciones del panel de administración (HITO 4 — cierre PMV2).
  *
- * `/admin` era una sola pantalla de estado hasta este hito; con "Usuarios" —y
- * lo que llegue después, ejercicios y temas— hace falta un sitio desde el que
- * saltar entre ellas, mismo patrón que `NavegacionDocente`.
+ * `/admin` era una sola pantalla de estado hasta este hito; con "Usuarios",
+ * "Ejercicios" y "Temas" hace falta un sitio desde el que saltar entre ellas,
+ * mismo patrón que `NavegacionDocente`.
  */
 const SECCIONES = [
   { href: "/admin", titulo: "Estado", exacta: true },
   { href: "/admin/usuarios", titulo: "Usuarios" },
+  { href: "/admin/ejercicios", titulo: "Ejercicios" },
+  { href: "/admin/temas", titulo: "Temas" },
 ];
 
 export function NavegacionAdmin() {
