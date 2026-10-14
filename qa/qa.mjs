@@ -2534,6 +2534,79 @@ async function unitTests() {
     check("feedback COMPRENSIÓN ('¿entendiste?'): responde en positivo", !!compC.msg && /perfecto|bien|sigamos/i.test(compC.msg), `msg="${compC.msg}"`);
   }
 
+  // "El avatar debe ceñirse estrictamente al número de intentos que el docente configuró al momento
+  // de asignar la tarea (no dar chances adicionales por su cuenta); si el docente definió 2 intentos,
+  // sólo deben permitirse esos 2" (corrección QA, HITO 3): antes el motor daba SIEMPRE 2 reintentos
+  // más por ejercicio —3 intentos en total—, sin mirar `Tarea.limiteReintentos`.
+  {
+    const intentosDePrueba = async (intentosPorEjercicio, respuestas) => {
+      let llamadas = 0;
+      let resuelto = null;
+      const ui = {
+        ...uiMock,
+        askAnswer: async () => {
+          const r = Array.isArray(respuestas) ? (respuestas[llamadas] ?? respuestas.at(-1)) : respuestas;
+          llamadas++;
+          return r;
+        },
+        onExerciseResolved(info) { resuelto = info; },
+      };
+      const pse = new PSELight({
+        avatar: { setState() {}, setSpeaking() {} },
+        tts: { speak: async () => {}, cancel() {} },
+        ui,
+        intentosPorEjercicio,
+      });
+      await pse.play({ escena: "t", intencion: "resolver", directivas: [
+        { tipo: "pizarra", contenido: "x + 2 = 6", id: 2 },
+        { tipo: "preguntar", texto: "¿Cuánto vale x en x + 2 = 6?", respuesta: "4", id: 3 },
+      ] });
+      return { llamadas, resuelto };
+    };
+
+    const dos = await intentosDePrueba(2, "0"); // siempre mal: la esperada es "4"
+    check(
+      "con 2 intentos configurados, el motor pide la respuesta EXACTAMENTE 2 veces (no 3)",
+      dos.llamadas === 2 && dos.resuelto?.acerto === false,
+      JSON.stringify(dos),
+    );
+
+    const uno = await intentosDePrueba(1, "0");
+    check(
+      "con 1 solo intento configurado, no se ofrece ningún reintento",
+      uno.llamadas === 1 && uno.resuelto?.acerto === false,
+      JSON.stringify(uno),
+    );
+
+    const sinConfigurar = await intentosDePrueba(undefined, "0");
+    check(
+      "sin tarea (lección libre, sin número que mirar), se conserva el tope de siempre: 3 intentos",
+      sinConfigurar.llamadas === 3 && sinConfigurar.resuelto?.acerto === false,
+      JSON.stringify(sinConfigurar),
+    );
+
+    const cuatro = await intentosDePrueba(4, "0");
+    check(
+      "con 4 intentos configurados, se dan los 4 —más de los 3 que daba el motor fijo—",
+      cuatro.llamadas === 4 && cuatro.resuelto?.acerto === false,
+      JSON.stringify(cuatro),
+    );
+
+    const sinLimite = await intentosDePrueba(0, ["0", "0", "0", "0", "0", "4"]);
+    check(
+      "con 0 intentos configurados ('sin límite', misma convención que el formulario), sigue reintentando más allá de 3 hasta acertar",
+      sinLimite.llamadas === 6 && sinLimite.resuelto?.acerto === true,
+      JSON.stringify(sinLimite),
+    );
+
+    const acierraAlPrimerReintento = await intentosDePrueba(3, ["0", "4"]);
+    check(
+      "…y acertar DENTRO del tope sigue cerrando como correcto, sin agotar los intentos restantes",
+      acierraAlPrimerReintento.llamadas === 2 && acierraAlPrimerReintento.resuelto?.acerto === true,
+      JSON.stringify(acierraAlPrimerReintento),
+    );
+  }
+
   // Seguimiento "no entendí": reexplica de OTRA forma, DESDE CERO y DETALLADO (no repite, no genérico).
   const normal = processLSG(mockLSG("enséñame a restar", "aprender"), "aprender").lsg;
   const reexp = processLSG(mockLSG("enséñame a restar", "explicar", { reexplain: true }), "explicar").lsg;

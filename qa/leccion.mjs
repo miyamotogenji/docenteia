@@ -1853,7 +1853,18 @@ console.log("\n · Retroalimentación: la pista no sobrevive al acierto");
   // siguiente. Un "¡Correcto!" bajo un enunciado nuevo es el mismo fallo.
   check(
     "aula.tsx limpia el mensaje del tutor al plantear la pregunta siguiente",
-    /setVeredicto\(null\);\s*\n\s*setFeedback\(null\);\s*\n\s*resolverRespuesta\.current = resolve;/.test(
+    /if \(esUnEjercicioNuevo\) \{\s*\n[\s\S]{0,220}setVeredicto\(null\);\s*\n\s*setFeedback\(null\);\s*\n\s*\}\s*\n\s*resolverRespuesta\.current = resolve;/.test(
+      fuenteAulaR,
+    ),
+  );
+  // Pero NO en un REINTENTO del mismo ejercicio (corrección QA, HITO 3): el
+  // motor pide la respuesta otra vez, con el MISMO enunciado, justo después
+  // de fijar la pista con `showFeedback` —en el mismo turno de React—, así
+  // que limpiarla aquí también la habría borrado sin que llegara a pintarse
+  // ni una vez.
+  check(
+    "…salvo que sea el MISMO ejercicio (un reintento): ahí no se limpia la pista que el motor acaba de fijar",
+    /const esUnEjercicioNuevo = ultimaPregunta\.current !== \(String\(textoPregunta \?\? ""\) \|\| null\);/.test(
       fuenteAulaR,
     ),
   );

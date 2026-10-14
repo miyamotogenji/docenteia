@@ -970,13 +970,24 @@ export function Aula({
           // escribir ni narrar el enunciado, lo lleva la propia pregunta.
           fijarEjercicio(String(textoPregunta ?? ""));
           setPregunta(String(textoPregunta ?? ""));
+          // REINTENTO DEL MISMO EJERCICIO, NO UNO NUEVO: ante un error, el
+          // motor llama aquí otra vez con el MISMO enunciado para la pista y
+          // el próximo intento —ver la ramificación ligera en pseLight.js—.
+          // Si eso limpiara el veredicto y el mensaje del tutor como con un
+          // ejercicio nuevo, borraría la pista ("Casi. …") que el propio
+          // motor acaba de fijar un instante antes con `showFeedback`, en el
+          // MISMO turno de React: nunca llegaba a pintarse ni una vez —el
+          // alumno oía la pista por voz, pero en pantalla no veía nada—.
+          const esUnEjercicioNuevo = ultimaPregunta.current !== (String(textoPregunta ?? "") || null);
           ultimaPregunta.current = String(textoPregunta ?? "") || null;
           setBorrador("");
           setIntento(1);
-          // La retroalimentación del ejercicio anterior no acompaña al
-          // siguiente: ni el veredicto del servidor ni el mensaje del tutor.
-          setVeredicto(null);
-          setFeedback(null);
+          if (esUnEjercicioNuevo) {
+            // La retroalimentación del ejercicio anterior no acompaña al
+            // siguiente: ni el veredicto del servidor ni el mensaje del tutor.
+            setVeredicto(null);
+            setFeedback(null);
+          }
           resolverRespuesta.current = resolve;
           opciones?.signal?.addEventListener("abort", () => {
             resolverRespuesta.current = null;
@@ -986,7 +997,19 @@ export function Aula({
         }),
     };
 
-    pseRef.current = new PSELight({ avatar, tts: vozTutor, ui });
+    // "El avatar debe ceñirse estrictamente al número de intentos que el
+    // docente configuró al momento de asignar la tarea… si el docente
+    // definió 2 intentos, sólo deben permitirse esos 2" (corrección QA): el
+    // motor daba SIEMPRE 2 reintentos más por ejercicio —3 intentos en
+    // total—, sin mirar `Tarea.limiteReintentos`. Sin tarea (lección libre,
+    // sin ese número que mirar) se deja sin definir: el motor conserva su
+    // tope de siempre.
+    pseRef.current = new PSELight({
+      avatar,
+      tts: vozTutor,
+      ui,
+      intentosPorEjercicio: tarea?.limiteReintentos,
+    });
     setListo(true);
 
     return () => {
@@ -1878,6 +1901,118 @@ export function Aula({
     );
   }
 
+  /**
+   * El intercambio pregunta → respuesta → veredicto, COMPUESTO JUNTO.
+   *
+   * "La caja para ingresar el resultado queda demasiado abajo… hay que
+   * reubicarla más arriba (inmediatamente debajo del ejercicio en la
+   * pizarra) para que el alumno no tenga que hacer scroll ni pierda de
+   * vista el planteamiento" (corrección QA): antes de esto, las tres
+   * piezas —la tarjeta de "te toca a ti", el veredicto del servidor, la
+   * retroalimentación del tutor— vivían FUERA de la pizarra, debajo de su
+   * recuadro de altura fija, a veces pantallas enteras más abajo para un
+   * ejercicio corto. Juntas aquí, se le pasan al componente Pizarra para que las
+   * componga pegadas al ejercicio —sin mover ninguna de las tres por
+   * separado, que habría dejado el veredicto en un sitio y la pregunta en
+   * otro—.
+   */
+  const cajaDeRespuesta = (
+    <>
+      {/* SE VE QUE LE TOCA AL ALUMNO. La lección se para aquí esperando una
+          respuesta, y el cliente vio la consecuencia de no decirlo: "el
+          estudiante no sabe que debe interactuar y piensa que el sistema se
+          congeló". La tarjeta se anuncia sola —marco, aviso y un latido al
+          aparecer— y dice, con las mismas palabras que acaba de decir el
+          avatar, qué hay que hacer. */}
+      {pregunta && (
+        <Card ref={cajaRespuesta} className="pz-turno-alumno border-2 border-primary shadow-md">
+          <CardHeader className="pb-3">
+            <TextoTutor
+              como="p"
+              className="pz-aviso-turno text-sm font-semibold text-primary"
+              texto={INVITACION_A_RESPONDER}
+            />
+            <CardTitle className="text-base font-medium">
+              <TextoTutor como="span" className="pz-pregunta" texto={pregunta} />
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <form
+              className="flex gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!narrando) void responder();
+              }}
+            >
+              <Input
+                autoFocus
+                value={borrador}
+                onChange={(e) => setBorrador(e.target.value)}
+                placeholder="Tu respuesta"
+                aria-label="Tu respuesta"
+              />
+              <Button type="submit" disabled={!borrador.trim() || narrando}>
+                Responder
+              </Button>
+            </form>
+            {/* Se puede escribir la respuesta desde ya —la tarjeta no se
+                "congela"—; lo único que espera un instante es el envío,
+                para no competir con la voz que todavía está narrando. */}
+            {narrando && (
+              <p className="text-xs text-muted-foreground">Espera a que termine de hablar…</p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Veredicto del servidor. La caja de ayuda no se compone sobre un
+          acierto: sin esta condición, la pista del intento fallado quedaba
+          encima del mensaje verde. */}
+      {veredicto && (veredicto.correcto === true || hayQueMostrarAyuda(veredicto)) && (
+        <Alert
+          className="mt-3"
+          variant={
+            veredicto.correcto === true
+              ? "success"
+              : veredicto.correcto === false
+                ? "destructive"
+                : "default"
+          }
+        >
+          {veredicto.correcto === true ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <Lightbulb className="h-4 w-4" />
+          )}
+          <AlertDescription>
+            <TextoTutor
+              como="span"
+              className="pz-veredicto"
+              texto={
+                veredicto.correcto === true
+                  ? "Correcto. Lo has resuelto bien."
+                  : String(veredicto.pista ?? veredicto.mensaje ?? "")
+              }
+            />
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Mensaje pedagógico del tutor. También es voz del tutor, y sus
+          fórmulas ("Resultado final: 11/10") salen con la fracción vertical. */}
+      {feedback && (
+        <TextoTutor
+          como="p"
+          className={cn(
+            "pz-retroalimentacion mt-3 text-sm font-medium",
+            feedback.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600",
+          )}
+          texto={feedback.msg}
+        />
+      )}
+    </>
+  );
+
   // ── Aula ───────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -2100,6 +2235,7 @@ export function Aula({
                 paraResolver={paraResolver}
                 enunciadoExplicado={enunciadoExplicado}
                 animacion={animacion}
+                cajaDeRespuesta={cajaDeRespuesta}
               />
             )}
             avatarDeLaLeccion={{ estado: avatarPizarra ?? estadoAvatar, hablando }}
@@ -2160,101 +2296,6 @@ export function Aula({
               <Loader2 className="h-4 w-4 animate-spin" />
               Preparando la lección…
             </p>
-          )}
-
-          {/* Entorno de resolución interactiva.
-
-              SE VE QUE LE TOCA AL ALUMNO. La lección se para aquí esperando una
-              respuesta, y el cliente vio la consecuencia de no decirlo: "el
-              estudiante no sabe que debe interactuar y piensa que el sistema se
-              congeló". Ahora la tarjeta se anuncia sola —marco, aviso y un
-              latido al aparecer—, se lleva la vista hasta ella y dice, con las
-              mismas palabras que acaba de decir el avatar, qué hay que hacer. */}
-          {pregunta && (
-            <Card ref={cajaRespuesta} className="pz-turno-alumno border-2 border-primary shadow-md">
-              <CardHeader className="pb-3">
-                <TextoTutor
-                  como="p"
-                  className="pz-aviso-turno text-sm font-semibold text-primary"
-                  texto={INVITACION_A_RESPONDER}
-                />
-                <CardTitle className="text-base font-medium">
-                  <TextoTutor como="span" className="pz-pregunta" texto={pregunta} />
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <form
-                  className="flex gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    if (!narrando) void responder();
-                  }}
-                >
-                  <Input
-                    autoFocus
-                    value={borrador}
-                    onChange={(e) => setBorrador(e.target.value)}
-                    placeholder="Tu respuesta"
-                    aria-label="Tu respuesta"
-                  />
-                  <Button type="submit" disabled={!borrador.trim() || narrando}>
-                    Responder
-                  </Button>
-                </form>
-                {/* Se puede escribir la respuesta desde ya —la tarjeta no se
-                    "congela"—; lo único que espera un instante es el envío,
-                    para no competir con la voz que todavía está narrando. */}
-                {narrando && (
-                  <p className="text-xs text-muted-foreground">Espera a que termine de hablar…</p>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Veredicto del servidor. La caja de ayuda no se compone sobre un
-              acierto: sin esta condición, la pista del intento fallado quedaba
-              encima del mensaje verde. */}
-          {veredicto && (veredicto.correcto === true || hayQueMostrarAyuda(veredicto)) && (
-            <Alert
-              variant={
-                veredicto.correcto === true
-                  ? "success"
-                  : veredicto.correcto === false
-                    ? "destructive"
-                    : "default"
-              }
-            >
-              {veredicto.correcto === true ? (
-                <CheckCircle2 className="h-4 w-4" />
-              ) : (
-                <Lightbulb className="h-4 w-4" />
-              )}
-              <AlertDescription>
-                <TextoTutor
-                  como="span"
-                  className="pz-veredicto"
-                  texto={
-                    veredicto.correcto === true
-                      ? "Correcto. Lo has resuelto bien."
-                      : String(veredicto.pista ?? veredicto.mensaje ?? "")
-                  }
-                />
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* Mensaje pedagógico del tutor */}
-          {/* La retroalimentación también es voz del tutor, y sus fórmulas
-              ("Resultado final: 11/10") salen con la fracción vertical. */}
-          {feedback && (
-            <TextoTutor
-              como="p"
-              className={cn(
-                "pz-retroalimentacion text-sm font-medium",
-                feedback.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600",
-              )}
-              texto={feedback.msg}
-            />
           )}
 
           {/* "Al completar el último ejercicio, la sesión debe detenerse… y

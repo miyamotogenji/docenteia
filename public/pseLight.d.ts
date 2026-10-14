@@ -118,7 +118,18 @@ export function checkAnswer(
 export function buildHint(pregunta: string, pizarra: string, nivel: number): string;
 
 export class PSELight {
-  constructor(deps: { avatar: AvatarAdaptador; tts: TTSAdaptador; ui: UIPSELight });
+  constructor(deps: {
+    avatar: AvatarAdaptador;
+    tts: TTSAdaptador;
+    ui: UIPSELight;
+    /**
+     * Tope de intentos POR EJERCICIO —el mismo número que el docente
+     * configura al asignar la tarea—, distinto del tope de REINTENTOS de
+     * la tarea entera. `0` es "sin límite"; sin número (lección libre) el
+     * motor conserva su tope de siempre, 3.
+     */
+    intentosPorEjercicio?: number;
+  });
   lsg: LSG | null;
   timeline: Directiva[];
   index: number;

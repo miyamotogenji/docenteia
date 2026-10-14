@@ -145,6 +145,7 @@ export function Pizarra({
   paraResolver,
   enunciadoExplicado = null,
   animacion = null,
+  cajaDeRespuesta = null,
   className,
 }: {
   /** Fases ya abiertas: la tira de progreso y la vista en curso. */
@@ -183,6 +184,18 @@ export function Pizarra({
   enunciadoExplicado?: string | null;
   /** El estado de la animación: qué paso está recorriendo la voz. */
   animacion?: AnimacionDePizarra | null;
+  /**
+   * "La caja para ingresar el resultado queda demasiado abajo… hay que
+   * reubicarla más arriba (inmediatamente debajo del ejercicio en la
+   * pizarra) para que el alumno no tenga que hacer scroll ni pierda de
+   * vista el planteamiento" (corrección QA): el formulario de respuesta
+   * —y lo que viene después, el veredicto y la retroalimentación— es del
+   * AULA, no de la pizarra, así que llega como contenido ya compuesto en
+   * vez de reconstruirlo aquí. Se compone pegado al ejercicio, dentro del
+   * mismo recuadro con scroll propio, para que esté a la vista sin
+   * importar cuán largo sea el desarrollo de ese ejercicio en concreto.
+   */
+  cajaDeRespuesta?: React.ReactNode;
   className?: string;
 }) {
   const actual = fases[fases.length - 1] ?? null;
@@ -842,6 +855,13 @@ export function Pizarra({
                 </div>
 
 
+
+                {/* La caja de respuesta (corrección QA: "inmediatamente
+                    debajo del ejercicio en la pizarra, sin scroll"), sólo
+                    bajo SU fase —el mismo resguardo que ya usan `ejercicio`
+                    y `desarrollo`, para no componerla encima del contenido
+                    de otra fase durante la transición—. */}
+                {propio && cajaDeRespuesta}
 
                 {/* Qué significa cada color: sin la leyenda, el resaltado es
                     decoración. */}
