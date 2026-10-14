@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
 import { unirseSchema } from "@/lib/docente/aulas";
+import { permiteIntento, segundosParaReintentar } from "@/lib/seguridad/limite-tasa";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,20 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "Sólo un alumno puede matricularse en un aula." },
       { status: 403 },
+    );
+  }
+
+  // Tope de 5 intentos por minuto (corrección HITO 4): sin esto, un código de
+  // acceso alfanumérico corto se puede barrer por fuerza bruta probando
+  // combinaciones. Se cuenta POR ALUMNO en sesión, no por IP —la ruta ya
+  // exige sesión, así que es la identidad más fiable que hay, y evita que una
+  // red compartida (un aula de verdad, con varios alumnos detrás del mismo
+  // NAT del colegio) se castigue entre sí por error.
+  const limite = permiteIntento(`unirse:${sesion.user.id}`, 5, 60_000);
+  if (!limite.permitido) {
+    return NextResponse.json(
+      { error: "Demasiados intentos. Espera un momento antes de volver a probar un código." },
+      { status: 429, headers: { "Retry-After": String(segundosParaReintentar(limite.reintentarEnMs)) } },
     );
   }
 
