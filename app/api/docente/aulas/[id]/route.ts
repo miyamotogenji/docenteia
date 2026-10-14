@@ -32,7 +32,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
         // asignó, con qué plazos y quién de sus matriculados ya entregó.
         tareas: {
           orderBy: { creadoEn: "desc" },
-          include: { entregas: { select: { estudianteId: true, completada: true, puntaje: true } } },
+          include: {
+            entregas: {
+              where: { completada: true },
+              select: { estudianteId: true, completada: true, puntaje: true, detalle: true },
+            },
+          },
         },
       },
     });
@@ -73,6 +78,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
           // si la tarea viene del banco —con la IA no hay un conjunto FIJO
           // que mostrar, cada alumno recibe el suyo—.
           ejercicioIds: t.ejercicioIds,
+          // La dificultad es de LA TAREA, no de cada ejercicio uno a uno
+          // (corrección QA: "a la derecha de cada ejercicio se repite el
+          // texto 'AVANZADO' en cada fila" — porque todos comparten la
+          // misma—): se enseña una sola vez, en la cabecera.
+          dificultad: t.dificultad,
+          // El desglose de cada entrega YA completada, para que "Ver
+          // ejercicios de la tarea" pueda decir, ejercicio por ejercicio,
+          // si se acertó —sin esto no había forma de saber qué contestó
+          // nadie, sólo la respuesta correcta del banco—.
+          entregas: t.entregas.map((e) => ({ detalle: e.detalle })),
         };
       }),
     });

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TextoMatematico } from "@/components/math";
 import { pedir } from "@/lib/docente/cliente";
-import { GRADO_MAX, GRADO_MIN } from "@/lib/docente/aulas";
+import { GRADO_MAX, GRADO_MIN, seAcertoElEjercicio } from "@/lib/docente/aulas";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,6 +48,10 @@ interface TareaVista {
   pendientes: number;
   /** Del banco de ejercicios, si la tarea se armó así. Vacío = la IA los genera. */
   ejercicioIds: string[];
+  /** La dificultad de LA TAREA entera —todos sus ejercicios la comparten—. */
+  dificultad: string | null;
+  /** El desglose de cada entrega ya completada, para "Ver ejercicios de la tarea". */
+  entregas: { detalle: unknown }[];
 }
 
 interface FichaAula {
@@ -56,6 +60,7 @@ interface FichaAula {
 }
 
 interface EjercicioVista {
+  id: string;
   enunciado: string;
   respuestaCorrecta: string;
   nivel: string | null;
@@ -412,15 +417,25 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                                   ? "intentos sin límite"
                                   : `${t.limiteReintentos} intento${t.limiteReintentos === 1 ? "" : "s"}`}
                               </p>
-                              <p className="text-xs">
-                                <span className="font-medium text-emerald-700 dark:text-emerald-400">
-                                  {t.entregadas} entregada{t.entregadas === 1 ? "" : "s"}
-                                </span>
-                                {" · "}
-                                <span className="text-muted-foreground">
-                                  {t.pendientes} pendiente{t.pendientes === 1 ? "" : "s"}
-                                </span>
-                              </p>
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="text-xs">
+                                  <span className="font-medium text-emerald-700 dark:text-emerald-400">
+                                    {t.entregadas} entregada{t.entregadas === 1 ? "" : "s"}
+                                  </span>
+                                  {" · "}
+                                  <span className="text-muted-foreground">
+                                    {t.pendientes} pendiente{t.pendientes === 1 ? "" : "s"}
+                                  </span>
+                                </p>
+                                {/* La dificultad es de LA TAREA: se dice una sola
+                                    vez aquí, no en cada fila del desglose de
+                                    ejercicios (corrección QA). */}
+                                {t.dificultad && (
+                                  <Badge variant="contorno" className="text-[0.65rem]">
+                                    {t.dificultad}
+                                  </Badge>
+                                )}
+                              </div>
                               {t.ejercicioIds.length > 0 && (
                                 <>
                                   <Button
@@ -437,15 +452,38 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                                         <p className="text-muted-foreground">Cargando…</p>
                                       ) : (
                                         <ul className="space-y-2">
-                                          {(ejerciciosVistos[t.id] as EjercicioVista[]).map((e, i) => (
-                                            <li key={i} className="space-y-0.5">
-                                              <TextoMatematico texto={e.enunciado} />
-                                              <p className="text-muted-foreground">
-                                                Respuesta: {e.respuestaCorrecta}
-                                                {e.nivel ? ` · ${e.nivel}` : ""}
-                                              </p>
-                                            </li>
-                                          ))}
+                                          {(ejerciciosVistos[t.id] as EjercicioVista[]).map((e, i) => {
+                                            // "A la derecha de cada ejercicio se
+                                            // repite 'AVANZADO' en cada fila"
+                                            // (corrección QA): lo que cambia
+                                            // ejercicio a ejercicio no es la
+                                            // dificultad —ya está en la
+                                            // cabecera—, es si se acertó.
+                                            const acerto = seAcertoElEjercicio(t.entregas, e.id);
+                                            return (
+                                              <li key={i} className="flex items-start justify-between gap-2">
+                                                <div className="space-y-0.5">
+                                                  <TextoMatematico texto={e.enunciado} />
+                                                  <p className="text-muted-foreground">
+                                                    Respuesta: {e.respuestaCorrecta}
+                                                  </p>
+                                                </div>
+                                                {acerto != null && (
+                                                  <span
+                                                    title={acerto ? "Acertado" : "Fallado"}
+                                                    className={cn(
+                                                      "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs font-semibold",
+                                                      acerto
+                                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
+                                                        : "bg-destructive/15 text-destructive",
+                                                    )}
+                                                  >
+                                                    {acerto ? "✓" : "✗"}
+                                                  </span>
+                                                )}
+                                              </li>
+                                            );
+                                          })}
                                         </ul>
                                       )}
                                     </div>
