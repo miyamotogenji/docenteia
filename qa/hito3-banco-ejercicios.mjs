@@ -20,6 +20,7 @@
 
 import { BASE_URL as BASE, exigirServidor } from "./base-url.mjs";
 import { iniciarSesion, registrarAlumno } from "./sesion.mjs";
+import { seAcertoElEjercicio } from "../lib/docente/aulas.ts";
 
 let ok = 0;
 const fallos = [];
@@ -338,9 +339,19 @@ check("un alumno no matriculado no puede corregir un ejercicio de esta tarea", r
 
 // 15. Entregar, con la nota de los 3 aciertos (el cliente sabe, por el
 //     round anterior, que esto registra la EntregaTarea de verdad).
+// El desglose que de verdad manda la pantalla del alumno: dos aciertos, un
+// fallo —a propósito, para probar los dos colores de "Ver ejercicios de la
+// tarea" (corrección QA) con un solo alumno matriculado—.
+const detalleEntrega = verEjercicios.ejercicios.map((e, i) => ({
+  ejercicioId: e.id,
+  enunciado: e.enunciado,
+  respuestaDada: i === 0 ? "una respuesta mal a propósito" : e.respuestaCorrecta,
+  respuestaCorrecta: null, // el servidor la rellena él mismo, nunca se confía en el cliente
+  correcto: i !== 0,
+}));
 const rEntregar = await apiAlumno(`/api/estudiante/tareas/${tareaAuto.tarea.id}/entregar`, {
   method: "POST",
-  body: JSON.stringify({ puntaje: 100, completada: true }),
+  body: JSON.stringify({ puntaje: 100, completada: true, detalle: detalleEntrega }),
 });
 check("la tarea del banco se entrega con el mismo endpoint de siempre", rEntregar.status === 200, `HTTP ${rEntregar.status}`);
 
@@ -350,6 +361,40 @@ check(
   "la entrega de la tarea del banco queda registrada: entregada, nota 100",
   laSuya?.estado === "entregada" && laSuya?.puntaje === 100,
   JSON.stringify(laSuya),
+);
+
+// 15a. "Ver ejercicios de la tarea" del docente (corrección QA): la
+//      dificultad se dice UNA vez, en la tarea —no repetida en cada fila—,
+//      y cada ejercicio trae con qué cruzar si se acertó o no.
+const rFichaTrasEntregar = await api(`/api/docente/aulas/${aula.aula.id}`);
+const fichaTrasEntregar = await rFichaTrasEntregar.json().catch(() => ({}));
+const filaAutoTrasEntregar = (fichaTrasEntregar?.tareas ?? []).find((t) => t.id === tareaAuto.tarea.id);
+check(
+  "la ficha del aula trae la dificultad DE LA TAREA (una vez, no por ejercicio)",
+  filaAutoTrasEntregar?.dificultad === "BASICO",
+  JSON.stringify(filaAutoTrasEntregar?.dificultad),
+);
+check(
+  "…y el desglose de la entrega completada, para cruzar el acierto por ejercicio",
+  Array.isArray(filaAutoTrasEntregar?.entregas) &&
+    filaAutoTrasEntregar.entregas.length === 1 &&
+    Array.isArray(filaAutoTrasEntregar.entregas[0]?.detalle) &&
+    filaAutoTrasEntregar.entregas[0].detalle.length === 3,
+  JSON.stringify(filaAutoTrasEntregar?.entregas),
+);
+check(
+  "seAcertoElEjercicio: el 1er ejercicio (contestado mal a propósito) da false",
+  seAcertoElEjercicio(filaAutoTrasEntregar?.entregas ?? [], verEjercicios.ejercicios[0].id) === false,
+);
+check(
+  "…y el 2º y 3º (contestados bien) dan true",
+  seAcertoElEjercicio(filaAutoTrasEntregar?.entregas ?? [], verEjercicios.ejercicios[1].id) === true &&
+    seAcertoElEjercicio(filaAutoTrasEntregar?.entregas ?? [], verEjercicios.ejercicios[2].id) === true,
+);
+check(
+  "…y la respuesta correcta del desglose la rellenó EL SERVIDOR, no lo que mandó el cliente (null)",
+  filaAutoTrasEntregar.entregas[0].detalle.every((d) => typeof d.respuestaCorrecta === "string" && d.respuestaCorrecta.length > 0),
+  JSON.stringify(filaAutoTrasEntregar.entregas[0].detalle),
 );
 
 // 15b. El desglose de resultados ("la respuesta correcta calculada por el

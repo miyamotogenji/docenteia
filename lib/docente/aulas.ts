@@ -229,3 +229,37 @@ export function puedeEntregar(
   }
   return null;
 }
+
+/**
+ * ¿Se acertó este ejercicio? Para "Ver ejercicios de la tarea" del docente
+ * (corrección QA: "a la derecha de cada ejercicio se repite el texto
+ * 'AVANZADO' en cada fila"; en su lugar, el indicador de acierto —el dato
+ * que de verdad cambia ejercicio a ejercicio, la dificultad es de toda la
+ * tarea—).
+ *
+ * Cruza el desglose de cada entrega YA completada por su `ejercicioId`. Con
+ * un solo alumno matriculado —el caso típico de un aula de prueba— esto es
+ * sencillamente "¿lo acertó?". Con varios, es "¿lo acertaron TODOS los que
+ * lo intentaron?": un solo fallo basta para marcarlo en rojo, porque la
+ * pregunta que le importa al docente es "¿hay alguien que necesite
+ * repasar esto?", no un promedio. `null` es "todavía nadie lo ha
+ * contestado": ni verde ni rojo, sin inventar un dato que no existe.
+ */
+export function seAcertoElEjercicio(
+  entregas: { detalle: unknown }[],
+  ejercicioId: string,
+): boolean | null {
+  let alguienLoContestó = false;
+  let alguienFalló = false;
+  for (const entrega of entregas) {
+    const detalle = Array.isArray(entrega.detalle) ? entrega.detalle : [];
+    const fila = (detalle as { ejercicioId?: string; correcto?: boolean }[]).find(
+      (d) => d.ejercicioId === ejercicioId,
+    );
+    if (!fila) continue;
+    alguienLoContestó = true;
+    if (!fila.correcto) alguienFalló = true;
+  }
+  if (!alguienLoContestó) return null;
+  return !alguienFalló;
+}

@@ -33,6 +33,7 @@ import {
   entregaSchema,
   estadoDeTarea,
   puedeEntregar,
+  seAcertoElEjercicio,
   tareaSchema,
   unirseSchema,
 } from "../lib/docente/aulas.ts";
@@ -207,6 +208,46 @@ check("entregaSchema admite un puntaje entre 0 y 100", entregaSchema.safeParse({
   check(
     "…pero no más allá del tope de intentos, completada o no",
     puedeEntregar(tarea, { intentosUsados: 2, completada: true }, ahora) !== null,
+  );
+}
+
+// seAcertoElEjercicio: "Ver ejercicios de la tarea" del docente (corrección
+// QA: en vez de repetir la dificultad en cada fila, el indicador de
+// acierto).
+{
+  check(
+    "nadie ha contestado todavía: null, ni verde ni rojo",
+    seAcertoElEjercicio([], "ej-1") === null,
+  );
+  check(
+    "nadie ha contestado ESTE ejercicio en concreto, aunque haya otras entregas",
+    seAcertoElEjercicio([{ detalle: [{ ejercicioId: "ej-2", correcto: true }] }], "ej-1") === null,
+  );
+  check(
+    "un solo alumno, lo acertó: true",
+    seAcertoElEjercicio([{ detalle: [{ ejercicioId: "ej-1", correcto: true }] }], "ej-1") === true,
+  );
+  check(
+    "un solo alumno, lo falló: false",
+    seAcertoElEjercicio([{ detalle: [{ ejercicioId: "ej-1", correcto: false }] }], "ej-1") === false,
+  );
+  check(
+    "varios alumnos, TODOS lo acertaron: true",
+    seAcertoElEjercicio(
+      [{ detalle: [{ ejercicioId: "ej-1", correcto: true }] }, { detalle: [{ ejercicioId: "ej-1", correcto: true }] }],
+      "ej-1",
+    ) === true,
+  );
+  check(
+    "varios alumnos, UNO solo lo falló: false (basta un fallo para avisar)",
+    seAcertoElEjercicio(
+      [{ detalle: [{ ejercicioId: "ej-1", correcto: true }] }, { detalle: [{ ejercicioId: "ej-1", correcto: false }] }],
+      "ej-1",
+    ) === false,
+  );
+  check(
+    "un `detalle` que no es un array (entrega sin desglose guardado) no revienta: null",
+    seAcertoElEjercicio([{ detalle: null }, { detalle: undefined }], "ej-1") === null,
   );
 }
 
