@@ -179,13 +179,18 @@ check("entregaSchema admite un puntaje entre 0 y 100", entregaSchema.safeParse({
   const vencida = { fechaVencimiento: new Date("2026-06-01T00:00:00.000Z"), limiteReintentos: 2 };
   check("sin entrega previa, se puede entregar", puedeEntregar(tarea, null, ahora) === null);
   check("tarea vencida, no se puede", puedeEntregar(vencida, null, ahora) !== null);
+  // `limiteReintentos` es el TOTAL de intentos, no "adicionales al primero"
+  // (corrección QA: "si el docente configura 2 intentos, el alumno debe
+  // tener exactamente 2 en total" —antes esto era "tope 3" con
+  // limiteReintentos=2, la contradicción exacta que reportó entre la vista
+  // del docente, "2 reintentos", y la del alumno, "0 de 3 disponibles"—).
   check(
-    "con limiteReintentos=2 (tope 3 intentos), al 3er intento usado ya no se puede",
-    puedeEntregar(tarea, { intentosUsados: 3 }, ahora) !== null,
+    "con limiteReintentos=2 (tope 2 intentos), al 2º intento usado ya no se puede",
+    puedeEntregar(tarea, { intentosUsados: 2 }, ahora) !== null,
   );
   check(
-    "…pero al 2º intento usado SÍ, todavía le queda uno",
-    puedeEntregar(tarea, { intentosUsados: 2 }, ahora) === null,
+    "…pero al 1er intento usado SÍ, todavía le queda uno",
+    puedeEntregar(tarea, { intentosUsados: 1 }, ahora) === null,
   );
   check(
     "limiteReintentos=0 es SIN TOPE: muchos intentos usados y sigue pudiendo",
@@ -193,15 +198,15 @@ check("entregaSchema admite un puntaje entre 0 y 100", entregaSchema.safeParse({
   );
   // Corrección QA: "el alumno pueda rehacer la tarea después para mejorar su
   // nota". Antes `completada: true` bloqueaba cualquier otra entrega sin
-  // importar los reintentos que quedaran —eso volvía inútil configurar
-  // `limiteReintentos` a más de 1—; ahora sólo el tope de reintentos decide.
+  // importar los intentos que quedaran —eso volvía inútil configurar
+  // `limiteReintentos` a más de 1—; ahora sólo el tope de intentos decide.
   check(
-    "una tarea ya completada SÍ se puede reentregar, si quedan reintentos",
+    "una tarea ya completada SÍ se puede reentregar, si quedan intentos",
     puedeEntregar(tarea, { intentosUsados: 1, completada: true }, ahora) === null,
   );
   check(
-    "…pero no más allá del tope de reintentos, completada o no",
-    puedeEntregar(tarea, { intentosUsados: 3, completada: true }, ahora) !== null,
+    "…pero no más allá del tope de intentos, completada o no",
+    puedeEntregar(tarea, { intentosUsados: 2, completada: true }, ahora) !== null,
   );
 }
 
@@ -401,7 +406,9 @@ if (!salud) {
       `HTTP ${rMismoDiaHttp.status}`,
     );
 
-    // 5. Se programa una tarea de verdad, con dos reintentos.
+    // 5. Se programa una tarea de verdad, con tope de 2 intentos en total
+    //    (corrección QA: `limiteReintentos` es el TOTAL, no "adicionales al
+    //    primero" — con 2 configurados, se permiten exactamente 2).
     const rTarea = await api("/api/docente/tareas", {
       method: "POST",
       body: JSON.stringify({
@@ -410,7 +417,7 @@ if (!salud) {
         fechaInicio: ahoraIso,
         fechaVencimiento: mananaIso,
         cantidadEjercicios: 5,
-        limiteReintentos: 1,
+        limiteReintentos: 2,
       }),
     });
     const tarea = await rTarea.json().catch(() => ({}));
@@ -423,7 +430,7 @@ if (!salud) {
     const laSuya = (tareasAlumno?.tareas ?? []).find((t) => t.id === tareaId);
     check("la tarea aparece en el listado del alumno, pendiente", laSuya?.estado === "pendiente", JSON.stringify(laSuya));
 
-    // 7. Se entrega dos veces (1 + 1 reintento = tope 2) y la tercera se bloquea.
+    // 7. Se entrega dos veces (tope 2 intentos en total) y la tercera se bloquea.
     //
     // El primer intento ya llega COMPLETADA: true —"el alumno pueda rehacer la
     // tarea después para mejorar su nota" (corrección QA)—, y aun así el
@@ -525,7 +532,7 @@ if (!salud) {
     const filaTarea = (ficha?.tareas ?? []).find((t) => t.id === tareaId);
     check(
       "la ficha del aula también trae la tarea asignada, con cupo y reintentos",
-      Boolean(filaTarea) && filaTarea.cantidadEjercicios === 5 && filaTarea.limiteReintentos === 1,
+      Boolean(filaTarea) && filaTarea.cantidadEjercicios === 5 && filaTarea.limiteReintentos === 2,
       JSON.stringify(filaTarea),
     );
     check(

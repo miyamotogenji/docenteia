@@ -158,9 +158,10 @@ const rTarea = await api("/api/docente/tareas", {
     fechaInicio: ahoraIso,
     fechaVencimiento: mananaIso,
     cantidadEjercicios: 2,
-    // 1 = un reintento permitido (tope 2 intentos en total): lo justo para
-    // probar que "Reintentar" aparece la 1ª vez y desaparece la 2ª.
-    limiteReintentos: 1,
+    // `limiteReintentos` es el TOTAL de intentos, no "adicionales al
+    // primero" (corrección QA). 2 = lo justo para probar que "Reintentar"
+    // aparece la 1ª vez y desaparece la 2ª.
+    limiteReintentos: 2,
     nodoId: nodoAritmetica?.id ?? null,
   }),
 });
@@ -416,9 +417,9 @@ estado = await resolverLaTareaEntera();
 check("…con una nota de 100/100 (los dos ejercicios, correctos)", estado.nota === "100", `nota=${estado.nota}`);
 
 // "El alumno pueda rehacer la tarea después para mejorar su nota"
-// (corrección QA): con limiteReintentos=1 (tope 2 intentos), tras el 1er
-// intento TODAVÍA debe ofrecerse "Reintentar".
-check("tras el 1er intento, se ofrece 'Reintentar' (queda 1 de 1 reintentos)", estado.botonReintentar, JSON.stringify(estado));
+// (corrección QA): con limiteReintentos=2 (tope 2 intentos en total), tras
+// el 1er intento TODAVÍA debe ofrecerse "Reintentar" (queda 1).
+check("tras el 1er intento, se ofrece 'Reintentar' (queda 1 de 2 intentos)", estado.botonReintentar, JSON.stringify(estado));
 
 const rTareasAlumno1 = await apiAlumno("/api/estudiante/tareas");
 const laSuya1 = (await rTareasAlumno1.json().catch(() => ({})))?.tareas?.find((t) => t.id === tarea.tarea.id);
@@ -452,7 +453,7 @@ const leerResultadoPersistido = () =>
       enlaceReintentar: [...document.querySelectorAll("a")].some((a) =>
         /Reintentar para mejorar la nota/.test(a.textContent ?? ""),
       ),
-      mensajeSinReintentos: /ya no te quedan reintentos|esta tarea ya venció/i.test(texto),
+      mensajeSinReintentos: /ya no te quedan intentos|esta tarea ya venció/i.test(texto),
     };
   });
 

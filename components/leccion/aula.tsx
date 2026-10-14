@@ -151,7 +151,7 @@ export interface TareaActiva {
   id: string;
   cantidadEjercicios: number;
   temaClave: string | null;
-  /** 0 = sin tope de reintentos. Igual que `Tarea.limiteReintentos` en el servidor. */
+  /** El TOTAL de intentos permitidos, no "adicionales al primero". 0 = sin tope. Igual que `Tarea.limiteReintentos` en el servidor. */
   limiteReintentos: number;
   /** Cuántos intentos de esta tarea ya había registrados ANTES de abrir esta página. */
   intentosPrevios: number;
@@ -1502,9 +1502,12 @@ export function Aula({
    * ¿Tiene sentido ofrecer "Reintentar" tras esta entrega? Misma cuenta que
    * `puedeEntregar` en el servidor, vista desde DESPUÉS de la entrega que se
    * acaba de aceptar: si el próximo intento todavía entraría en el tope.
+   * `limiteReintentos` es el TOTAL de intentos, no "adicionales al
+   * primero" (corrección QA: "si el docente configura 2 intentos, el
+   * alumno debe tener exactamente 2 en total").
    */
   const puedenQuedarReintentos =
-    tarea != null && (tarea.limiteReintentos === 0 || intentosHechos < tarea.limiteReintentos + 1);
+    tarea != null && (tarea.limiteReintentos === 0 || intentosHechos < tarea.limiteReintentos);
 
   /**
    * Vuelve a intentar la tarea desde el principio: mismo tema, cupo y
@@ -2030,11 +2033,15 @@ export function Aula({
                 Ejercicio {slotActivo + 1} de {tarea.cantidadEjercicios}
               </p>
               {/* "El estudiante no puede saber cuántos intentos tiene
-                  permitidos ni cuántos le quedan" (corrección QA). */}
+                  permitidos ni cuántos le quedan" (corrección QA).
+                  `limiteReintentos` es el TOTAL de intentos, no
+                  "adicionales al primero" (corrección QA: "si el docente
+                  configura 2 intentos, el alumno debe tener exactamente 2
+                  en total"). */}
               <p className="text-xs text-muted-foreground">
                 {tarea.limiteReintentos === 0
-                  ? `Intento ${intentosHechos + 1} (sin límite de reintentos)`
-                  : `Intento ${intentosHechos + 1} de ${tarea.limiteReintentos + 1}`}
+                  ? `Intento ${intentosHechos + 1} (sin límite de intentos)`
+                  : `Intento ${intentosHechos + 1} de ${tarea.limiteReintentos}`}
               </p>
               {/* "El alumno no sabe cuáles son los ejercicios que le tocan ni
                   puede ver su progreso global… debe tener libre navegación

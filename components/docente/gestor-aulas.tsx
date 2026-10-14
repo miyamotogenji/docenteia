@@ -397,8 +397,8 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                                 {new Date(t.fechaVencimiento).toLocaleDateString("es")} ·{" "}
                                 {t.cantidadEjercicios} ejercicio{t.cantidadEjercicios === 1 ? "" : "s"} ·{" "}
                                 {t.limiteReintentos === 0
-                                  ? "reintentos sin límite"
-                                  : `${t.limiteReintentos} reintento${t.limiteReintentos === 1 ? "" : "s"}`}
+                                  ? "intentos sin límite"
+                                  : `${t.limiteReintentos} intento${t.limiteReintentos === 1 ? "" : "s"}`}
                               </p>
                               <p className="text-xs">
                                 <span className="font-medium text-emerald-700 dark:text-emerald-400">
