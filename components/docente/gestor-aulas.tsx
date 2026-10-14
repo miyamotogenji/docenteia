@@ -51,7 +51,7 @@ interface TareaVista {
 }
 
 interface FichaAula {
-  estudiantes: { nombre: string; email: string }[];
+  estudiantes: { id: string; nombre: string; email: string }[];
   tareas: TareaVista[];
 }
 
@@ -378,9 +378,21 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
                         ) : (
                           <ul className="space-y-1.5">
                             {(fichas[a.id] as FichaAula).estudiantes.map((al) => (
-                              <li key={al.email} className="flex items-baseline justify-between gap-2">
-                                <span className="font-medium">{al.nombre}</span>
-                                <span className="truncate text-xs text-muted-foreground">{al.email}</span>
+                              <li key={al.email} className="space-y-0.5">
+                                <div className="flex items-baseline justify-between gap-2">
+                                  <span className="font-medium">{al.nombre}</span>
+                                  <span className="truncate text-xs text-muted-foreground">{al.email}</span>
+                                </div>
+                                {/* "Ejercicios desarrollados" (corrección QA): el
+                                    docente pueda auditar, alumno por alumno, qué
+                                    resolvió en esta aula —enunciado, su
+                                    respuesta, la correcta y el puntaje—. */}
+                                <Link
+                                  href={`/docente/aulas/${a.id}/estudiantes/${al.id}`}
+                                  className="text-xs font-medium text-primary hover:underline"
+                                >
+                                  Ejercicios desarrollados
+                                </Link>
                               </li>
                             ))}
                           </ul>
