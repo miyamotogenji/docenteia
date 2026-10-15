@@ -31,15 +31,21 @@ export const patchUsuarioSchema = z.object({
 export type PatchUsuario = z.infer<typeof patchUsuarioSchema>;
 
 /**
- * ¿Tiene sentido vincular a una institución el rol resultante? Sólo DOCENTE
- * y DIRECTOR pertenecen a un colegio por esta vía —un ESTUDIANTE entra en
- * las aulas de sus profesores por matrícula, no por institución directa (ver
- * el comentario de `Usuario.institucionId` en el esquema)—, así que asignarle
- * una a un estudiante o a un SUPERADMIN sería un dato que la aplicación
- * nunca lee, guardado como si significara algo.
+ * ¿Tiene sentido vincular a una institución el rol resultante? DOCENTE y
+ * DIRECTOR pertenecen a un colegio por esta vía —un ESTUDIANTE entra en las
+ * aulas de sus profesores por matrícula, no por institución directa (ver el
+ * comentario de `Usuario.institucionId` en el esquema)—, así que asignarle
+ * una a un estudiante sería un dato que la aplicación nunca lee, guardado
+ * como si significara algo.
+ *
+ * Un SUPERADMIN SÍ puede vincularse a una: `exigirDocenteConInstitucion` y
+ * `exigirDirector` ya lo tratan como un docente/director más en cuanto tiene
+ * colegio asignado (para que pueda crear aulas o entrar a un panel
+ * institucional de pruebas), y sin esto no tendría forma de dárselo a sí
+ * mismo ni a otro SUPERADMIN.
  */
 export function rolUsaInstitucion(rol: string): boolean {
-  return rol === "DOCENTE" || rol === "DIRECTOR";
+  return rol === "DOCENTE" || rol === "DIRECTOR" || rol === "SUPERADMIN";
 }
 
 /**

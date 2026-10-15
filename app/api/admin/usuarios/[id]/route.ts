@@ -18,19 +18,23 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!permiso.ok) return permiso.respuesta;
   const { id } = await params;
 
-  // Nadie se suspende, se degrada ni se desvincula a sí mismo desde aquí: un
-  // SUPERADMIN que se quita su propio rol, o que se suspende por error, se
-  // deja fuera de /admin sin que quede nadie dentro que pueda deshacerlo —el
-  // panel no tiene "recuperar acceso", sólo Prisma Studio o una migración a
-  // mano—. La cuenta propia se cambia desde /perfil (si existe) o en la base
-  // de datos directamente, nunca por aquí.
-  if (id === permiso.quien.usuarioId) {
-    return conflicto("No puedes modificar tu propia cuenta desde el panel de administración.");
-  }
-
   const cuerpo = await leerCuerpo(req, patchUsuarioSchema);
   if (!cuerpo.ok) return cuerpo.respuesta;
   const datos = cuerpo.datos;
+
+  // Nadie se suspende ni se degrada el rol a sí mismo desde aquí: un
+  // SUPERADMIN que se quita su propio rol, o que se suspende por error, se
+  // deja fuera de /admin sin que quede nadie dentro que pueda deshacerlo —el
+  // panel no tiene "recuperar acceso", sólo Prisma Studio o una migración a
+  // mano—. Vincularse a sí mismo a una institución SÍ se permite: a
+  // diferencia de rol/activo, no reduce su propio acceso ni lo bloquea de
+  // nada —es lo que necesita para poder crear aulas y probar el flujo de
+  // docente con su propia cuenta—.
+  if (id === permiso.quien.usuarioId && (datos.rol !== undefined || datos.activo !== undefined)) {
+    return conflicto(
+      "No puedes cambiar tu propio rol ni activar/suspender tu propia cuenta desde el panel de administración.",
+    );
+  }
 
   if (datos.activo === undefined && datos.rol === undefined && datos.institucionId === undefined) {
     return conflicto("No se pidió ningún cambio.");
@@ -52,7 +56,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (institucionResultante && !rolUsaInstitucion(rolResultante)) {
       if (datos.institucionId !== undefined) {
         return conflicto(
-          "Sólo un docente o un director pueden vincularse a una institución.",
+          "Sólo un docente, un director o el administrador de la plataforma pueden vincularse a una institución.",
         );
       }
     }
