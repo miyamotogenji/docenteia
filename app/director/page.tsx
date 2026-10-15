@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { auth } from "@/auth";
 import { Cabecera } from "@/components/cabecera";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { prisma } from "@/lib/prisma";
 import { obtenerResumenInstitucional } from "@/lib/director/datos";
@@ -55,9 +56,19 @@ export default async function PaginaDirector() {
     <div className="min-h-screen">
       <Cabecera />
       <main className="mx-auto max-w-6xl space-y-6 px-6 py-10">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Panel institucional</h1>
-          <p className="text-muted-foreground">{institucion?.nombre ?? "Tu colegio"}</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Panel institucional</h1>
+            <p className="text-muted-foreground">{institucion?.nombre ?? "Tu colegio"}</p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/director/exportar/pdf">Descargar PDF</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/director/exportar/excel">Descargar Excel</a>
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
