@@ -27,7 +27,10 @@ interface Props {
   miPropioId: string;
 }
 
-const USA_INSTITUCION = new Set(["DOCENTE", "DIRECTOR"]);
+// Mismo criterio que `rolUsaInstitucion` en lib/admin/usuarios.ts: un
+// SUPERADMIN también puede vincularse a un colegio, para crear aulas o
+// entrar a un panel institucional con su propia cuenta.
+const USA_INSTITUCION = new Set(["DOCENTE", "DIRECTOR", "SUPERADMIN"]);
 
 /**
  * "3.B Control de Accesos y Gestión de Usuarios" (HITO 4 — cierre PMV2):
@@ -173,7 +176,7 @@ export function GestorUsuarios({ miPropioId }: Props) {
                       {USA_INSTITUCION.has(u.rol) ? (
                         <Select
                           value={u.institucionId ?? ""}
-                          disabled={esUnoMismo || guardando === u.id}
+                          disabled={guardando === u.id}
                           onChange={(e) => actualizar(u.id, { institucionId: e.target.value || null })}
                           className="h-8 py-0 text-xs"
                         >

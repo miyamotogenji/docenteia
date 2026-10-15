@@ -51,7 +51,10 @@ console.log("\n · A. rolUsaInstitucion");
 check("DOCENTE usa institución", rolUsaInstitucion("DOCENTE") === true);
 check("DIRECTOR usa institución", rolUsaInstitucion("DIRECTOR") === true);
 check("ESTUDIANTE no usa institución", rolUsaInstitucion("ESTUDIANTE") === false);
-check("SUPERADMIN no usa institución", rolUsaInstitucion("SUPERADMIN") === false);
+check(
+  "SUPERADMIN también puede vincularse a una institución (para crear aulas o probar un panel institucional con su propia cuenta)",
+  rolUsaInstitucion("SUPERADMIN") === true,
+);
 
 const salud = await fetch(`${BASE}/api/health`, { signal: AbortSignal.timeout(8000) })
   .then((r) => r.json())
@@ -226,6 +229,40 @@ console.log("\n · D. Suspender/activar, reasignar rol, vincular institución �
     rAutomodificacion.status === 409,
     `HTTP ${rAutomodificacion.status}`,
   );
+
+  const rAutodegradacion = await apiAdmin(`/api/admin/usuarios/${miId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ rol: "DOCENTE" }),
+  });
+  check(
+    "…ni degradarse el propio rol tampoco",
+    rAutodegradacion.status === 409,
+    `HTTP ${rAutodegradacion.status}`,
+  );
+
+  // Pero SÍ puede vincularse a sí mismo a una institución —no reduce su
+  // propio acceso, es justo lo que necesita para poder crear aulas y
+  // probar el flujo de docente con su propia cuenta—.
+  const unaInstitucionParaMi = lista?.instituciones?.[0]?.id;
+  if (miId && unaInstitucionParaMi) {
+    const rAutovinculacion = await apiAdmin(`/api/admin/usuarios/${miId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ institucionId: unaInstitucionParaMi }),
+    });
+    const autovinculado = await rAutovinculacion.json().catch(() => ({}));
+    check(
+      "…y SÍ puede vincularse a sí mismo a una institución (no es rol ni activo)",
+      rAutovinculacion.status === 200 && autovinculado?.usuario?.institucionId === unaInstitucionParaMi,
+      `HTTP ${rAutovinculacion.status} · ${JSON.stringify(autovinculado)}`,
+    );
+
+    // Se deja como estaba, para no dejar al SUPERADMIN de la semilla vinculado
+    // a un colegio como efecto colateral de esta batería.
+    await apiAdmin(`/api/admin/usuarios/${miId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ institucionId: null }),
+    });
+  }
 }
 
 salir();
