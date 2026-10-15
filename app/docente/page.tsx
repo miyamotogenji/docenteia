@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import { auth } from "@/auth";
 import { Cabecera } from "@/components/cabecera";
 import { NavegacionDocente } from "@/components/docente/navegacion";
 import { Button } from "@/components/ui/button";
@@ -12,13 +13,29 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { ETIQUETA_NIVEL } from "@/lib/diagnostico/clasificar";
 import {
   alumnosDelPanel,
   dificultadesRecurrentes,
   metricasDelGrupo,
+  riesgoAcademico,
+  riesgoDeEntregas,
+  rachasDeFallosPorAlumno,
   ETIQUETA_ESTADO,
+  ETIQUETA_RIESGO,
+  type NivelDeRiesgo,
+  type SenalesDeRiesgo,
+  type TareaEnBruto,
 } from "@/lib/docente/metricas";
+
+/** Insignia de color del semáforo de riesgo (sección 5 del HITO 4). */
+const COLOR_RIESGO: Record<NivelDeRiesgo, string> = {
+  alto: "border-red-200 bg-red-100 text-red-700",
+  observacion: "border-amber-200 bg-amber-100 text-amber-700",
+  optimo: "border-emerald-200 bg-emerald-100 text-emerald-700",
+  sin_datos: "border-transparent bg-secondary text-muted-foreground",
+};
 
 export const metadata: Metadata = { title: "Panel docente" };
 
@@ -43,7 +60,19 @@ export const dynamic = "force-dynamic";
  * con la que llega: "¿qué tengo montado y qué me falta?".
  */
 export default async function PanelDocente() {
-  const [perfiles, intentos, errores, temasPublicados, temasBorrador, ejerciciosValidados, ejerciciosTotales, reglas] = await Promise.all([
+  const sesion = await auth();
+
+  const [
+    perfiles,
+    intentos,
+    errores,
+    temasPublicados,
+    temasBorrador,
+    ejerciciosValidados,
+    ejerciciosTotales,
+    reglas,
+    tareasDelDocente,
+  ] = await Promise.all([
     prisma.perfilEstudiante.findMany({
       orderBy: { creadoEn: "desc" },
       take: 50,
@@ -64,7 +93,7 @@ export default async function PanelDocente() {
     }),
     // Un registro por intento de práctica calificado.
     prisma.registroProgreso.findMany({
-      select: { perfilId: true, tema: true, acierto: true },
+      select: { perfilId: true, tema: true, acierto: true, creadoEn: true },
     }),
     // El catálogo de debilidades acumuladas del grupo.
     prisma.registroError.findMany({
@@ -75,6 +104,19 @@ export default async function PanelDocente() {
     prisma.ejercicio.count({ where: { validado: true } }),
     prisma.ejercicio.count(),
     prisma.reglaMatematica.count(),
+    // Las tareas de SUS aulas (HITO 3), para el semáforo de riesgo: cuáles
+    // están vencidas sin que un alumno matriculado las entregara. Un
+    // DIRECTOR o SUPERADMIN que visita este panel sin ser dueño de ningún
+    // aula simplemente no tiene tareas aquí, y el semáforo lo refleja como
+    // "sin datos" en vez de romperse.
+    prisma.tarea.findMany({
+      where: { aula: { docenteId: sesion?.user?.id ?? "" } },
+      select: {
+        fechaVencimiento: true,
+        aula: { select: { matriculas: { select: { estudianteId: true } } } },
+        entregas: { select: { estudianteId: true, completada: true, fechaEntrega: true } },
+      },
+    }),
   ]);
 
   const autoria = [
@@ -114,6 +156,35 @@ export default async function PanelDocente() {
   const metricas = metricasDelGrupo(enBruto, intentos, errores);
   const dificultades = dificultadesRecurrentes(errores);
   const cifraDe = (perfilId: string) => alumnos.find((a) => a.perfilId === perfilId);
+
+  // SECCIÓN 5 del HITO 4: semáforo de riesgo académico (Rojo/Ámbar/Verde).
+  // `rachasDeFallosPorAlumno` indexa por `perfilId`; `riesgoDeEntregas`
+  // indexa por `estudianteId` (el `Usuario.id` matriculado en el aula) —son
+  // dos espacios de id distintos que sólo se cruzan por `usuarioId`.
+  const rachas = rachasDeFallosPorAlumno(
+    intentos.map((i) => ({ perfilId: i.perfilId, tema: i.tema, acierto: i.acierto, en: i.creadoEn })),
+  );
+  const tareasEnBruto: TareaEnBruto[] = tareasDelDocente.map((t) => ({
+    fechaVencimiento: t.fechaVencimiento,
+    estudiantesMatriculados: t.aula.matriculas.map((m) => m.estudianteId),
+    entregas: t.entregas,
+  }));
+  const entregasPorAlumno = riesgoDeEntregas(tareasEnBruto);
+
+  const riesgoPorPerfil = new Map<string, NivelDeRiesgo>();
+  for (const p of perfiles) {
+    const entregas = entregasPorAlumno.get(p.usuarioId);
+    const senales: SenalesDeRiesgo = {
+      rachaMaximaDeFallos: rachas.get(p.id) ?? null,
+      tasaAciertos: cifraDe(p.id)?.tasaAciertos ?? null,
+      tareasVencidasSinEntregar: entregas?.tareasVencidasSinEntregar ?? 0,
+      todasEntregadasEnPlazo: entregas?.todasEntregadasEnPlazo ?? null,
+    };
+    riesgoPorPerfil.set(p.id, riesgoAcademico(senales));
+  }
+
+  const conteoRiesgo: Record<NivelDeRiesgo, number> = { alto: 0, observacion: 0, optimo: 0, sin_datos: 0 };
+  for (const nivel of riesgoPorPerfil.values()) conteoRiesgo[nivel]++;
 
   return (
     <div className="min-h-screen">
@@ -185,6 +256,28 @@ export default async function PanelDocente() {
         </div>
 
         <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Semáforo de riesgo académico</CardTitle>
+            <CardDescription>
+              Quién demanda una intervención prioritaria, de un vistazo.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            {(["alto", "observacion", "optimo", "sin_datos"] as const).map((nivel) => (
+              <span
+                key={nivel}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-sm font-medium tabular-nums",
+                  COLOR_RIESGO[nivel],
+                )}
+              >
+                {ETIQUETA_RIESGO[nivel]}: {conteoRiesgo[nivel]}
+              </span>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
           <CardHeader>
             <CardTitle>Estudiantes</CardTitle>
             <CardDescription>
@@ -205,6 +298,7 @@ export default async function PanelDocente() {
                     <th className="pb-2 font-medium">Sesiones</th>
                     <th className="pb-2 font-medium">Aciertos</th>
                     <th className="pb-2 font-medium">Estado</th>
+                    <th className="pb-2 font-medium">Riesgo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -245,6 +339,21 @@ export default async function PanelDocente() {
                           <span className="rounded-full border px-2.5 py-1 text-xs font-medium">
                             {ETIQUETA_ESTADO[cifraDe(p.id)?.estado ?? "sin_empezar"]}
                           </span>
+                        </td>
+                        <td className="py-3">
+                          {(() => {
+                            const riesgo = riesgoPorPerfil.get(p.id) ?? "sin_datos";
+                            return (
+                              <span
+                                className={cn(
+                                  "rounded-full border px-2.5 py-1 text-xs font-medium",
+                                  COLOR_RIESGO[riesgo],
+                                )}
+                              >
+                                {ETIQUETA_RIESGO[riesgo]}
+                              </span>
+                            );
+                          })()}
                         </td>
                       </tr>
                     );

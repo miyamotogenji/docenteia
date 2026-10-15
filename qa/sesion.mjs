@@ -19,10 +19,14 @@ export function leerCookies(respuesta) {
 
 /**
  * Devuelve la cabecera `cookie` de una sesión abierta, o null si no se pudo.
+ *
+ * `extraHeaders` es sobre todo para el HITO 4 (bloqueo de login por IP):
+ * mandar un `x-forwarded-for` de mentira para probar el bloqueo sin
+ * compartir cupo con la IP real de quien corre la batería.
  */
-export async function iniciarSesion(base, email, password) {
+export async function iniciarSesion(base, email, password, extraHeaders = {}) {
   try {
-    const rCsrf = await fetch(`${base}/api/auth/csrf`);
+    const rCsrf = await fetch(`${base}/api/auth/csrf`, { headers: extraHeaders });
     const cookiesCsrf = leerCookies(rCsrf);
     const { csrfToken } = await rCsrf.json();
 
@@ -39,6 +43,7 @@ export async function iniciarSesion(base, email, password) {
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
         cookie: cookiesCsrf,
+        ...extraHeaders,
       },
       body: cuerpo.toString(),
       redirect: "manual",

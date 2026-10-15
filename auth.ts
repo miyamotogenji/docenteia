@@ -6,6 +6,16 @@ import { z } from "zod";
 import { authConfig } from "@/auth.config";
 import { prisma } from "@/lib/prisma";
 import { explicarFalloDeBaseDeDatos } from "@/lib/errores-bd";
+import {
+  bloqueoDeLogin,
+  ipDeLaPeticion,
+  registrarExitoDeLogin,
+  registrarFalloDeLogin,
+} from "@/lib/seguridad/limite-tasa";
+
+/** 5 fallos seguidos bloquean la IP 15 minutos (corrección HITO 4). */
+const MAXIMO_FALLOS_LOGIN = 5;
+const BLOQUEO_LOGIN_MS = 15 * 60_000;
 
 /** Esquema de las credenciales. Se valida antes de tocar la base de datos. */
 const credencialesSchema = z.object({
@@ -22,10 +32,20 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         email: { label: "Correo electrónico", type: "email" },
         password: { label: "Contraseña", type: "password" },
       },
-      async authorize(raw) {
+      async authorize(raw, request) {
         const parsed = credencialesSchema.safeParse(raw);
         if (!parsed.success) return null;
         const { email, password } = parsed.data;
+
+        // 5 FALLOS SEGUIDOS DESDE LA MISMA IP BLOQUEAN 15 MINUTOS (HITO 4):
+        // la fuerza bruta contra el login se corta ANTES de tocar la base de
+        // datos o comparar el hash —ni siquiera se gasta ese trabajo—, y
+        // ANTES de que el intento llegue a contar como un fallo más (si no,
+        // un atacante ya bloqueado seguiría "fallando" y renovando su propio
+        // bloqueo sin fin, que es un detalle menor pero gratis de evitar).
+        const clave = `login:${ipDeLaPeticion(request)}`;
+        const bloqueo = bloqueoDeLogin(clave);
+        if (!bloqueo.permitido) return null;
 
         // Un fallo de infraestructura aquí acabaría mostrándose al usuario como
         // "correo o contraseña incorrectos", que es justo la pista equivocada.
@@ -56,7 +76,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           "$2a$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinvaliduO";
         const coincide = await bcrypt.compare(password, hash);
 
-        if (!usuario || !coincide || !usuario.activo) return null;
+        if (!usuario || !coincide || !usuario.activo) {
+          registrarFalloDeLogin(clave, MAXIMO_FALLOS_LOGIN, BLOQUEO_LOGIN_MS);
+          return null;
+        }
+        registrarExitoDeLogin(clave);
 
         return {
           id: usuario.id,

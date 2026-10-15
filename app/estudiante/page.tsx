@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { DESCRIPCION_NIVEL, ETIQUETA_NIVEL } from "@/lib/diagnostico/clasificar";
+import { rachaDeDiasConsecutivos } from "@/lib/estudiante/racha";
 
 export const metadata: Metadata = { title: "Mi progreso" };
 
@@ -20,19 +21,36 @@ export default async function PanelEstudiante() {
   const sesion = await auth();
   if (!sesion?.user?.perfilId) redirect("/login");
 
-  const perfil = await prisma.perfilEstudiante.findUnique({
-    where: { id: sesion.user.perfilId },
-    include: {
-      historialNivel: { orderBy: { creadoEn: "desc" }, take: 5 },
-      intentosDiagnostico: {
-        orderBy: { iniciadoEn: "desc" },
-        take: 1,
-        include: { respuestas: true },
+  const [perfil, fechasProgreso, fechasSesiones] = await Promise.all([
+    prisma.perfilEstudiante.findUnique({
+      where: { id: sesion.user.perfilId },
+      include: {
+        historialNivel: { orderBy: { creadoEn: "desc" }, take: 5 },
+        intentosDiagnostico: {
+          orderBy: { iniciadoEn: "desc" },
+          take: 1,
+          include: { respuestas: true },
+        },
       },
-    },
-  });
+    }),
+    // Racha de días consecutivos (HITO 4, 2.A): cualquier rastro de práctica
+    // calificada cuenta, sin importar en qué lección ni tarea haya sido.
+    prisma.registroProgreso.findMany({
+      where: { perfilId: sesion.user.perfilId },
+      select: { creadoEn: true },
+    }),
+    prisma.sesionAprendizaje.findMany({
+      where: { perfilId: sesion.user.perfilId, finalizadaEn: { not: null } },
+      select: { finalizadaEn: true },
+    }),
+  ]);
 
   if (!perfil) redirect("/login");
+
+  const racha = rachaDeDiasConsecutivos([
+    ...fechasProgreso.map((p) => p.creadoEn),
+    ...fechasSesiones.map((s) => s.finalizadaEn as Date),
+  ]);
 
   // Sin nivel asignado, lo único que toca es el diagnóstico.
   if (!perfil.nivelActual) {
@@ -80,7 +98,23 @@ export default async function PanelEstudiante() {
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardDescription>Racha de práctica</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">
+              {racha} día{racha === 1 ? "" : "s"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {racha === 0
+                ? "Practica hoy para empezar una racha."
+                : "Días consecutivos con alguna práctica registrada."}
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader>
             <CardDescription>Nivel asignado</CardDescription>

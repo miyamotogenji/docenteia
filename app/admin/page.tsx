@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { Cabecera } from "@/components/cabecera";
+import { NavegacionAdmin } from "@/components/admin/navegacion";
 import { prisma } from "@/lib/prisma";
 import {
   Card,
@@ -46,6 +47,7 @@ export default async function PanelAdmin() {
   return (
     <div className="min-h-screen">
       <Cabecera />
+      <NavegacionAdmin />
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Administración</h1>

@@ -1,5 +1,8 @@
+import type { DificultadRecurrente } from "../docente/metricas.ts";
+
 /**
- * El resumen institucional del director (HITO 3).
+ * El resumen institucional del director (HITO 3; sección 2.C del HITO 4 añade
+ * el rendimiento por aula y el catálogo de errores del colegio).
  *
  * Misma frontera que `lib/docente/metricas.ts`: el cálculo vive separado de la
  * consulta, para poder comprobarlo con datos de mentira y sin base de datos.
@@ -20,6 +23,9 @@ export interface AulaEnBruto {
   tareasCreadas: number;
   /** Cuántas de las entregas esperadas (matrículas × tareas) ya están completas. */
   entregasCompletadas: number;
+  /** Prácticas calificadas de sus alumnos matriculados, y cuántas acertaron. */
+  intentosRegistrados?: number;
+  aciertosRegistrados?: number;
 }
 
 /** Una fila de la tabla del panel: el aula más su tasa de entrega. */
@@ -31,6 +37,8 @@ export interface FilaAula extends AulaEnBruto {
    * en rojo un aula que simplemente acaba de crearse.
    */
   tasaEntrega: number | null;
+  /** Porcentaje de aciertos de sus alumnos, o `null` si aún no han practicado nada. */
+  tasaAciertos: number | null;
 }
 
 /** Las cifras macro de cabecera. */
@@ -40,6 +48,12 @@ export interface ResumenInstitucional {
   totalAlumnos: number;
   /** Alumnos SIN repetir: uno matriculado en tres aulas cuenta una vez. */
   aulas: FilaAula[];
+  /**
+   * Catálogo de errores de TODO el colegio (HITO 4, 2.C: "identificación de
+   * temas con mayor tasa de error"), no de un aula —el director compara
+   * entre grados y secciones, así que necesita la vista completa—.
+   */
+  temasConMasErrores: DificultadRecurrente[];
 }
 
 /**
@@ -56,19 +70,38 @@ export function tasaDeEntrega(aula: AulaEnBruto): number | null {
 }
 
 /**
+ * Calcula la tasa de aciertos de un aula: de las prácticas calificadas de
+ * sus alumnos matriculados, cuántas acertaron. Sin intentos registrados no
+ * hay tasa —un aula recién creada no "va mal", todavía no ha practicado—.
+ */
+export function tasaDeAciertos(aula: AulaEnBruto): number | null {
+  const intentos = aula.intentosRegistrados ?? 0;
+  if (intentos === 0) return null;
+  return Math.round(((aula.aciertosRegistrados ?? 0) / intentos) * 1000) / 10;
+}
+
+/**
  * Arma el resumen completo a partir de las aulas del colegio y de cuántos
  * alumnos distintos hay en total (que no es la suma de matrículas por aula: un
  * mismo alumno puede estar en más de una).
+ *
+ * `temasConMasErrores` llega ya calculado —`dificultadesRecurrentes`, de
+ * `lib/docente/metricas.ts`, es la misma lógica que usa el panel docente,
+ * sólo que aquí se le pasa el catálogo de errores de todo el colegio en vez
+ * del de un grupo— y se acepta como parámetro en vez de recalcularse aquí
+ * para no mezclar dos fuentes de errores (aula vs. colegio) en esta función.
  */
 export function calcularResumen(
   aulas: readonly AulaEnBruto[],
   totalDocentes: number,
   totalAlumnosDistintos: number,
+  temasConMasErrores: DificultadRecurrente[] = [],
 ): ResumenInstitucional {
   return {
     totalDocentes,
     totalAulas: aulas.length,
     totalAlumnos: totalAlumnosDistintos,
-    aulas: aulas.map((a) => ({ ...a, tasaEntrega: tasaDeEntrega(a) })),
+    aulas: aulas.map((a) => ({ ...a, tasaEntrega: tasaDeEntrega(a), tasaAciertos: tasaDeAciertos(a) })),
+    temasConMasErrores,
   };
 }
