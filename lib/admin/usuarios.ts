@@ -41,3 +41,11 @@ export type PatchUsuario = z.infer<typeof patchUsuarioSchema>;
 export function rolUsaInstitucion(rol: string): boolean {
   return rol === "DOCENTE" || rol === "DIRECTOR";
 }
+
+/**
+ * Lo que `POST /api/admin/usuarios/[id]/estado` acepta (HITO 4, checklist de
+ * cierre: "Activar / Suspender acceso" como su propio endpoint, separado del
+ * PATCH general que ya cubre lo mismo junto con rol e institución).
+ */
+export const estadoUsuarioSchema = z.object({ activo: z.boolean() });
+export type EstadoUsuario = z.infer<typeof estadoUsuarioSchema>;

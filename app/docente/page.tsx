@@ -191,11 +191,21 @@ export default async function PanelDocente() {
       <Cabecera />
       <NavegacionDocente />
       <main className="mx-auto max-w-5xl space-y-6 px-6 py-10">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold tracking-tight">Panel docente</h1>
-          <p className="text-muted-foreground">
-            Estudiantes registrados y nivel asignado por el diagnóstico inicial.
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold tracking-tight">Panel docente</h1>
+            <p className="text-muted-foreground">
+              Estudiantes registrados y nivel asignado por el diagnóstico inicial.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/docente/exportar/pdf">Descargar PDF</a>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <a href="/api/docente/exportar/excel">Descargar Excel</a>
+            </Button>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
