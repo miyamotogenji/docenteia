@@ -193,11 +193,32 @@ if (!salud) {
 
   // Y, de paso: una IP distinta —otro alumno real, sin nada que ver— no sufre
   // el bloqueo de ésta.
-  const otroAlumno = await iniciarSesion(BASE, "docente@mentoriamath.local", "Docente-2026");
-  check(
-    "…pero otra IP, con una cuenta de verdad, entra con normalidad (el bloqueo es POR IP, no global)",
-    otroAlumno != null,
-  );
+  //
+  // Contra localhost, el `x-forwarded-for` que manda esta prueba llega tal
+  // cual al servidor —no hay ningún proxy de por medio que lo toque—, así
+  // que de verdad se puede simular "otra IP" con sólo mandar un cabecero
+  // distinto. Contra un despliegue de verdad (Vercel), el edge NO deja pasar
+  // un `x-forwarded-for` inventado por el cliente —lo sustituye por la IP
+  // real de quien conecta, que es justo lo que hace que este control sirva
+  // de algo—, así que todas las peticiones de ESTA MISMA máquina, con
+  // cualquier cabecero que se mande, comparten la MISMA IP real a ojos del
+  // servidor. Ahí, "otra IP" no se puede simular desde un único equipo de
+  // pruebas: hace falta una red distinta, que una batería automática no
+  // tiene. Se comprueba entonces lo que SÍ se puede probar desde aquí —que
+  // el bloqueo expira pasados los 15 minutos (sección A, con reloj de
+  // mentira)— y se deja constancia de por qué este paso se omite en vez de
+  // fingir que pasó.
+  if (BASE.startsWith("http://localhost")) {
+    const otroAlumno = await iniciarSesion(BASE, "docente@mentoriamath.local", "Docente-2026");
+    check(
+      "…pero otra IP, con una cuenta de verdad, entra con normalidad (el bloqueo es POR IP, no global)",
+      otroAlumno != null,
+    );
+  } else {
+    console.log(
+      "  · se omite \"otra IP entra con normalidad\": contra un despliegue de verdad, el edge sustituye cualquier x-forwarded-for inventado por la IP real de quien prueba, así que todas las peticiones de esta máquina CAEN EN LA MISMA IP real —no hay forma de simular una segunda IP sin una red distinta—. La sección A ya prueba, con relojes de mentira, que el bloqueo es por clave (por IP) y que expira a los 15 minutos.",
+    );
+  }
 }
 
 salir();

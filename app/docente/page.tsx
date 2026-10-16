@@ -203,11 +203,23 @@ export default async function PanelDocente() {
   // está matriculado en las aulas de este docente, no a un recorte global.
   let esperadas = 0;
   let completadas = 0;
+  let sumaDeNotas = 0;
+  let cantidadDeNotas = 0;
   for (const a of aulasDelReporte) {
     esperadas += a.estudiantes.length * a.tareas.length;
     completadas += a.entregas.filter((e) => e.completada).length;
+    for (const e of a.entregas) {
+      if (e.puntaje != null) {
+        sumaDeNotas += e.puntaje;
+        cantidadDeNotas++;
+      }
+    }
   }
   const tasaEntregaAgregada = esperadas === 0 ? null : Math.round((completadas / esperadas) * 1000) / 10;
+  // "Promedio de notas" (HITO 4, 2.B): el puntaje de las tareas entregadas de
+  // sus aulas, distinto de "Aciertos del grupo" (tasa de aciertos de la
+  // práctica libre, más arriba) —dos señales, como en el panel del alumno—.
+  const promedioDeNotasDelGrupo = cantidadDeNotas === 0 ? null : Math.round((sumaDeNotas / cantidadDeNotas) * 10) / 10;
 
   const idsMatriculados = [...new Set(aulasDelReporte.flatMap((a) => a.estudiantes.map((e) => e.id)))];
   const perfilesMatriculados = idsMatriculados.length
@@ -311,7 +323,7 @@ export default async function PanelDocente() {
           ))}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           {[
             { rotulo: "Estudiantes", valor: String(metricas.totalAlumnos) },
             {
@@ -339,6 +351,11 @@ export default async function PanelDocente() {
               rotulo: "Tasa de entrega de tareas",
               valor: tasaEntregaAgregada == null ? "—" : `${tasaEntregaAgregada}%`,
               pie: "de las aulas que administras",
+            },
+            {
+              rotulo: "Promedio de notas",
+              valor: promedioDeNotasDelGrupo == null ? "—" : `${promedioDeNotasDelGrupo}/100`,
+              pie: "de las tareas entregadas",
             },
           ].map((m) => (
             <Card key={m.rotulo}>
