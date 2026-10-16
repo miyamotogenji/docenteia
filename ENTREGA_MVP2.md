@@ -24,14 +24,14 @@ npm run dev                 # en otra terminal, con la base de datos sembrada
 node qa/hito4-seguridad.mjs        # 34 comprobaciones — rate limiting
 node qa/hito4-admin-usuarios.mjs   # 25 comprobaciones — RBAC de usuarios
 node qa/hito4-admin-contenido.mjs  # 15 comprobaciones — /admin/ejercicios y /admin/temas
-node qa/hito4-riesgo.mjs           # 30 comprobaciones — semáforo de riesgo y KPIs
+node qa/hito4-riesgo.mjs           # 41 comprobaciones — semáforo de riesgo y KPIs
 node qa/hito4-exportar.mjs         # 24 comprobaciones — PDF/Excel
 node qa/hito4.mjs                  # 28 comprobaciones — el checklist de cierre, literal
 
 node qa/qa.mjs                     # 1473 comprobaciones — toda la plataforma, sin regresiones
 ```
 
-Las seis baterías de HITO 4 suman **156 comprobaciones**, todas en verde. El
+Las seis baterías de HITO 4 suman **169 comprobaciones**, todas en verde. El
 barrido completo (`qa/qa.mjs`, que a su vez corre hito1, hito2, hito3,
 diagnóstico, aceptación, lección, matemáticas, paso1, sesiones y rigor)
 también está en verde — nada de esto rompió lo que ya funcionaba.
@@ -68,12 +68,13 @@ de mentira + HTTP de verdad) y reconfirmado en `qa/hito4.mjs`.
 | Rol | Dónde | Qué trae |
 |---|---|---|
 | Estudiante | `app/estudiante/page.tsx` | Tareas activas vs. completadas ("Mis tareas"), nivel y aciertos del diagnóstico, **racha de días consecutivos de práctica** (`lib/estudiante/racha.ts`, nuevo), historial de entregas con retroalimentación por ejercicio (`EntregaTarea.detalle`, de una ronda anterior — "Ver resultado"). |
-| Docente | `app/docente/page.tsx` | Tasa de entrega y aciertos del grupo, distribución por nivel, **semáforo de riesgo académico** (nuevo, ver sección 5) con insignia de color por alumno y resumen por nivel, tabla de seguimiento, accesos directos a aulas/tareas/ejercicios (en la barra de navegación), **botones de exportación PDF/Excel** (nuevo). |
-| Director | `app/director/page.tsx` | Total de docentes/aulas/alumnos, tasa de entrega y **rendimiento (tasa de aciertos) por aula** (nuevo), **temas con mayor tasa de error de todo el colegio** (nuevo), **botones de exportación PDF/Excel** (nuevo). |
+| Docente | `app/docente/page.tsx` | Tasa de entrega y aciertos del grupo, **tasa de entrega de tareas de sus aulas** (nuevo), **distribución de nivel Básico/Intermedio/Avanzado** (nuevo), **semáforo de riesgo académico** (nuevo, ver sección 5) con insignia de color por alumno y resumen por nivel, **tabla de seguimiento de alumnos MATRICULADOS con filtros por aula y estado de tareas** (nuevo, `components/docente/seguimiento-matriculados.tsx` — distinta de la tabla "Estudiantes registrados en la plataforma", que es el registro libre de PMV1), accesos directos a aulas/tareas/ejercicios (en la barra de navegación), **botones de exportación PDF/Excel** (nuevo). |
+| Director | `app/director/page.tsx` | Total de docentes/aulas/alumnos, tasa de entrega y **rendimiento (tasa de aciertos) por aula** (nuevo), **gráfico comparativo de rendimiento por grado** (nuevo — la tabla de aulas ya comparaba entre secciones), **temas con mayor tasa de error de todo el colegio** (nuevo), **botones de exportación PDF/Excel** (nuevo). |
 
-Verificado en `qa/hito4-riesgo.mjs` (30 comprobaciones: las funciones puras
+Verificado en `qa/hito4-riesgo.mjs` (41 comprobaciones: las funciones puras
 + que las tres pantallas de verdad muestran lo nuevo) y visualmente con
-capturas de pantalla reales contra datos sembrados.
+capturas de pantalla reales contra datos sembrados, incluido el filtro de
+la tabla de seguimiento funcionando en el navegador.
 
 ## 3. Mantenimiento de tablas y gestión administrativa (`/admin`)
 
@@ -197,3 +198,14 @@ AMBOS, no se eliminó el original, porque el panel `/admin` ya los usa—:
 de asistencia dedicada. Se interpreta como el conteo de sesiones de lección
 TERMINADAS por alumno (`SesionAprendizaje.finalizadaEn`), que es la señal
 más parecida a "¿viene a practicar?" que existe en la base de datos.
+
+## Addendum — KPIs finos de la sección 2 (ronda posterior al cierre)
+
+Tras el cierre formal de arriba, una relectura literal del pliego encontró
+tres KPIs de la sección 2 que sólo estaban cubiertos a medias: "tasa de
+entrega de tareas por aula" y "distribución de nivel" del lado del docente,
+"gráfico comparativo de rendimiento entre grados/secciones" del lado del
+director, y la "tabla de seguimiento de alumnos MATRICULADOS con filtros"
+—la tabla "Estudiantes" que ya existía es el registro libre de PMV1, no la
+población matriculada de HITO 3 que pedía el pliego—. Los tres se cerraron
+en esta misma ronda; ver la tabla de la sección 2 arriba, ya actualizada.

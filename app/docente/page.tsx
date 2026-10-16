@@ -4,6 +4,7 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { Cabecera } from "@/components/cabecera";
 import { NavegacionDocente } from "@/components/docente/navegacion";
+import { SeguimientoMatriculados, type FilaSeguimiento } from "@/components/docente/seguimiento-matriculados";
 import { Button } from "@/components/ui/button";
 import { prisma } from "@/lib/prisma";
 import {
@@ -15,9 +16,11 @@ import {
 } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { ETIQUETA_NIVEL } from "@/lib/diagnostico/clasificar";
+import { obtenerReporteDocente } from "@/lib/docente/exportar";
 import {
   alumnosDelPanel,
   dificultadesRecurrentes,
+  distribucionDeNivel,
   metricasDelGrupo,
   riesgoAcademico,
   riesgoDeEntregas,
@@ -72,6 +75,7 @@ export default async function PanelDocente() {
     ejerciciosTotales,
     reglas,
     tareasDelDocente,
+    aulasDelReporte,
   ] = await Promise.all([
     prisma.perfilEstudiante.findMany({
       orderBy: { creadoEn: "desc" },
@@ -117,6 +121,11 @@ export default async function PanelDocente() {
         entregas: { select: { estudianteId: true, completada: true, fechaEntrega: true } },
       },
     }),
+    // Las aulas de SUS alumnos matriculados (HITO 3), con quién está en cada
+    // una: la misma consulta que arma el reporte de exportación (sección 4),
+    // reutilizada aquí para la tasa de entrega agregada y la tabla de
+    // seguimiento con filtros por aula —ver `SeguimientoMatriculados`—.
+    obtenerReporteDocente(sesion?.user?.id ?? ""),
   ]);
 
   const autoria = [
@@ -186,6 +195,80 @@ export default async function PanelDocente() {
   const conteoRiesgo: Record<NivelDeRiesgo, number> = { alto: 0, observacion: 0, optimo: 0, sin_datos: 0 };
   for (const nivel of riesgoPorPerfil.values()) conteoRiesgo[nivel]++;
 
+  // SECCIÓN 2.B del HITO 4: "tasa de entrega de tareas por aula" y
+  // "distribución de nivel", de los alumnos MATRICULADOS (HITO 3) —una
+  // población distinta de los 50 perfiles más recientes de toda la
+  // plataforma que alimentan la tabla "Estudiantes" de arriba—, así que el
+  // riesgo de ESTA tabla se calcula aparte, con una consulta acotada a quién
+  // está matriculado en las aulas de este docente, no a un recorte global.
+  let esperadas = 0;
+  let completadas = 0;
+  for (const a of aulasDelReporte) {
+    esperadas += a.estudiantes.length * a.tareas.length;
+    completadas += a.entregas.filter((e) => e.completada).length;
+  }
+  const tasaEntregaAgregada = esperadas === 0 ? null : Math.round((completadas / esperadas) * 1000) / 10;
+
+  const idsMatriculados = [...new Set(aulasDelReporte.flatMap((a) => a.estudiantes.map((e) => e.id)))];
+  const perfilesMatriculados = idsMatriculados.length
+    ? await prisma.perfilEstudiante.findMany({
+        where: { usuarioId: { in: idsMatriculados } },
+        select: { id: true, usuarioId: true, nivelActual: true },
+      })
+    : [];
+  const progresoMatriculados = perfilesMatriculados.length
+    ? await prisma.registroProgreso.findMany({
+        where: { perfilId: { in: perfilesMatriculados.map((p) => p.id) } },
+        select: { perfilId: true, tema: true, acierto: true, creadoEn: true },
+      })
+    : [];
+
+  const distribucion = distribucionDeNivel(perfilesMatriculados.map((p) => ({ nivel: p.nivelActual as string | null })));
+
+  const rachasMatriculados = rachasDeFallosPorAlumno(
+    progresoMatriculados.map((i) => ({ perfilId: i.perfilId, tema: i.tema, acierto: i.acierto, en: i.creadoEn })),
+  );
+  const alumnosMatriculados = alumnosDelPanel(
+    perfilesMatriculados.map((p) => ({
+      perfilId: p.id,
+      nombre: "",
+      email: "",
+      nivel: p.nivelActual as string | null,
+      sesionesCompletadas: 0,
+      ultimaSesion: null,
+    })),
+    progresoMatriculados,
+  );
+  const tasaAciertosPorPerfilMatriculado = new Map(alumnosMatriculados.map((a) => [a.perfilId, a.tasaAciertos]));
+
+  const riesgoPorEstudianteMatriculado = new Map<string, NivelDeRiesgo>();
+  for (const p of perfilesMatriculados) {
+    const entregas = entregasPorAlumno.get(p.usuarioId);
+    const senales: SenalesDeRiesgo = {
+      rachaMaximaDeFallos: rachasMatriculados.get(p.id) ?? null,
+      tasaAciertos: tasaAciertosPorPerfilMatriculado.get(p.id) ?? null,
+      tareasVencidasSinEntregar: entregas?.tareasVencidasSinEntregar ?? 0,
+      todasEntregadasEnPlazo: entregas?.todasEntregadasEnPlazo ?? null,
+    };
+    riesgoPorEstudianteMatriculado.set(p.usuarioId, riesgoAcademico(senales));
+  }
+
+  const filasSeguimiento: FilaSeguimiento[] = aulasDelReporte.flatMap((a) =>
+    a.estudiantes.map((e) => ({
+      estudianteId: e.id,
+      nombre: e.nombre,
+      email: e.email,
+      aulaId: a.id,
+      aulaEtiqueta: `${a.grado}.º ${a.seccion} — ${a.nombre}`,
+      riesgo: riesgoPorEstudianteMatriculado.get(e.id) ?? "sin_datos",
+      tareasVencidasSinEntregar: entregasPorAlumno.get(e.id)?.tareasVencidasSinEntregar ?? 0,
+    })),
+  );
+  const aulasParaFiltro = aulasDelReporte.map((a) => ({
+    id: a.id,
+    etiqueta: `${a.grado}.º ${a.seccion} — ${a.nombre}`,
+  }));
+
   return (
     <div className="min-h-screen">
       <Cabecera />
@@ -228,7 +311,7 @@ export default async function PanelDocente() {
           ))}
         </div>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
           {[
             { rotulo: "Estudiantes", valor: String(metricas.totalAlumnos) },
             {
@@ -251,6 +334,11 @@ export default async function PanelDocente() {
               pie: metricas.temaMasDificil
                 ? `más difícil: ${metricas.temaMasDificil.toLowerCase().replace(/_/g, " ")}`
                 : undefined,
+            },
+            {
+              rotulo: "Tasa de entrega de tareas",
+              valor: tasaEntregaAgregada == null ? "—" : `${tasaEntregaAgregada}%`,
+              pie: "de las aulas que administras",
             },
           ].map((m) => (
             <Card key={m.rotulo}>
@@ -288,12 +376,39 @@ export default async function PanelDocente() {
         </Card>
 
         <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">Distribución de nivel</CardTitle>
+            <CardDescription>
+              De tus alumnos matriculados, cuántos están en cada nivel —el diagnóstico inicial lo
+              asigna—.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-wrap gap-3">
+            {([
+              ["BASICO", "Básico"],
+              ["INTERMEDIO", "Intermedio"],
+              ["AVANZADO", "Avanzado"],
+              ["sin_diagnosticar", "Sin diagnosticar"],
+            ] as const).map(([clave, etiqueta]) => (
+              <span
+                key={clave}
+                className="rounded-full border bg-secondary px-3 py-1.5 text-sm font-medium tabular-nums"
+              >
+                {`${etiqueta}: ${distribucion[clave]}`}
+              </span>
+            ))}
+          </CardContent>
+        </Card>
+
+        <SeguimientoMatriculados filas={filasSeguimiento} aulas={aulasParaFiltro} />
+
+        <Card>
           <CardHeader>
-            <CardTitle>Estudiantes</CardTitle>
+            <CardTitle>Estudiantes registrados en la plataforma</CardTitle>
             <CardDescription>
               {perfiles.length === 0
                 ? "Todavía no hay estudiantes registrados."
-                : `${perfiles.length} estudiante(s).`}
+                : `${perfiles.length} estudiante(s) más recientes de toda la plataforma —incluidos los que no están matriculados en ninguna de tus aulas—.`}
             </CardDescription>
           </CardHeader>
           {perfiles.length > 0 && (

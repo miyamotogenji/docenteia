@@ -94,6 +94,45 @@ export default async function PaginaDirector() {
 
         <Card>
           <CardHeader>
+            <CardTitle>Rendimiento por grado</CardTitle>
+            <CardDescription>
+              Comparativo de aciertos y entrega entre grados —la tabla de abajo compara entre
+              secciones dentro de cada uno.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {resumen.porGrado.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Todavía no hay aulas en este colegio.</p>
+            ) : (
+              resumen.porGrado.map((g) => (
+                <div key={g.grado} className="space-y-1.5">
+                  <div className="flex items-baseline justify-between gap-3 text-sm">
+                    <span className="font-medium">
+                      {g.grado}.º grado{" "}
+                      <span className="font-normal text-muted-foreground">
+                        {`(${g.aulas} ${g.aulas === 1 ? "sección" : "secciones"}, ${g.matriculas} ${g.matriculas === 1 ? "alumno" : "alumnos"})`}
+                      </span>
+                    </span>
+                    <span className="tabular-nums text-muted-foreground">
+                      {g.tasaAciertos == null ? "Sin datos de aciertos" : `${g.tasaAciertos}% de aciertos`}
+                      {" · "}
+                      {g.tasaEntrega == null ? "sin datos de entrega" : `${g.tasaEntrega}% de entrega`}
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-secondary">
+                    <div
+                      className="h-full rounded-full bg-primary"
+                      style={{ width: `${Math.max(2, Math.min(100, g.tasaAciertos ?? 0))}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
             <CardTitle>Aulas del colegio</CardTitle>
             <CardDescription>
               Grado y sección, docente a cargo, alumnos matriculados y tareas entregadas.
