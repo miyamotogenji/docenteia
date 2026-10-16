@@ -249,6 +249,7 @@ if (sesionDocente) {
   check("…y una columna Riesgo en la tabla de estudiantes", html.includes(">Riesgo<"));
   check("…la tarjeta de distribución de nivel (Básico/Intermedio/Avanzado)", html.includes("Distribución de nivel") && html.includes("Básico:"));
   check("…la tasa de entrega de tareas como KPI", html.includes("Tasa de entrega de tareas"));
+  check("…y el promedio de notas del grupo como KPI", html.includes("Promedio de notas"));
   check(
     "…y la tabla de seguimiento de alumnos matriculados, con sus filtros de aula y estado de tareas",
     html.includes("Seguimiento de alumnos matriculados") && html.includes("filtro-aula") && html.includes("filtro-estado-tareas"),
@@ -282,6 +283,10 @@ if (sesionAlumno) {
   check(
     "el panel del estudiante trae su racha de práctica (o la invitación a empezar una, sin nivel aún)",
     html.includes("Racha de práctica") || html.includes("Evaluación diagnóstica"),
+  );
+  check(
+    "…y sus aciertos acumulados y promedio de notas (o la invitación a empezar, sin nivel aún)",
+    (html.includes("Aciertos acumulados") && html.includes("Promedio de notas")) || html.includes("Evaluación diagnóstica"),
   );
 } else {
   check("sesión de un alumno de prueba", false, "no se pudo iniciar sesión con alumno@mentoriamath.local/Alumno-2026; se omiten sus comprobaciones");

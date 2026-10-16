@@ -21,7 +21,7 @@ export default async function PanelEstudiante() {
   const sesion = await auth();
   if (!sesion?.user?.perfilId) redirect("/login");
 
-  const [perfil, fechasProgreso, fechasSesiones] = await Promise.all([
+  const [perfil, progreso, fechasSesiones, notas] = await Promise.all([
     prisma.perfilEstudiante.findUnique({
       where: { id: sesion.user.perfilId },
       include: {
@@ -34,23 +34,35 @@ export default async function PanelEstudiante() {
       },
     }),
     // Racha de días consecutivos (HITO 4, 2.A): cualquier rastro de práctica
-    // calificada cuenta, sin importar en qué lección ni tarea haya sido.
+    // calificada cuenta, sin importar en qué lección ni tarea haya sido. El
+    // mismo intento sirve para el % global de aciertos acumulado.
     prisma.registroProgreso.findMany({
       where: { perfilId: sesion.user.perfilId },
-      select: { creadoEn: true },
+      select: { creadoEn: true, acierto: true },
     }),
     prisma.sesionAprendizaje.findMany({
       where: { perfilId: sesion.user.perfilId, finalizadaEn: { not: null } },
       select: { finalizadaEn: true },
+    }),
+    // "Promedio de notas acumulado" (HITO 4, 2.A): el puntaje de sus tareas
+    // entregadas, no la tasa de aciertos de la práctica libre —son dos
+    // señales distintas, como en el panel docente (aciertos vs. entrega)—.
+    prisma.entregaTarea.aggregate({
+      where: { estudianteId: sesion.user.id, puntaje: { not: null } },
+      _avg: { puntaje: true },
     }),
   ]);
 
   if (!perfil) redirect("/login");
 
   const racha = rachaDeDiasConsecutivos([
-    ...fechasProgreso.map((p) => p.creadoEn),
+    ...progreso.map((p) => p.creadoEn),
     ...fechasSesiones.map((s) => s.finalizadaEn as Date),
   ]);
+  const leccionesCompletadas = fechasSesiones.length;
+  const tasaAciertosGlobal =
+    progreso.length === 0 ? null : Math.round((progreso.filter((p) => p.acierto).length / progreso.length) * 1000) / 10;
+  const promedioDeNotas = notas._avg.puntaje == null ? null : Math.round(notas._avg.puntaje * 10) / 10;
 
   // Sin nivel asignado, lo único que toca es el diagnóstico.
   if (!perfil.nivelActual) {
@@ -98,7 +110,7 @@ export default async function PanelEstudiante() {
         </p>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
         <Card>
           <CardHeader>
             <CardDescription>Racha de práctica</CardDescription>
@@ -110,7 +122,35 @@ export default async function PanelEstudiante() {
             <p className="text-sm text-muted-foreground">
               {racha === 0
                 ? "Practica hoy para empezar una racha."
-                : "Días consecutivos con alguna práctica registrada."}
+                : `${leccionesCompletadas} lección${leccionesCompletadas === 1 ? "" : "es"} completada${leccionesCompletadas === 1 ? "" : "s"} en total.`}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardDescription>Aciertos acumulados</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">
+              {tasaAciertosGlobal == null ? "—" : `${tasaAciertosGlobal}%`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {tasaAciertosGlobal == null ? "Todavía no has practicado." : "De toda tu práctica calificada."}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardDescription>Promedio de notas</CardDescription>
+            <CardTitle className="text-3xl tabular-nums">
+              {promedioDeNotas == null ? "—" : `${promedioDeNotas}/100`}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {promedioDeNotas == null ? "Aún no tienes tareas calificadas." : "De tus tareas entregadas."}
             </p>
           </CardContent>
         </Card>
