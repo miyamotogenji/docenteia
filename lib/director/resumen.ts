@@ -41,6 +41,16 @@ export interface FilaAula extends AulaEnBruto {
   tasaAciertos: number | null;
 }
 
+/** Una fila del comparativo por grado (HITO 4, 2.C: "gráfico comparativo de rendimiento entre grados/secciones"). */
+export interface RendimientoPorGrado {
+  grado: number;
+  /** Cuántas aulas de ese grado hay (sus secciones). */
+  aulas: number;
+  matriculas: number;
+  tasaEntrega: number | null;
+  tasaAciertos: number | null;
+}
+
 /** Las cifras macro de cabecera. */
 export interface ResumenInstitucional {
   totalDocentes: number;
@@ -54,6 +64,8 @@ export interface ResumenInstitucional {
    * entre grados y secciones, así que necesita la vista completa—.
    */
   temasConMasErrores: DificultadRecurrente[];
+  /** El comparativo ENTRE GRADOS: la tabla de `aulas` ya compara entre secciones. */
+  porGrado: RendimientoPorGrado[];
 }
 
 /**
@@ -81,6 +93,52 @@ export function tasaDeAciertos(aula: AulaEnBruto): number | null {
 }
 
 /**
+ * Agrupa las aulas por grado y suma sus crudos ANTES de calcular el
+ * porcentaje —no promedia porcentajes ya calculados—: un grado con una
+ * sección de 30 alumnos y otra de 3 no puede pesar igual que una sola
+ * sección grande, y promediar los dos porcentajes tal cual los trataría
+ * igual.
+ */
+export function rendimientoPorGrado(aulas: readonly AulaEnBruto[]): RendimientoPorGrado[] {
+  interface Acumulado {
+    aulas: number;
+    matriculas: number;
+    esperadas: number;
+    completadas: number;
+    intentos: number;
+    aciertos: number;
+  }
+  const porGrado = new Map<number, Acumulado>();
+  for (const a of aulas) {
+    const acc = porGrado.get(a.grado) ?? {
+      aulas: 0,
+      matriculas: 0,
+      esperadas: 0,
+      completadas: 0,
+      intentos: 0,
+      aciertos: 0,
+    };
+    acc.aulas += 1;
+    acc.matriculas += a.matriculas;
+    acc.esperadas += a.matriculas * a.tareasCreadas;
+    acc.completadas += a.entregasCompletadas;
+    acc.intentos += a.intentosRegistrados ?? 0;
+    acc.aciertos += a.aciertosRegistrados ?? 0;
+    porGrado.set(a.grado, acc);
+  }
+
+  return [...porGrado.entries()]
+    .sort(([g1], [g2]) => g1 - g2)
+    .map(([grado, acc]) => ({
+      grado,
+      aulas: acc.aulas,
+      matriculas: acc.matriculas,
+      tasaEntrega: acc.esperadas === 0 ? null : Math.round((acc.completadas / acc.esperadas) * 1000) / 10,
+      tasaAciertos: acc.intentos === 0 ? null : Math.round((acc.aciertos / acc.intentos) * 1000) / 10,
+    }));
+}
+
+/**
  * Arma el resumen completo a partir de las aulas del colegio y de cuántos
  * alumnos distintos hay en total (que no es la suma de matrículas por aula: un
  * mismo alumno puede estar en más de una).
@@ -103,5 +161,6 @@ export function calcularResumen(
     totalAlumnos: totalAlumnosDistintos,
     aulas: aulas.map((a) => ({ ...a, tasaEntrega: tasaDeEntrega(a), tasaAciertos: tasaDeAciertos(a) })),
     temasConMasErrores,
+    porGrado: rendimientoPorGrado(aulas),
   };
 }

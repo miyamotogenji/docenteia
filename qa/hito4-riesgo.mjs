@@ -7,27 +7,30 @@
 //
 // Cubre, en este orden:
 //
-//   A. `riesgoAcademico`, `rachasDeFallosPorAlumno` y `riesgoDeEntregas`
-//      (`lib/docente/metricas.ts`), puros, con datos de mentira.
+//   A. `riesgoAcademico`, `rachasDeFallosPorAlumno`, `riesgoDeEntregas` y
+//      `distribucionDeNivel` (`lib/docente/metricas.ts`), puros, con datos
+//      de mentira.
 //   B. `rachaDeDiasConsecutivos` (`lib/estudiante/racha.ts`), puro, con un
 //      reloj de mentira.
-//   C. `tasaDeAciertos` (`lib/director/resumen.ts`), puro.
+//   C. `tasaDeAciertos` y `rendimientoPorGrado` (`lib/director/resumen.ts`), puros.
 //
 // Y, si hay un servidor levantado, D: que las tres pantallas —panel
 // docente, panel institucional y panel del estudiante— de verdad MUESTREN
-// lo nuevo (el semáforo, la columna de rendimiento, la racha de práctica),
-// no sólo que el cálculo exista.
+// lo nuevo (el semáforo, la tabla de seguimiento con filtros, el
+// comparativo por grado, la racha de práctica), no sólo que el cálculo
+// exista.
 //
 //   node qa/hito4-riesgo.mjs
 //   BASE_URL=http://localhost:3000 node qa/hito4-riesgo.mjs
 
 import {
+  distribucionDeNivel,
   rachasDeFallosPorAlumno,
   riesgoAcademico,
   riesgoDeEntregas,
 } from "../lib/docente/metricas.ts";
 import { rachaDeDiasConsecutivos } from "../lib/estudiante/racha.ts";
-import { tasaDeAciertos } from "../lib/director/resumen.ts";
+import { rendimientoPorGrado, tasaDeAciertos } from "../lib/director/resumen.ts";
 import { BASE_URL as BASE } from "./base-url.mjs";
 import { iniciarSesion, registrarAlumno } from "./sesion.mjs";
 
@@ -137,6 +140,21 @@ console.log("\n · A. riesgoAcademico / rachasDeFallosPorAlumno / riesgoDeEntreg
   check("e1 no tiene tareas vencidas SIN entregar (entregó las dos)", entregas.get("e1")?.tareasVencidasSinEntregar === 0);
   check("e2 nunca entregó ninguna de las dos vencidas: 2 vencidas sin entregar", entregas.get("e2")?.tareasVencidasSinEntregar === 2);
   check("e2 no tiene ninguna entrega con la que juzgar el plazo: null, no true", entregas.get("e2")?.todasEntregadasEnPlazo === null);
+
+  // distribucionDeNivel
+  const distribucion = distribucionDeNivel([
+    { nivel: "BASICO" },
+    { nivel: "BASICO" },
+    { nivel: "INTERMEDIO" },
+    { nivel: "AVANZADO" },
+    { nivel: null },
+  ]);
+  check(
+    "cuenta cada nivel por separado, y lo sin-diagnosticar aparte (no como Básico)",
+    distribucion.BASICO === 2 && distribucion.INTERMEDIO === 1 && distribucion.AVANZADO === 1 && distribucion.sin_diagnosticar === 1,
+    JSON.stringify(distribucion),
+  );
+  check("sin ningún alumno, todo en cero", JSON.stringify(distribucionDeNivel([])) === JSON.stringify({ BASICO: 0, INTERMEDIO: 0, AVANZADO: 0, sin_diagnosticar: 0 }));
 }
 
 // ── B. Racha de días consecutivos del estudiante ─────────────────────────────
@@ -181,6 +199,23 @@ console.log("\n · C. tasaDeAciertos (panel institucional)");
     "sin los campos informados (aula de antes de este hito), tampoco revienta: null",
     tasaDeAciertos({}) === null,
   );
+
+  // rendimientoPorGrado: suma crudos ANTES de calcular el porcentaje, no promedia porcentajes.
+  const aulas = [
+    { id: "a1", nombre: "A", grado: 1, seccion: "A", docenteNombre: "Ana", matriculas: 10, tareasCreadas: 2, entregasCompletadas: 10, intentosRegistrados: 10, aciertosRegistrados: 10 },
+    { id: "a2", nombre: "B", grado: 1, seccion: "B", docenteNombre: "Luis", matriculas: 20, tareasCreadas: 2, entregasCompletadas: 20, intentosRegistrados: 90, aciertosRegistrados: 45 },
+    { id: "a3", nombre: "C", grado: 2, seccion: "A", docenteNombre: "Ana", matriculas: 0, tareasCreadas: 0, entregasCompletadas: 0 },
+  ];
+  const porGrado = rendimientoPorGrado(aulas);
+  check("agrupa por grado: dos filas, una por grado (1 y 2)", porGrado.length === 2 && porGrado[0].grado === 1 && porGrado[1].grado === 2);
+  check("el grado 1 junta sus dos secciones", porGrado[0].aulas === 2 && porGrado[0].matriculas === 30);
+  check(
+    "…y pesa por alumno, no promedia 100% y 50% a 75%: (10+45)/(10+90) = 55%, no el simple promedio de los dos porcentajes",
+    porGrado[0].tasaAciertos === 55,
+    `obtuvo ${porGrado[0].tasaAciertos}`,
+  );
+  check("el grado 2, sin matrículas ni tareas, no tiene tasa (null)", porGrado[1].tasaEntrega === null && porGrado[1].tasaAciertos === null);
+  check("sin ninguna aula, sin filas", rendimientoPorGrado([]).length === 0);
 }
 
 // ── D. Las tres pantallas, de verdad, contra un servidor levantado ───────────
@@ -212,6 +247,12 @@ if (sesionDocente) {
   check("el panel docente trae el semáforo de riesgo académico", html.includes("Semáforo de riesgo académico"));
   check("…con sus cuatro niveles", html.includes("Riesgo alto") && html.includes("En observación") && html.includes("Óptimo"));
   check("…y una columna Riesgo en la tabla de estudiantes", html.includes(">Riesgo<"));
+  check("…la tarjeta de distribución de nivel (Básico/Intermedio/Avanzado)", html.includes("Distribución de nivel") && html.includes("Básico:"));
+  check("…la tasa de entrega de tareas como KPI", html.includes("Tasa de entrega de tareas"));
+  check(
+    "…y la tabla de seguimiento de alumnos matriculados, con sus filtros de aula y estado de tareas",
+    html.includes("Seguimiento de alumnos matriculados") && html.includes("filtro-aula") && html.includes("filtro-estado-tareas"),
+  );
 } else {
   check("sesión de docente de la semilla", false, "no se pudo iniciar sesión; se omiten sus comprobaciones");
 }
@@ -226,6 +267,10 @@ if (sesionDirector) {
   check(
     "…y la tarjeta de temas con mayor tasa de error del colegio",
     html.includes("Temas con mayor tasa de error") || html.includes("Sin colegio asignado"),
+  );
+  check(
+    "…y el comparativo de rendimiento por grado",
+    html.includes("Rendimiento por grado") || html.includes("Sin colegio asignado"),
   );
 } else {
   check("sesión de director de la semilla", false, "no se pudo iniciar sesión; se omiten sus comprobaciones");

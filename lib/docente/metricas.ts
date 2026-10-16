@@ -354,3 +354,30 @@ export function riesgoDeEntregas(
 
   return resultado;
 }
+
+/**
+ * Distribución de nivel del grupo (HITO 4, 2.B: "Promedio de notas y
+ * distribución de nivel — Básico, Intermedio, Avanzado").
+ *
+ * `null` es "sin diagnosticar todavía", no un cuarto nivel académico: se
+ * cuenta aparte porque mezclarlo con "Básico" haría parecer flojo a un grupo
+ * que, en realidad, todavía no ha hecho el diagnóstico inicial.
+ */
+export interface DistribucionDeNivel {
+  BASICO: number;
+  INTERMEDIO: number;
+  AVANZADO: number;
+  sin_diagnosticar: number;
+}
+
+export function distribucionDeNivel(alumnos: readonly { nivel: string | null }[]): DistribucionDeNivel {
+  const distribucion: DistribucionDeNivel = { BASICO: 0, INTERMEDIO: 0, AVANZADO: 0, sin_diagnosticar: 0 };
+  for (const a of alumnos) {
+    if (a.nivel === "BASICO" || a.nivel === "INTERMEDIO" || a.nivel === "AVANZADO") {
+      distribucion[a.nivel]++;
+    } else {
+      distribucion.sin_diagnosticar++;
+    }
+  }
+  return distribucion;
+}
