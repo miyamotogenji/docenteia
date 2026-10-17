@@ -17,6 +17,7 @@ const SECCIONES = [
   { href: "/admin/usuarios", titulo: "Usuarios" },
   { href: "/admin/ejercicios", titulo: "Ejercicios" },
   { href: "/admin/temas", titulo: "Temas" },
+  { href: "/admin/aulas", titulo: "Aulas" },
 ];
 
 export function NavegacionAdmin() {

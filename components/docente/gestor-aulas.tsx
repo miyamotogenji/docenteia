@@ -8,11 +8,9 @@ import { RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { TextoMatematico } from "@/components/math";
 import { pedir } from "@/lib/docente/cliente";
-import { GRADO_MAX, GRADO_MIN, seAcertoElEjercicio } from "@/lib/docente/aulas";
+import { seAcertoElEjercicio } from "@/lib/docente/aulas";
 import { cn } from "@/lib/utils";
 
 /**
@@ -76,10 +74,8 @@ const INTERVALO_SONDEO_MS = 12_000;
 
 export function GestorAulas({ aulas, baseUrl }: Props) {
   const router = useRouter();
-  const [pendiente, iniciar] = useTransition();
+  const [, iniciar] = useTransition();
   const [aviso, setAviso] = useState<{ tono: "ok" | "mal"; texto: string } | null>(null);
-  const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: "", grado: "", seccion: "" });
   const [copiado, setCopiado] = useState<{ aulaId: string; que: "codigo" | "enlace" } | null>(null);
   const [abierta, setAbierta] = useState<{ aulaId: string; vista: "estudiantes" | "tareas" } | null>(
     null,
@@ -107,36 +103,6 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
     // No hay forma de saber cuándo termina un `refresh()`: el giro del ícono
     // es sólo la confirmación visual de que el clic se registró.
     setTimeout(() => setActualizando(false), 600);
-  };
-
-  const crear = () => {
-    const grado = Number(nueva.grado);
-    if (!nueva.nombre.trim()) {
-      setAviso({ tono: "mal", texto: "El aula necesita un nombre." });
-      return;
-    }
-    if (!Number.isInteger(grado) || grado < GRADO_MIN || grado > GRADO_MAX) {
-      setAviso({ tono: "mal", texto: `El grado debe estar entre ${GRADO_MIN} y ${GRADO_MAX}.` });
-      return;
-    }
-    if (!nueva.seccion.trim()) {
-      setAviso({ tono: "mal", texto: "La sección no puede estar vacía." });
-      return;
-    }
-    iniciar(async () => {
-      const r = await pedir("/api/docente/aulas", {
-        metodo: "POST",
-        cuerpo: { nombre: nueva.nombre.trim(), grado, seccion: nueva.seccion.trim() },
-      });
-      if (r.ok) {
-        setNueva({ nombre: "", grado: "", seccion: "" });
-        setCreando(false);
-        setAviso({ tono: "ok", texto: `Aula "${nueva.nombre.trim()}" creada.` });
-        router.refresh();
-      } else {
-        setAviso({ tono: "mal", texto: r.error });
-      }
-    });
   };
 
   /**
@@ -235,57 +201,13 @@ export function GestorAulas({ aulas, baseUrl }: Props) {
             <RefreshCw className={cn("h-4 w-4", actualizando && "animate-spin")} />
             Actualizar
           </Button>
-          <Button variant="outline" size="sm" onClick={() => setCreando((v) => !v)}>
-            {creando ? "Cancelar" : "Crear nueva aula"}
-          </Button>
         </div>
       </div>
 
-      {creando && (
-        <Card>
-          <CardContent className="grid gap-3 pt-6 sm:grid-cols-[2fr_1fr_1fr_auto]">
-            <div className="space-y-1.5">
-              <Label htmlFor="aula-nombre">Nombre del salón</Label>
-              <Input
-                id="aula-nombre"
-                placeholder='p. ej. "3ro B - Secundaria"'
-                value={nueva.nombre}
-                onChange={(e) => setNueva({ ...nueva, nombre: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="aula-grado">Grado</Label>
-              <Input
-                id="aula-grado"
-                type="number"
-                min={GRADO_MIN}
-                max={GRADO_MAX}
-                placeholder="3"
-                value={nueva.grado}
-                onChange={(e) => setNueva({ ...nueva, grado: e.target.value })}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="aula-seccion">Sección</Label>
-              <Input
-                id="aula-seccion"
-                placeholder="B"
-                value={nueva.seccion}
-                onChange={(e) => setNueva({ ...nueva, seccion: e.target.value })}
-              />
-            </div>
-            <div className="flex items-end">
-              <Button onClick={crear} disabled={pendiente} className="w-full">
-                Crear aula
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {aulas.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Todavía no has creado ningún aula. Crea la primera para empezar a matricular alumnos.
+          Todavía no tienes ninguna aula asignada. El administrador de la plataforma crea las aulas
+          y te asigna como titular desde su panel.
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
