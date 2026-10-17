@@ -22,16 +22,17 @@ npm run build              # build de producción (el mismo que corre `vercel-bu
 npm run dev                 # en otra terminal, con la base de datos sembrada
 
 node qa/hito4-seguridad.mjs        # 34 comprobaciones — rate limiting
-node qa/hito4-admin-usuarios.mjs   # 25 comprobaciones — RBAC de usuarios
+node qa/hito4-admin-usuarios.mjs   # 27 comprobaciones — RBAC de usuarios
 node qa/hito4-admin-contenido.mjs  # 15 comprobaciones — /admin/ejercicios y /admin/temas
-node qa/hito4-riesgo.mjs           # 41 comprobaciones — semáforo de riesgo y KPIs
+node qa/hito4-admin-aulas.mjs      # 27 comprobaciones — /admin/aulas y matrícula directa
+node qa/hito4-riesgo.mjs           # 43 comprobaciones — semáforo de riesgo y KPIs
 node qa/hito4-exportar.mjs         # 24 comprobaciones — PDF/Excel
 node qa/hito4.mjs                  # 28 comprobaciones — el checklist de cierre, literal
 
 node qa/qa.mjs                     # 1473 comprobaciones — toda la plataforma, sin regresiones
 ```
 
-Las seis baterías de HITO 4 suman **169 comprobaciones**, todas en verde. El
+Las siete baterías de HITO 4 suman **198 comprobaciones**, todas en verde. El
 barrido completo (`qa/qa.mjs`, que a su vez corre hito1, hito2, hito3,
 diagnóstico, aceptación, lección, matemáticas, paso1, sesiones y rigor)
 también está en verde — nada de esto rompió lo que ya funcionaba.
@@ -89,9 +90,19 @@ la tabla de seguimiento funcionando en el navegador.
   `lib/admin/api.ts`, `lib/admin/usuarios.ts`,
   `app/api/admin/usuarios/route.ts`,
   `app/api/admin/usuarios/[id]/route.ts`.
+- **Aulas, centralizadas** (checklist actualizado): `/admin/aulas` —
+  vista maestra de las aulas de TODA la plataforma. El administrador crea
+  aulas asignando explícitamente colegio y docente titular
+  (`POST /api/admin/aulas`), y matricula alumnos directamente en una aula
+  concreta sin depender del código de invitación
+  (`POST /api/admin/matriculas`, el "Módulo de Matrícula/Asignación").
+  `/docente/aulas` pasa a ser una VISTA LIMPIA: se retiró el formulario de
+  creación — el docente sólo visualiza las aulas que el colegio le asignó.
+  `lib/admin/aulas.ts`, `app/api/admin/aulas/route.ts`,
+  `app/api/admin/matriculas/route.ts`, `components/admin/gestor-aulas.tsx`.
 
-Verificado en `qa/hito4-admin-usuarios.mjs` (25) y
-`qa/hito4-admin-contenido.mjs` (15).
+Verificado en `qa/hito4-admin-usuarios.mjs` (27),
+`qa/hito4-admin-contenido.mjs` (15) y `qa/hito4-admin-aulas.mjs` (27).
 
 ## 4. Exportación de reportes en servidor (PDF y Excel)
 
@@ -150,6 +161,8 @@ cada rama de la clasificación con datos de mentira).
 | `/docente` — KPIs y semáforo de riesgo | ✅ | `app/docente/page.tsx`; `qa/hito4-riesgo.mjs`, `qa/hito4.mjs` |
 | `/director` — analítica institucional | ✅ | `app/director/page.tsx`; `qa/hito4-riesgo.mjs`, `qa/hito4.mjs` |
 | `/admin` — depuración de ejercicios y usuarios, con suspensión/activación | ✅ | `app/admin/*`; `qa/hito4-admin-usuarios.mjs`, `qa/hito4-admin-contenido.mjs` |
+| `/docente/aulas` — vista limpia, sin formulario de creación | ✅ | `app/docente/aulas/page.tsx`; `qa/hito4-admin-aulas.mjs` |
+| `/admin/aulas` — vista maestra: crear aulas y matricular directo | ✅ | `app/admin/aulas/page.tsx`; `qa/hito4-admin-aulas.mjs` |
 
 ### Endpoints backend y seguridad
 
@@ -157,10 +170,12 @@ cada rama de la clasificación con datos de mentira).
 |---|---|---|
 | `POST /api/admin/usuarios/[id]/estado` (activar/suspender) | ✅ | `app/api/admin/usuarios/[id]/estado/route.ts`; `qa/hito4.mjs` |
 | `DELETE /api/admin/ejercicios/[id]` (eliminación protegida) | ✅ | `app/api/admin/ejercicios/[id]/route.ts`; `qa/hito4.mjs` |
+| `POST /api/admin/aulas` (creación centralizada, asigna docenteId e institucionId) | ✅ | `app/api/admin/aulas/route.ts`; `qa/hito4-admin-aulas.mjs` |
+| `POST /api/admin/matriculas` (asignación directa de un estudianteId a un aulaId) | ✅ | `app/api/admin/matriculas/route.ts`; `qa/hito4-admin-aulas.mjs` |
 | `GET /api/docente/exportar/pdf` y `/excel` | ✅ | `app/api/docente/exportar/*`; `qa/hito4-exportar.mjs` |
 | `GET /api/director/exportar/pdf` y `/excel` | ✅ | `app/api/director/exportar/*`; `qa/hito4-exportar.mjs` |
 | Rate limiting operativo en `POST /api/estudiante/unirse` (429 al exceder 5/min) | ✅ | `lib/seguridad/limite-tasa.ts`; `qa/hito4-seguridad.mjs`, `qa/hito4.mjs` |
-| Filtro estricto por `docenteId`/`estudianteId`/`institucionId` en todas las consultas | ✅ | patrón `exigirDocente*`/`exigirDirector`/`exigirSuperadmin`; confirmado con sesiones cruzadas en las seis baterías de HITO4 |
+| Filtro estricto por `docenteId`/`estudianteId`/`institucionId` en todas las consultas | ✅ | patrón `exigirDocente*`/`exigirDirector`/`exigirSuperadmin`; confirmado con sesiones cruzadas en las siete baterías de HITO4 |
 
 ### Calidad de software
 

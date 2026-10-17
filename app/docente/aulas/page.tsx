@@ -15,11 +15,12 @@ export const dynamic = "force-dynamic";
 /**
  * /docente/aulas — Arquitectura multi-tenant (HITO 3).
  *
- * Cada aula es un grado y una sección con su código de matrícula propio: desde
- * aquí el docente las crea, reparte el código y entra a programarles tareas.
- * Mismo patrón que `/docente/curriculo`: el listado inicial llega ya
- * renderizado desde el servidor, y las modificaciones van por
- * `/api/docente/aulas`, que es la superficie que ejercita la batería de QA.
+ * Cada aula es un grado y una sección con su código de matrícula propio.
+ * VISTA LIMPIA (checklist actualizado de HITO 4): crearlas ya no es cosa del
+ * docente —eso pasó a `/admin/aulas`, centralizado—; aquí sólo reparte el
+ * código de las que el colegio le asignó y entra a programarles tareas.
+ * `GET /api/docente/aulas` sigue siendo "mis aulas" —las que tiene de
+ * titular—, sólo que ya no se crean desde este lado.
  */
 export default async function PaginaAulas() {
   const sesion = await auth();
@@ -59,8 +60,8 @@ export default async function PaginaAulas() {
         <div className="space-y-2">
           <h1 className="text-3xl font-bold tracking-tight">Aulas</h1>
           <p className="text-muted-foreground">
-            Organiza a tus alumnos por grado y sección, y comparte el código con el que se
-            matriculan.
+            Las aulas que el colegio te asignó. Comparte el código con el que se matriculan tus
+            alumnos; crear aulas nuevas es cosa del administrador de la plataforma.
           </p>
         </div>
 
