@@ -13,7 +13,17 @@ const nextConfig = {
   // Tratarlo como externo deja que Node lo resuelva tal cual desde
   // node_modules, que es lo que el rastreador de Vercel sí sabe copiar
   // completo.
-  serverExternalPackages: ["bcryptjs", "@react-pdf/renderer"],
+  //
+  // La traza REAL del error en producción (no una suposición: se capturó
+  // temporalmente en el cuerpo de la respuesta) señaló la causa exacta:
+  // `Cannot find module '.../node_modules/pdfkit/js/standard-fonts/
+  // Helvetica.cjs'`. `pdfkit` es la dependencia de bajo nivel que de verdad
+  // dibuja el PDF —un paquete DISTINTO de `@react-pdf/renderer`, pese al
+  // nombre parecido—, y sus métricas de las 14 fuentes estándar del PDF
+  // (Helvetica, Times, Courier…) son archivos sueltos que carga en tiempo de
+  // ejecución, no código que webpack pueda rastrear estáticamente. Externo
+  // también, por el mismo motivo.
+  serverExternalPackages: ["bcryptjs", "@react-pdf/renderer", "pdfkit"],
   eslint: {
     // El prototipo heredado (public/, qa/, server.js) no se lintea: es código de
     // referencia para la paridad, no código nuevo del PMV 1.
