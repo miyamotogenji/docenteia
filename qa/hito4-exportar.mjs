@@ -116,24 +116,32 @@ if (sesionAlumno) {
 // ── C. Zero-Trust: cada quien ve SÓLO lo suyo ────────────────────────────────
 console.log("\n · C. Zero-Trust: el reporte del docente es SÓLO de SUS aulas");
 {
-  // El director de la semilla no es titular de ninguna aula propia —es
-  // DIRECTOR, no DOCENTE—, así que si pide el reporte "de docente" (que
-  // también puede abrir, por jerarquía) debe salirle vacío, NUNCA con las
-  // aulas de otro docente de la plataforma colándose por estar en la misma
-  // zona. El filtro es `docenteId`, no "cualquiera con acceso a /docente".
+  // Si pide el reporte "de docente" (que también puede abrir, por
+  // jerarquía), al director le debe salir SÓLO de las aulas de las que es
+  // titular él mismo —nunca las del otro docente de la plataforma, por
+  // estar los dos en la misma zona—. NO se asume que el director de la
+  // semilla sea titular de cero aulas propias: en esta base ya enseña sus
+  // propias secciones además de dirigir, así que la comprobación real es
+  // que los DOS conjuntos de aulas sean distintos entre sí (si no, esta
+  // prueba no distinguiría "cada quien ve lo suyo" de "todos ven lo
+  // mismo"), y que cada reporte tenga un tamaño distinto en consecuencia.
+  // El filtro es `docenteId`, no "cualquiera con acceso a /docente".
   if (sesionDocente && sesionDirector) {
     const pdfDocente = await descargar("/api/docente/exportar/pdf", sesionDocente);
     const pdfDirectorComoDocente = await descargar("/api/docente/exportar/pdf", sesionDirector);
     const aulasDocente = await fetch(`${BASE}/api/docente/aulas`, { headers: { cookie: sesionDocente } }).then((r) => r.json());
     const aulasDirector = await fetch(`${BASE}/api/docente/aulas`, { headers: { cookie: sesionDirector } }).then((r) => r.json());
+    const idsDocente = new Set((aulasDocente.aulas ?? []).map((a) => a.id));
+    const idsDirector = new Set((aulasDirector.aulas ?? []).map((a) => a.id));
+    const seSolapan = [...idsDocente].some((id) => idsDirector.has(id));
     check(
-      "el docente titular SÍ tiene aulas propias en esta base (si no, esta comprobación no prueba nada)",
-      (aulasDocente.aulas?.length ?? 0) > (aulasDirector.aulas?.length ?? 0),
-      `docente=${aulasDocente.aulas?.length}, director=${aulasDirector.aulas?.length}`,
+      "ambas cuentas tienen aulas propias y son aulas DISTINTAS entre sí (si no, esta comprobación no prueba nada)",
+      idsDocente.size > 0 && idsDirector.size > 0 && !seSolapan,
+      `docente=${idsDocente.size} aula(s), director=${idsDirector.size} aula(s), solapan=${seSolapan}`,
     );
     check(
-      "…y el reporte del director (menos aulas propias) es sustancialmente más chico que el del docente dueño de verdad: el filtro es docenteId, no 'cualquiera con acceso a /docente'",
-      pdfDirectorComoDocente.buf.length < pdfDocente.buf.length,
+      "…y el reporte de cada uno tiene un tamaño distinto en consecuencia: el filtro es docenteId, no 'cualquiera con acceso a /docente'",
+      pdfDirectorComoDocente.buf.length !== pdfDocente.buf.length,
       `docente=${pdfDocente.buf.length}B, director-como-docente=${pdfDirectorComoDocente.buf.length}B`,
     );
   }
