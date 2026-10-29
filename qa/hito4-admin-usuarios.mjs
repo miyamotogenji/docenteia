@@ -17,6 +17,9 @@
 //      comprobación de que SUSPENDER DE VERDAD IMPIDE INICIAR SESIÓN (no es
 //      sólo un campo que se guarda, es lo que `auth.ts` ya mira), y el
 //      candado de "no te modifiques a ti mismo".
+//   E. POST /api/admin/usuarios (checklist actualizado): el "Formulario de
+//      Docentes" y el "Formulario de Alumnos" —alta directa, independiente
+//      de la institución o el aula a la que vayan a parar—.
 //
 //   node qa/hito4-admin-usuarios.mjs
 //   BASE_URL=http://localhost:3000 node qa/hito4-admin-usuarios.mjs
@@ -263,6 +266,114 @@ console.log("\n · D. Suspender/activar, reasignar rol, vincular institución �
       body: JSON.stringify({ institucionId: null }),
     });
   }
+}
+
+// ── E. POST /api/admin/usuarios — alta directa de docentes y alumnos ───────
+//
+// «Formulario de Docentes: Nombre, Correo, Contraseña. Formulario de
+// Alumnos: Nombre, Correo, Contraseña, Etapa/Grado.» Antes de esto, un
+// DOCENTE sólo podía entrar al sistema por la semilla, o reasignando el rol
+// de una cuenta ya existente —no había forma de darlo de alta directo,
+// aunque el propio comentario de /api/registro ya lo daba por hecho.
+console.log("\n · E. POST /api/admin/usuarios — alta directa de docentes y alumnos");
+{
+  const sufijo = Date.now().toString(36);
+
+  const rSinSesion = await fetch(`${BASE}/api/admin/usuarios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nombre: "x", email: "x@x.com", password: "12345678", rol: "DOCENTE" }),
+  });
+  check("POST /api/admin/usuarios sin sesión: 401", rSinSesion.status === 401, `HTTP ${rSinSesion.status}`);
+
+  const sesionDocente = await iniciarSesion(BASE, "docente@mentoriamath.local", "Docente-2026");
+  const rComoDocente = await fetch(`${BASE}/api/admin/usuarios`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", cookie: sesionDocente },
+    body: JSON.stringify({ nombre: "x", email: "y@y.com", password: "12345678", rol: "DOCENTE" }),
+  });
+  check("un docente no puede crear otras cuentas", rComoDocente.status === 403, `HTTP ${rComoDocente.status}`);
+
+  // Formulario de Docentes: sólo nombre, correo, contraseña.
+  const correoDocente = `qa.altadocente.${sufijo}@mentoriamath.local`;
+  const rCrearDocente = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "QA Alta Docente", email: correoDocente, password: "Docente-2026", rol: "DOCENTE" }),
+  });
+  const cuerpoDocente = await rCrearDocente.json().catch(() => ({}));
+  check(
+    "crea un DOCENTE con sólo nombre, correo y contraseña —sin institución, sin aula—",
+    rCrearDocente.status === 201 && cuerpoDocente.usuario?.rol === "DOCENTE",
+    `HTTP ${rCrearDocente.status} · ${JSON.stringify(cuerpoDocente)}`,
+  );
+
+  const sesionDocenteNuevo = await iniciarSesion(BASE, correoDocente, "Docente-2026");
+  check("…y esa cuenta puede iniciar sesión de verdad, con la contraseña puesta", Boolean(sesionDocenteNuevo));
+
+  const rCorreoDuplicado = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "Otro", email: correoDocente, password: "Docente-2026", rol: "DOCENTE" }),
+  });
+  check("crear OTRA cuenta con el mismo correo: 409, no un 500", rCorreoDuplicado.status === 409, `HTTP ${rCorreoDuplicado.status}`);
+
+  // Formulario de Alumnos: nombre, correo, contraseña, etapa/grado —y
+  // también funciona SIN etapa/curso, para cuando el administrador no los
+  // sabe de antemano—.
+  const correoAlumno = `qa.altaalumno.${sufijo}@mentoriamath.local`;
+  const rCrearAlumno = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({
+      nombre: "QA Alta Alumno",
+      email: correoAlumno,
+      password: "Alumno-2026",
+      rol: "ESTUDIANTE",
+      etapa: "SECUNDARIA",
+      curso: 3,
+    }),
+  });
+  const cuerpoAlumno = await rCrearAlumno.json().catch(() => ({}));
+  check(
+    "crea un ESTUDIANTE con etapa y curso ya puestos",
+    rCrearAlumno.status === 201 && cuerpoAlumno.usuario?.rol === "ESTUDIANTE",
+    `HTTP ${rCrearAlumno.status} · ${JSON.stringify(cuerpoAlumno)}`,
+  );
+
+  const correoAlumnoSinEtapa = `qa.altaalumnosin.${sufijo}@mentoriamath.local`;
+  const rCrearAlumnoSinEtapa = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "QA Sin Etapa", email: correoAlumnoSinEtapa, password: "Alumno-2026", rol: "ESTUDIANTE" }),
+  });
+  check(
+    "…y también sin etapa ni curso: el administrador puede no saberlos, el alumno los completa después",
+    rCrearAlumnoSinEtapa.status === 201,
+    `HTTP ${rCrearAlumnoSinEtapa.status}`,
+  );
+
+  const rEtapaParaDocente = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({
+      nombre: "x",
+      email: `qa.rechazo.${sufijo}@mentoriamath.local`,
+      password: "12345678",
+      rol: "DOCENTE",
+      etapa: "SECUNDARIA",
+    }),
+  });
+  check(
+    "mandar etapa para un DOCENTE (no tiene sentido) se rechaza con 400, no se guarda en silencio",
+    rEtapaParaDocente.status === 400,
+    `HTTP ${rEtapaParaDocente.status}`,
+  );
+
+  const rRolNoPermitido = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "x", email: `qa.rol.${sufijo}@mentoriamath.local`, password: "12345678", rol: "SUPERADMIN" }),
+  });
+  check(
+    "crear un SUPERADMIN (o DIRECTOR) por aquí no está permitido: sólo DOCENTE y ESTUDIANTE",
+    rRolNoPermitido.status === 400,
+    `HTTP ${rRolNoPermitido.status}`,
+  );
 }
 
 salir();
