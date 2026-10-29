@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
+import bcrypt from "bcryptjs";
+import { Prisma } from "@prisma/client";
 
 import { prisma } from "@/lib/prisma";
 import { exigirSuperadmin } from "@/lib/admin/api";
-import { fallo } from "@/lib/docente/api";
+import { crearUsuarioSchema } from "@/lib/admin/usuarios";
+import { fallo, leerCuerpo } from "@/lib/docente/api";
 import { ROLES } from "@/lib/rbac";
 
 export const runtime = "nodejs";
@@ -78,5 +81,57 @@ export async function GET(req: Request) {
     });
   } catch (e) {
     return fallo(e, "admin/usuarios:listar");
+  }
+}
+
+/**
+ * POST /api/admin/usuarios (checklist actualizado: "Formulario de
+ * Docentes" y "Formulario de Alumnos" — entidades maestras, independientes
+ * de la asignación). El SUPERADMIN da de alta directo una cuenta de
+ * DOCENTE o de ESTUDIANTE, con su nombre, correo y contraseña —antes sólo
+ * existía el alta pública de alumnos (`/api/registro`) o reasignar el rol
+ * de una cuenta ya existente; no había forma de crear un docente nuevo de
+ * un tirón—.
+ */
+export async function POST(req: Request) {
+  const permiso = await exigirSuperadmin();
+  if (!permiso.ok) return permiso.respuesta;
+
+  const cuerpo = await leerCuerpo(req, crearUsuarioSchema);
+  if (!cuerpo.ok) return cuerpo.respuesta;
+  const datos = cuerpo.datos;
+
+  try {
+    const passwordHash = await bcrypt.hash(datos.password, 10);
+
+    const usuario = await prisma.usuario.create({
+      data: {
+        nombre: datos.nombre,
+        email: datos.email,
+        passwordHash,
+        rol: datos.rol,
+        // Un alumno sin perfil no podría hacer el diagnóstico —misma regla
+        // que `/api/registro`—; un docente no tiene perfil de alumno.
+        ...(datos.rol === "ESTUDIANTE"
+          ? {
+              perfilEstudiante: {
+                create: {
+                  etapa: datos.etapa ?? null,
+                  curso: datos.curso ?? null,
+                  metadatos: {},
+                },
+              },
+            }
+          : {}),
+      },
+      select: { id: true, nombre: true, email: true, rol: true, activo: true, institucionId: true },
+    });
+
+    return NextResponse.json({ usuario: { ...usuario, institucion: null } }, { status: 201 });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return NextResponse.json({ error: "Ya existe una cuenta con ese correo electrónico." }, { status: 409 });
+    }
+    return fallo(e, "admin/usuarios:crear");
   }
 }

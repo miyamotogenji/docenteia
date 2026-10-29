@@ -55,3 +55,38 @@ export function rolUsaInstitucion(rol: string): boolean {
  */
 export const estadoUsuarioSchema = z.object({ activo: z.boolean() });
 export type EstadoUsuario = z.infer<typeof estadoUsuarioSchema>;
+
+/**
+ * Lo que `POST /api/admin/usuarios` acepta (checklist actualizado:
+ * "Formulario de Docentes" y "Formulario de Alumnos", entidades maestras
+ * independientes de la asignación). Antes de esto, un DOCENTE sólo podía
+ * entrar al sistema por la semilla o reasignándole el rol a una cuenta ya
+ * existente —no había forma de darlo de alta directo, con su propio nombre y
+ * contraseña, como ya documentaba (sin cumplirlo) el comentario de
+ * `/api/registro`: "los perfiles DOCENTE, DIRECTOR y SUPERADMIN los crea un
+ * administrador".
+ *
+ * Deliberadamente sólo DOCENTE y ESTUDIANTE —el pliego pide esos dos
+ * formularios, no uno genérico para cualquier rol—: un DIRECTOR o un
+ * SUPERADMIN nuevo se sigue dando de alta a mano (Prisma Studio o la
+ * semilla), como ya era el caso.
+ *
+ * `etapa`/`curso` son optativos incluso para un alumno: si el administrador
+ * no los sabe al darlo de alta, el propio alumno los completa en su primer
+ * inicio de sesión, en `/estudiante/nivel-educativo` —la misma pantalla que
+ * ya fuerza ese paso a quien se registra solo—.
+ */
+export const crearUsuarioSchema = z
+  .object({
+    nombre: z.string().trim().min(2, "El nombre es demasiado corto.").max(120),
+    email: z.string().trim().toLowerCase().email("Correo electrónico no válido."),
+    password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres.").max(200),
+    rol: z.enum(["DOCENTE", "ESTUDIANTE"]),
+    etapa: z.enum(["PRIMARIA", "SECUNDARIA", "SUPERIOR"]).optional(),
+    curso: z.number().int().min(1).max(10).optional(),
+  })
+  .refine((d) => d.rol === "ESTUDIANTE" || (d.etapa === undefined && d.curso === undefined), {
+    message: "Etapa y curso sólo tienen sentido para un alumno.",
+    path: ["etapa"],
+  });
+export type EntradaCrearUsuario = z.infer<typeof crearUsuarioSchema>;

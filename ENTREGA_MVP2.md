@@ -22,7 +22,7 @@ npm run build              # build de producción (el mismo que corre `vercel-bu
 npm run dev                 # en otra terminal, con la base de datos sembrada
 
 node qa/hito4-seguridad.mjs        # 34 comprobaciones — rate limiting
-node qa/hito4-admin-usuarios.mjs   # 27 comprobaciones — RBAC de usuarios
+node qa/hito4-admin-usuarios.mjs   # 36 comprobaciones — RBAC y alta directa de usuarios
 node qa/hito4-admin-contenido.mjs  # 15 comprobaciones — /admin/ejercicios y /admin/temas
 node qa/hito4-admin-aulas.mjs      # 38 comprobaciones — /admin/aulas, asignación de docente y matrícula directa
 node qa/hito4-riesgo.mjs           # 43 comprobaciones — semáforo de riesgo y KPIs
@@ -32,7 +32,7 @@ node qa/hito4.mjs                  # 28 comprobaciones — el checklist de cierr
 node qa/qa.mjs                     # 1473 comprobaciones — toda la plataforma, sin regresiones
 ```
 
-Las siete baterías de HITO 4 suman **209 comprobaciones**, todas en verde. El
+Las siete baterías de HITO 4 suman **218 comprobaciones**, todas en verde. El
 barrido completo (`qa/qa.mjs`, que a su vez corre hito1, hito2, hito3,
 diagnóstico, aceptación, lección, matemáticas, paso1, sesiones y rigor)
 también está en verde — nada de esto rompió lo que ya funcionaba.
@@ -86,7 +86,13 @@ la tabla de seguimiento funcionando en el navegador.
   ejercicio con progreso de algún alumno no se borra, se archiva (ya era el
   comportamiento de `DELETE /api/docente/ejercicios/[id]` desde HITO 1).
 - **Usuarios y RBAC**: `/admin/usuarios` — listar y filtrar por rol,
-  activar/suspender, reasignar rol, vincular a una institución.
+  activar/suspender, reasignar rol, vincular a una institución. Más, desde
+  el checklist actualizado, dos **formularios de alta directa**,
+  independientes entre sí y de la institución/aula a la que vayan a
+  parar: "Formulario de Docentes" (nombre, correo, contraseña —antes no
+  existía ninguna forma de crear un docente de un tirón, sólo reasignar el
+  rol de una cuenta ya existente) y "Formulario de Alumnos" (nombre,
+  correo, contraseña, etapa/curso opcionales). `POST /api/admin/usuarios`.
   `lib/admin/api.ts`, `lib/admin/usuarios.ts`,
   `app/api/admin/usuarios/route.ts`,
   `app/api/admin/usuarios/[id]/route.ts`.
@@ -107,7 +113,7 @@ la tabla de seguimiento funcionando en el navegador.
   `app/api/admin/aulas/[id]/route.ts`, `app/api/admin/matriculas/route.ts`,
   `components/admin/gestor-aulas.tsx`.
 
-Verificado en `qa/hito4-admin-usuarios.mjs` (27),
+Verificado en `qa/hito4-admin-usuarios.mjs` (36),
 `qa/hito4-admin-contenido.mjs` (15) y `qa/hito4-admin-aulas.mjs` (38).
 
 ## 4. Exportación de reportes en servidor (PDF y Excel)
@@ -246,3 +252,24 @@ aulas—), con la migración correspondiente
 mostraba el nombre del docente de un aula (el panel del director, el PDF y
 el Excel, la pantalla de unirse del alumno) se revisó para tratar "sin
 titular" como un estado legítimo, no un error.
+
+## Addendum 3 — Entidades maestras completamente independientes
+
+Siguiendo con el mismo principio del Addendum 2, el cliente pidió separar
+TAMBIÉN la creación de docentes y alumnos de su asignación: "Aulas,
+Docentes y Alumnos" como tres registros independientes de entidades
+maestras, con un cuarto módulo de Asignación aparte (que es, exactamente,
+lo que ya hacía `/admin/aulas` desde el Addendum 2 — el selector de docente
+y el buscador de "Matricular").
+
+Lo que faltaba era la pieza de origen: no existía ninguna forma de crear un
+DOCENTE directamente —sólo se podía reasignar el rol de una cuenta ya
+existente, o sembrarlo—, aunque el propio comentario de `/api/registro` ya
+decía (sin cumplirlo) que "los perfiles DOCENTE... los crea un
+administrador". `POST /api/admin/usuarios` (nuevo) cierra esa pieza:
+"Formulario de Docentes" (nombre, correo, contraseña) y "Formulario de
+Alumnos" (nombre, correo, contraseña, etapa/curso opcionales — si el
+administrador no los sabe, el propio alumno los completa en
+`/estudiante/nivel-educativo`, como ya hacía quien se registraba solo). Los
+dos formularios viven en `/admin/usuarios`, como tarjetas desplegables
+independientes, igual que "Crear aula" en `/admin/aulas`.

@@ -4,10 +4,12 @@ import { useEffect, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { pedir } from "@/lib/docente/cliente";
+import { ETAPAS } from "@/lib/curriculo/etapas";
 import { ROLES, ETIQUETA_ROL } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
 
@@ -88,6 +90,76 @@ export function GestorUsuarios({ miPropioId }: Props) {
     setAviso(null);
   };
 
+  // ── Formulario de Docentes (checklist actualizado): entidad maestra, ──────
+  // independiente de a qué institución o a qué aula vaya a parar —eso se
+  // decide después, aquí mismo (institución) o en /admin/aulas (aula)—.
+  const [creandoDocente, setCreandoDocente] = useState(false);
+  const [nuevoDocente, setNuevoDocente] = useState({ nombre: "", email: "", password: "" });
+  const [guardandoAlta, setGuardandoAlta] = useState(false);
+
+  const crearDocente = () => {
+    if (!nuevoDocente.nombre.trim()) return setAviso({ tono: "mal", texto: "El docente necesita un nombre." });
+    if (!nuevoDocente.email.trim()) return setAviso({ tono: "mal", texto: "El docente necesita un correo." });
+    if (nuevoDocente.password.length < 8) {
+      return setAviso({ tono: "mal", texto: "La contraseña debe tener al menos 8 caracteres." });
+    }
+    setGuardandoAlta(true);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/usuarios", {
+        metodo: "POST",
+        cuerpo: { ...nuevoDocente, nombre: nuevoDocente.nombre.trim(), email: nuevoDocente.email.trim(), rol: "DOCENTE" },
+      });
+      setGuardandoAlta(false);
+      if (r.ok) {
+        setNuevoDocente({ nombre: "", email: "", password: "" });
+        setCreandoDocente(false);
+        setAviso({ tono: "ok", texto: `Docente "${nuevoDocente.nombre.trim()}" creado. Vincúlalo a una institución en la tabla de abajo.` });
+        cargar();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
+  };
+
+  // ── Formulario de Alumnos: entidad maestra, con su etapa/curso ya ────────
+  // listos de una vez si el administrador los sabe —si no, el propio
+  // alumno los completa en su primer inicio de sesión—.
+  const [creandoAlumno, setCreandoAlumno] = useState(false);
+  const [nuevoAlumno, setNuevoAlumno] = useState({ nombre: "", email: "", password: "", etapa: "", curso: "" });
+
+  const etapaDelAlumno = ETAPAS.find((e) => e.valor === nuevoAlumno.etapa);
+
+  const crearAlumno = () => {
+    if (!nuevoAlumno.nombre.trim()) return setAviso({ tono: "mal", texto: "El alumno necesita un nombre." });
+    if (!nuevoAlumno.email.trim()) return setAviso({ tono: "mal", texto: "El alumno necesita un correo." });
+    if (nuevoAlumno.password.length < 8) {
+      return setAviso({ tono: "mal", texto: "La contraseña debe tener al menos 8 caracteres." });
+    }
+    setGuardandoAlta(true);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/usuarios", {
+        metodo: "POST",
+        cuerpo: {
+          nombre: nuevoAlumno.nombre.trim(),
+          email: nuevoAlumno.email.trim(),
+          password: nuevoAlumno.password,
+          rol: "ESTUDIANTE",
+          ...(nuevoAlumno.etapa ? { etapa: nuevoAlumno.etapa } : {}),
+          ...(nuevoAlumno.etapa && nuevoAlumno.curso ? { curso: Number(nuevoAlumno.curso) } : {}),
+        },
+      });
+      setGuardandoAlta(false);
+      if (r.ok) {
+        setNuevoAlumno({ nombre: "", email: "", password: "", etapa: "", curso: "" });
+        setCreandoAlumno(false);
+        setAviso({ tono: "ok", texto: `Alumno "${nuevoAlumno.nombre.trim()}" creado.` });
+        cargar();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
+  };
+
   return (
     <div className="space-y-4">
       {aviso && (
@@ -102,6 +174,129 @@ export function GestorUsuarios({ miPropioId }: Props) {
         >
           {aviso.texto}
         </div>
+      )}
+
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" size="sm" onClick={() => setCreandoDocente((v) => !v)}>
+          {creandoDocente ? "Cancelar" : "Crear docente"}
+        </Button>
+        <Button variant="outline" size="sm" onClick={() => setCreandoAlumno((v) => !v)}>
+          {creandoAlumno ? "Cancelar" : "Crear alumno"}
+        </Button>
+      </div>
+
+      {creandoDocente && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-medium">Formulario de Docentes</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-docente-nombre">Nombre</Label>
+                <Input
+                  id="nuevo-docente-nombre"
+                  value={nuevoDocente.nombre}
+                  onChange={(e) => setNuevoDocente({ ...nuevoDocente, nombre: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-docente-email">Correo</Label>
+                <Input
+                  id="nuevo-docente-email"
+                  type="email"
+                  placeholder="docente@colegio.edu"
+                  value={nuevoDocente.email}
+                  onChange={(e) => setNuevoDocente({ ...nuevoDocente, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-docente-password">Contraseña</Label>
+                <Input
+                  id="nuevo-docente-password"
+                  type="password"
+                  placeholder="Al menos 8 caracteres"
+                  value={nuevoDocente.password}
+                  onChange={(e) => setNuevoDocente({ ...nuevoDocente, password: e.target.value })}
+                />
+              </div>
+            </div>
+            <Button onClick={crearDocente} disabled={guardandoAlta}>
+              Crear docente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {creandoAlumno && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-medium">Formulario de Alumnos</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-alumno-nombre">Nombre</Label>
+                <Input
+                  id="nuevo-alumno-nombre"
+                  value={nuevoAlumno.nombre}
+                  onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, nombre: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-alumno-email">Correo</Label>
+                <Input
+                  id="nuevo-alumno-email"
+                  type="email"
+                  placeholder="alumno@correo.com"
+                  value={nuevoAlumno.email}
+                  onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-alumno-password">Contraseña</Label>
+                <Input
+                  id="nuevo-alumno-password"
+                  type="password"
+                  placeholder="Al menos 8 caracteres"
+                  value={nuevoAlumno.password}
+                  onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, password: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-alumno-etapa">Etapa (opcional)</Label>
+                <Select
+                  id="nuevo-alumno-etapa"
+                  value={nuevoAlumno.etapa}
+                  onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, etapa: e.target.value, curso: "" })}
+                >
+                  <option value="">Sin definir —lo elige el alumno</option>
+                  {ETAPAS.map((e) => (
+                    <option key={e.valor} value={e.valor}>
+                      {e.nombre}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              {etapaDelAlumno && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="nuevo-alumno-curso">{etapaDelAlumno.unidad}</Label>
+                  <Select
+                    id="nuevo-alumno-curso"
+                    value={nuevoAlumno.curso}
+                    onChange={(e) => setNuevoAlumno({ ...nuevoAlumno, curso: e.target.value })}
+                  >
+                    <option value="">Elige uno</option>
+                    {Array.from({ length: etapaDelAlumno.cursos }, (_, i) => i + 1).map((c) => (
+                      <option key={c} value={c}>
+                        {c}.º {etapaDelAlumno.unidad}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
+            </div>
+            <Button onClick={crearAlumno} disabled={guardandoAlta}>
+              Crear alumno
+            </Button>
+          </CardContent>
+        </Card>
       )}
 
       <div className="flex flex-wrap items-end gap-3">
