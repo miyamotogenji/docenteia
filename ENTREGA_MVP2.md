@@ -273,3 +273,41 @@ administrador no los sabe, el propio alumno los completa en
 `/estudiante/nivel-educativo`, como ya hacía quien se registraba solo). Los
 dos formularios viven en `/admin/usuarios`, como tarjetas desplegables
 independientes, igual que "Crear aula" en `/admin/aulas`.
+
+## Addendum — Navegación a los dashboards desde `/admin`
+
+El cliente, revisando el sitio ya en producción con la cuenta SUPERADMIN,
+preguntó "¿dónde están los dashboards?". Verificado en vivo con un
+navegador de verdad: los paneles de docente y director SÍ funcionan y SÍ
+muestran datos reales para esa cuenta —`/docente` ya traía el semáforo de
+riesgo, los KPIs del grupo, todo—, pero ninguno de los dos tenía UN SOLO
+ENLACE visible desde `/admin`: había que escribir la URL de memoria, que
+nadie revisando el sitio tendría forma de adivinar. Eso es lo que se
+reporta como "no están".
+
+Además, `/director` tenía un callejón sin salida real para esa cuenta: al
+no tener ninguna institución vinculada, mostraba "Pide al administrador de
+la plataforma que te asigne uno" —pero la cuenta QUE VE ese mensaje ES el
+administrador de la plataforma, así que no había a quién pedírselo.
+
+Dos arreglos, sin tocar ninguna lógica de negocio:
+
+- `components/admin/navegacion.tsx`: la barra de `/admin` suma "Panel
+  Docente" y "Panel Directivo", enlazando directo a `/docente` y
+  `/director` (el middleware ya dejaba pasar a SUPERADMIN por ahí; sólo
+  faltaba el enlace). No se enlaza el panel de estudiante porque esa
+  pantalla es, por diseño, sólo para quien se registra como alumno —un
+  SUPERADMIN no tiene perfil de alumno que mostrar ahí.
+- `app/director/page.tsx`: cuando quien ve el mensaje de "sin colegio
+  asignado" es el propio SUPERADMIN, el texto cambia (deja de pedirle algo
+  a sí mismo) y aparece un botón "Vincularme a una institución" que lleva
+  directo a `/admin/usuarios` —donde su propia fila, marcada "tú", ya
+  permitía vincularse una institución desde antes (`gestor-usuarios.tsx`),
+  sólo que nadie lo sabía porque no había ningún enlace que llevara hasta
+  ahí. Un director de verdad (sin institución por un motivo real de
+  negocio) sigue viendo el mensaje original, sin el botón.
+
+Confirmado con un navegador real, en local y contra el flujo completo: tras
+el arreglo, desde `/admin` se llega a `/director`, el botón nuevo lleva a
+`/admin/usuarios`, y la fila propia del administrador permite vincularse
+una institución ahí mismo.
