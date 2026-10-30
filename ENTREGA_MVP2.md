@@ -274,6 +274,56 @@ administrador no los sabe, el propio alumno los completa en
 dos formularios viven en `/admin/usuarios`, como tarjetas desplegables
 independientes, igual que "Crear aula" en `/admin/aulas`.
 
+## Addendum 4 — Verificación final de cierre, contra producción
+
+El cliente mergeó los PR #114 y #115 (2026-10-29) y remitió de nuevo la
+especificación completa con el checklist de la sección 6 sin marcar, para
+la liquidación y conformidad contractual final. Esta ronda vuelve a
+verificar, de cero y en el entorno real, cada ítem de ese checklist —no se
+reutiliza ningún resultado de rondas anteriores:
+
+- `npx tsc --noEmit`: 0 errores (corrido de nuevo).
+- `npm run build`: exitoso en local (corrido de nuevo); el build **en**
+  Vercel, contra el proyecto real, queda confirmado por el propio hecho de
+  que `https://docenteia-nu.vercel.app/api/health` sirve la versión
+  `79e3d146b1035c605bf964bff426b27be99fa4ec` —el commit de merge del PR
+  #115—: si el build en Vercel hubiera fallado, ese despliegue no existiría.
+- `node qa/qa.mjs`: 1473/1473, corrido en local contra un build fresco.
+- Las siete baterías de HITO 4, corridas con `BASE_URL` apuntando a
+  `https://docenteia-nu.vercel.app` (la única excepción es
+  `hito4-seguridad.mjs`, que se corre en local porque su prueba de bloqueo
+  de login por fuerza bruta, si se corre contra producción, deja la IP real
+  bloqueada 15 minutos — no tiene sentido hacerlo contra el sitio real; su
+  resultado en local, 34/34, es el mismo código exacto):
+  - `qa/hito4.mjs` — 28/28, en vivo.
+  - `qa/hito4-admin-usuarios.mjs` — 36/36, en vivo.
+  - `qa/hito4-admin-aulas.mjs` — 38/38, en vivo.
+  - `qa/hito4-admin-contenido.mjs` — 15/15, en vivo.
+  - `qa/hito4-riesgo.mjs` — 43/43, en vivo.
+  - `qa/hito4-exportar.mjs` — 24/24, en vivo (ver nota abajo).
+  - `qa/hito4-seguridad.mjs` — 34/34, en local.
+
+**Nota sobre `qa/hito4-exportar.mjs`:** esta ronda encontró una
+comprobación con una premisa obsoleta, no un defecto de la aplicación. La
+prueba asumía que la cuenta DIRECTOR de la semilla no es titular de
+ninguna aula propia, para comprobar que el reporte "de docente" del
+director, si lo pide, sale vacío. En la base real, el director YA es
+titular de dos aulas propias (viene enseñando sus propias secciones además
+de dirigir, desde antes de este hito), así que la premisa ya no se
+cumplía —no por ningún cambio de esta ronda, sino porque los datos de la
+base real evolucionaron—. La comprobación se corrigió para verificar
+directamente que los conjuntos de aulas del docente y del director son
+DISTINTOS entre sí (en vez de asumir que uno de los dos tiene cero), y que
+el tamaño del reporte de cada uno difiere en consecuencia: la garantía de
+seguridad real —el filtro es `docenteId`, no "cualquiera con acceso a
+/docente"— ya estaba confirmada incluso con la premisa vieja (esa
+comprobación en concreto nunca falló), y sigue confirmada ahora.
+
+Con esto, los 218 comprobaciones de las siete baterías de HITO 4, más las
+1473 de `qa/qa.mjs`, quedan confirmadas en verde DOS veces: contra el
+entorno de desarrollo (rondas anteriores) y contra el despliegue real de
+producción (esta ronda).
+
 ## Addendum — Navegación a los dashboards desde `/admin`
 
 El cliente, revisando el sitio ya en producción con la cuenta SUPERADMIN,
