@@ -361,3 +361,66 @@ Confirmado con un navegador real, en local y contra el flujo completo: tras
 el arreglo, desde `/admin` se llega a `/director`, el botón nuevo lleva a
 `/admin/usuarios`, y la fila propia del administrador permite vincularse
 una institución ahí mismo.
+
+## Addendum 5 — Aceptación final: entorno de pruebas limpio, validación de
+## `/admin/ejercicios` y confirmación del repositorio
+
+El cliente mandó cuatro pedidos para las pruebas integrales de cierre:
+
+**1. Entorno de pruebas limpio.** No existe un entorno de pruebas aparte —
+la única base de datos es la de producción en Vercel—, y esta sesión
+confirmó que ya tenía mezclados datos reales con restos de las propias
+baterías de QA (se encontraron y borraron 4 ejercicios huérfanos, creados
+por mis propias pruebas de verificación). Dado que es una acción
+irreversible sobre el sistema real del cliente, se consultó el alcance
+exacto antes de tocar nada; se aprobó reiniciar **sólo la actividad del
+alumno**, dejando intactas las cuentas, las aulas y las tareas creadas, con
+copia de respaldo previa. Se construyó:
+
+- `GET /api/admin/actividad-alumnos/exportar` — copia de respaldo, de sólo
+  lectura, de todo lo que el reinicio va a borrar (SUPERADMIN únicamente).
+- `POST /api/admin/actividad-alumnos/reiniciar` — borra matrículas, entregas
+  de tarea (con su nota, que es la "evaluación docente" del pliego),
+  intentos de diagnóstico y progreso del alumno; dentro de una transacción.
+  Exige repetir `{"confirmar":"REINICIAR"}` además de la sesión de
+  SUPERADMIN, para que no se pueda disparar sin querer. El detalle completo
+  de qué se borra y qué NO se toca —cuentas, aulas, tareas y todo el
+  currículo quedan intactos— vive documentado en `lib/admin/reinicio.ts`.
+- `qa/hito4-reinicio.mjs` — 18/18 en local: control de acceso (401/403/400)
+  más el ciclo completo de borrado real (crea un alumno y lo matricula,
+  confirma que las nueve tablas quedan en cero tras reiniciar, y que la
+  cuenta y el aula siguen existiendo). La parte que borra de verdad se
+  omite automáticamente si `BASE_URL` no es `localhost` —nunca se corre
+  contra producción dentro de la batería regular, igual que el bloqueo de
+  login por fuerza bruta de `hito4-seguridad.mjs`—; el reinicio real contra
+  producción se ejecuta aparte, una sola vez, con el respaldo ya tomado.
+
+**2. Validación de `/admin/ejercicios`.** Confirmado en vivo, contra
+producción, con un navegador real: crear un ejercicio desde el formulario,
+verlo aparecer en el listado y borrarlo desde la fila funciona sin dejar
+residuos (`DELETE` responde `200 {"borrado":true}` y el ítem desaparece tras
+recargar). De paso quedó claro que el botón "Borrar" de esa pantalla llama a
+`DELETE /api/docente/ejercicios/[id]` —la misma ruta que usa `/docente/ejercicios`,
+porque el banco es uno solo para toda la plataforma—, y no a
+`DELETE /api/admin/ejercicios/[id]` (que existe aparte, por el contrato
+literal del pliego, y funciona igual de bien llamada directamente —lo prueba
+`qa/hito4.mjs`—, pero la interfaz no pasa por ahí). Ninguna de las dos cosas
+es un defecto: ambas rutas aplican la misma regla de borrado controlado.
+
+**3. Credenciales limpias.** Las cuentas sembradas (`docente@mentoriamath.local`,
+etc.) ya acumulan meses de actividad de prueba, así que no sirven como
+"limpias". Se crearon dos cuentas nuevas en producción, sin ningún historial,
+con `POST /api/admin/usuarios` (`docente.cliente@mentoriamath.local` y
+`alumno.cliente@mentoriamath.local`; contraseñas entregadas aparte, por
+chat, no en este documento). El administrador sigue siendo la cuenta
+semilla —`admin@mentoriamath.local`—, porque es la única cuenta de
+plataforma que existe; su propio historial de ejercicios/aulas no interfiere
+con crear contenido, asignar tareas o exportar reportes nuevos. URL:
+`https://docenteia-nu.vercel.app`.
+
+**4. Repositorio.** `main` en GitHub tiene todo el HITO 4, pero entregado
+—como el resto de esta colaboración— en PRs pequeños y revisables uno por
+etapa, no en uno solo consolidado: #104, #105, #106, #107, #108, #109, #110,
+#111, #112, #113, #114, #115, #116, #117, y este mismo addendum. Los
+componentes y las baterías de QA de HITO 4 están todos en `main` ahora mismo
+(`qa/hito4*.mjs`, `app/admin/*`, `app/api/admin/*`, `lib/admin/*`).
