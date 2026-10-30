@@ -11,6 +11,14 @@ import { cn } from "@/lib/utils";
  * `/admin` era una sola pantalla de estado hasta este hito; con "Usuarios",
  * "Ejercicios" y "Temas" hace falta un sitio desde el que saltar entre ellas,
  * mismo patrón que `NavegacionDocente`.
+ *
+ * "Panel Docente" y "Panel Directivo" enlazan a `/docente` y `/director`
+ * —las dos pantallas que la especificación llama "dashboards" y que, sin
+ * esto, no tenían NINGÚN enlace visible desde `/admin`: un SUPERADMIN ya
+ * puede abrirlas (el middleware lo deja pasar por jerarquía), pero sólo si
+ * conoce la URL de memoria. El panel de estudiante no se enlaza aquí
+ * porque un SUPERADMIN no tiene perfil de alumno que mostrarle —esa
+ * pantalla es, por diseño, sólo para quien se registra como estudiante—.
  */
 const SECCIONES = [
   { href: "/admin", titulo: "Estado", exacta: true },
@@ -18,6 +26,8 @@ const SECCIONES = [
   { href: "/admin/ejercicios", titulo: "Ejercicios" },
   { href: "/admin/temas", titulo: "Temas" },
   { href: "/admin/aulas", titulo: "Aulas" },
+  { href: "/docente", titulo: "Panel Docente" },
+  { href: "/director", titulo: "Panel Directivo" },
 ];
 
 export function NavegacionAdmin() {

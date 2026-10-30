@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { auth } from "@/auth";
 import { Cabecera } from "@/components/cabecera";
@@ -29,6 +30,13 @@ export default async function PaginaDirector() {
   const institucionId = sesion?.user?.institucionId ?? null;
 
   if (!institucionId) {
+    // Un SUPERADMIN que entra aquí a PREVISUALIZAR el panel (p. ej. desde el
+    // enlace "Panel Directivo" en /admin) ES el propio administrador de la
+    // plataforma —decirle "pídeselo al administrador" sería un callejón sin
+    // salida circular—. Para esa cuenta, el enlace va directo a donde SÍ
+    // puede resolverlo él mismo: /admin/usuarios, vinculándose una
+    // institución en su propia fila.
+    const esSuperadmin = sesion?.user?.rol === "SUPERADMIN";
     return (
       <div className="min-h-screen">
         <Cabecera />
@@ -37,10 +45,18 @@ export default async function PaginaDirector() {
             <CardHeader>
               <CardTitle>Sin colegio asignado</CardTitle>
               <CardDescription>
-                Tu cuenta de director todavía no está vinculada a ningún colegio. Pide al
-                administrador de la plataforma que te asigne uno para ver aquí sus cifras.
+                {esSuperadmin
+                  ? "Esta cuenta de administrador todavía no está vinculada a ningún colegio, así que no hay cifras institucionales que mostrar aquí todavía."
+                  : "Tu cuenta de director todavía no está vinculada a ningún colegio. Pide al administrador de la plataforma que te asigne uno para ver aquí sus cifras."}
               </CardDescription>
             </CardHeader>
+            {esSuperadmin && (
+              <CardContent>
+                <Button asChild>
+                  <Link href="/admin/usuarios">Vincularme a una institución</Link>
+                </Button>
+              </CardContent>
+            )}
           </Card>
         </main>
       </div>
