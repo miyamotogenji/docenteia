@@ -49,6 +49,21 @@ export async function GET(req: Request) {
           creadoEn: true,
           institucionId: true,
           institucion: { select: { nombre: true } },
+          // Sólo tiene fila para un ESTUDIANTE: la etapa/curso que el propio
+          // alumno declaró, o que le completó la matrícula sola (ver POST
+          // /api/admin/matriculas). Se expone para que la tabla no muestre
+          // "matriculado" sin decir en qué grado quedó, de un vistazo.
+          perfilEstudiante: { select: { etapa: true, curso: true } },
+          // Sólo tiene filas para un ESTUDIANTE —es la institución "por aula",
+          // la única que aplica a ese rol (ver `rolUsaInstitucion`)—, así que
+          // para cualquier otro rol llega vacío sin más condición.
+          matriculas: {
+            select: {
+              aula: {
+                select: { nombre: true, grado: true, seccion: true, institucion: { select: { nombre: true } } },
+              },
+            },
+          },
         },
         // Sin filtro, el orden es por rol y ESTUDIANTE es, con mucha
         // diferencia, el más numeroso: un tope bajo aquí podía dejar fuera
@@ -76,6 +91,14 @@ export async function GET(req: Request) {
         creadoEn: u.creadoEn,
         institucionId: u.institucionId,
         institucion: u.institucion?.nombre ?? null,
+        etapa: u.perfilEstudiante?.etapa ?? null,
+        curso: u.perfilEstudiante?.curso ?? null,
+        matriculas: u.matriculas.map((m) => ({
+          institucion: m.aula.institucion.nombre,
+          grado: m.aula.grado,
+          seccion: m.aula.seccion,
+          aula: m.aula.nombre,
+        })),
       })),
       instituciones,
     });

@@ -1,5 +1,6 @@
 "use client";
 
+import type { EtapaEducativa } from "@prisma/client";
 import { useEffect, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -9,9 +10,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { pedir } from "@/lib/docente/cliente";
-import { ETAPAS } from "@/lib/curriculo/etapas";
+import { ETAPAS, etiquetaCurso } from "@/lib/curriculo/etapas";
 import { ROLES, ETIQUETA_ROL } from "@/lib/rbac";
 import { cn } from "@/lib/utils";
+
+interface MatriculaVista {
+  institucion: string;
+  grado: number;
+  seccion: string;
+  aula: string;
+}
 
 interface UsuarioVista {
   id: string;
@@ -22,6 +30,21 @@ interface UsuarioVista {
   creadoEn: string;
   institucionId: string | null;
   institucion: string | null;
+  // Optativo: la respuesta de PATCH /api/admin/usuarios/[id] no lo trae de
+  // vuelta (sólo cambia activo/rol/institución), así que la fila se queda
+  // sin este dato hasta el próximo `cargar()` —nunca se inventa una lista
+  // vacía donde podría haber matrículas reales—.
+  matriculas?: MatriculaVista[];
+}
+
+interface AulaParaMatricular {
+  id: string;
+  nombre: string;
+  etapa: EtapaEducativa | null;
+  grado: number;
+  seccion: string;
+  activa: boolean;
+  institucionId: string;
 }
 
 interface Props {
@@ -42,6 +65,7 @@ const USA_INSTITUCION = new Set(["DOCENTE", "DIRECTOR", "SUPERADMIN"]);
 export function GestorUsuarios({ miPropioId }: Props) {
   const [usuarios, setUsuarios] = useState<UsuarioVista[] | "cargando">("cargando");
   const [instituciones, setInstituciones] = useState<{ id: string; nombre: string }[]>([]);
+  const [aulas, setAulas] = useState<AulaParaMatricular[]>([]);
   const [filtroRol, setFiltroRol] = useState("");
   const [busqueda, setBusqueda] = useState("");
   const [aviso, setAviso] = useState<{ tono: "ok" | "mal"; texto: string } | null>(null);
@@ -67,6 +91,19 @@ export function GestorUsuarios({ miPropioId }: Props) {
     });
   };
 
+  // Las aulas disponibles para matricular alumnos (requisito del cliente:
+  // "para el alumno, la interfaz debe permitir seleccionar la Institución y,
+  // a partir de ella, desplegar el selector de su Aula correspondiente").
+  // Independiente de `cargar()` —no depende de los filtros de la tabla de
+  // usuarios—, así que se pide una sola vez, al montar.
+  useEffect(() => {
+    iniciar(async () => {
+      const r = await pedir<{ aulas: AulaParaMatricular[] }>("/api/admin/aulas");
+      if (r.ok) setAulas(r.datos.aulas);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Se recarga cuando cambian los filtros —con un pequeño respiro para la
   // búsqueda de texto, que si no dispara una petición por cada tecla—.
   useEffect(() => {
@@ -86,8 +123,36 @@ export function GestorUsuarios({ miPropioId }: Props) {
       setAviso({ tono: "mal", texto: r.error });
       return;
     }
-    setUsuarios((us) => (us === "cargando" ? us : us.map((u) => (u.id === id ? r.datos.usuario : u))));
+    // `r.datos.usuario` no trae `matriculas` de vuelta —PATCH sólo cambia
+    // activo/rol/institución—, así que se conserva la que ya tenía la fila en
+    // vez de perderla al fusionar.
+    setUsuarios((us) =>
+      us === "cargando" ? us : us.map((u) => (u.id === id ? { ...r.datos.usuario, matriculas: u.matriculas } : u)),
+    );
     setAviso(null);
+  };
+
+  // ── Matricular un alumno en un aula, desde la institución (requisito del ──
+  // cliente): el alumno no tiene `institucionId` propio —ver `USA_INSTITUCION`
+  // y el comentario de `rolUsaInstitucion`—, la tiene por aula, así que aquí
+  // se elige institución sólo para ACOTAR qué aulas mostrar en el segundo
+  // selector; lo que de verdad se guarda es la matrícula (POST, igual que
+  // hace /admin/aulas con "Matricular").
+  const [matriculando, setMatriculando] = useState<Record<string, { institucionId: string; aulaId: string }>>({});
+
+  const matricularAlumno = (estudianteId: string, aulaId: string) => {
+    setGuardando(estudianteId);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/matriculas", { metodo: "POST", cuerpo: { estudianteId, aulaId } });
+      setGuardando(null);
+      if (r.ok) {
+        setMatriculando((m) => ({ ...m, [estudianteId]: { institucionId: "", aulaId: "" } }));
+        setAviso({ tono: "ok", texto: "Alumno matriculado." });
+        cargar();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
   };
 
   // ── Formulario de Docentes (checklist actualizado): entidad maestra, ──────
@@ -458,7 +523,68 @@ export function GestorUsuarios({ miPropioId }: Props) {
                           ))}
                         </Select>
                       ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
+                        (() => {
+                          const seleccion = matriculando[u.id] ?? { institucionId: "", aulaId: "" };
+                          const aulasDeLaInstitucion = aulas.filter(
+                            (a) => a.institucionId === seleccion.institucionId && a.activa,
+                          );
+                          return (
+                            <div className="space-y-1.5">
+                              {u.matriculas && u.matriculas.length > 0 && (
+                                <ul className="space-y-0.5 text-xs text-muted-foreground">
+                                  {u.matriculas.map((m, i) => (
+                                    <li key={i}>
+                                      {m.institucion} · {m.grado}.º {m.seccion}
+                                    </li>
+                                  ))}
+                                </ul>
+                              )}
+                              <div className="flex flex-wrap gap-1.5">
+                                <Select
+                                  value={seleccion.institucionId}
+                                  disabled={guardando === u.id}
+                                  onChange={(e) =>
+                                    setMatriculando((m) => ({
+                                      ...m,
+                                      [u.id]: { institucionId: e.target.value, aulaId: "" },
+                                    }))
+                                  }
+                                  className="h-8 py-0 text-xs"
+                                >
+                                  <option value="">Matricular en…</option>
+                                  {instituciones.map((i) => (
+                                    <option key={i.id} value={i.id}>
+                                      {i.nombre}
+                                    </option>
+                                  ))}
+                                </Select>
+                                {seleccion.institucionId && (
+                                  <Select
+                                    value={seleccion.aulaId}
+                                    disabled={guardando === u.id}
+                                    onChange={(e) => {
+                                      const aulaId = e.target.value;
+                                      setMatriculando((m) => ({ ...m, [u.id]: { ...seleccion, aulaId } }));
+                                      if (aulaId) matricularAlumno(u.id, aulaId);
+                                    }}
+                                    className="h-8 py-0 text-xs"
+                                  >
+                                    <option value="">Elige el aula</option>
+                                    {aulasDeLaInstitucion.map((a) => (
+                                      <option key={a.id} value={a.id}>
+                                        {a.etapa ? etiquetaCurso(a.etapa, a.grado) : `${a.grado}.º`} {a.seccion} —{" "}
+                                        {a.nombre}
+                                      </option>
+                                    ))}
+                                  </Select>
+                                )}
+                              </div>
+                              {seleccion.institucionId && aulasDeLaInstitucion.length === 0 && (
+                                <p className="text-xs text-muted-foreground">Esa institución no tiene aulas activas.</p>
+                              )}
+                            </div>
+                          );
+                        })()
                       )}
                     </td>
                     <td className="px-3 py-2">

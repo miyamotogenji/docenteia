@@ -12,16 +12,26 @@
 // POST /api/admin/matriculas (asignación directa de un estudianteId a un
 // aulaId).»
 //
+// CORRECCIÓN POSTERIOR (el cliente, revisando el código de
+// `gestor-usuarios.tsx`): "el rol Estudiante SÍ debe tener institución —por
+// aula, nunca por `Usuario.institucionId`, que sigue siendo sólo de
+// DOCENTE/DIRECTOR/SUPERADMIN—; el aula ahora exige su ETAPA —sin ella,
+// 'grado 3' es ambiguo—; y al matricular, el backend debe completar el grado
+// académico del alumno para que no quede 'sin grado'".
+//
 // Cubre, en este orden:
 //
 //   A. `aulaAdminSchema` / `asignarDocenteSchema` / `matriculaAdminSchema`,
-//      puros, sin servidor.
+//      puros, sin servidor —incluida la etapa, ahora obligatoria en el alta
+//      administrativa, y su validación cruzada con el grado.
 //   B. Por HTTP: el candado de la zona —sólo SUPERADMIN entra a
 //      /admin/aulas y a los tres endpoints—, crear un aula SIN docente,
 //      asignarle uno después con PATCH, cambiarlo, desvincularlo (null),
 //      matricular un alumno DIRECTO (sin código), las reglas de negocio
 //      (alumno duplicado, aula inexistente, cuentas que no son lo que dicen
-//      ser), y que /docente/aulas YA NO ofrezca el formulario de creación.
+//      ser), que /docente/aulas YA NO ofrezca el formulario de creación, y
+//      que matricular a un alumno SIN grado declarado se lo complete solo
+//      con el de la aula.
 //
 //   node qa/hito4-admin-aulas.mjs
 //   BASE_URL=http://localhost:3000 node qa/hito4-admin-aulas.mjs
@@ -55,15 +65,45 @@ function salir() {
 // ── A. Los esquemas, puros ───────────────────────────────────────────────────
 console.log("\n · A. aulaAdminSchema / asignarDocenteSchema / matriculaAdminSchema");
 {
-  const aulaValida = aulaAdminSchema.safeParse({ nombre: "3ro B", grado: 3, seccion: "B", institucionId: "i1" });
-  check("un aula con sólo nombre, grado, sección e institución pasa —SIN docente—", aulaValida.success);
+  const aulaValida = aulaAdminSchema.safeParse({
+    nombre: "3ro B",
+    etapa: "SECUNDARIA",
+    grado: 3,
+    seccion: "B",
+    institucionId: "i1",
+  });
+  check("un aula con nombre, etapa, grado, sección e institución pasa —SIN docente—", aulaValida.success);
   check(
     "…y de hecho, aunque se mande un docenteId de más, el esquema no lo exige ni lo guarda",
-    aulaAdminSchema.safeParse({ nombre: "3ro B", grado: 3, seccion: "B", institucionId: "i1" }).success,
+    aulaAdminSchema.safeParse({
+      nombre: "3ro B",
+      etapa: "SECUNDARIA",
+      grado: 3,
+      seccion: "B",
+      institucionId: "i1",
+    }).success,
   );
 
-  const sinInstitucion = aulaAdminSchema.safeParse({ nombre: "3ro B", grado: 3, seccion: "B" });
+  const sinInstitucion = aulaAdminSchema.safeParse({ nombre: "3ro B", etapa: "SECUNDARIA", grado: 3, seccion: "B" });
   check("sin institucionId, no pasa —eso SÍ sigue siendo obligatorio—", !sinInstitucion.success);
+
+  const sinEtapa = aulaAdminSchema.safeParse({ nombre: "3ro B", grado: 3, seccion: "B", institucionId: "i1" });
+  check(
+    "sin etapa, tampoco pasa —corrección del cliente: sin ella, 'grado 3' es ambiguo—",
+    !sinEtapa.success,
+  );
+
+  const gradoFueraDeEtapa = aulaAdminSchema.safeParse({
+    nombre: "7mo",
+    etapa: "PRIMARIA",
+    grado: 7,
+    seccion: "A",
+    institucionId: "i1",
+  });
+  check(
+    "un grado que no existe dentro de la etapa (7.º de Primaria, que llega hasta 6.º) no pasa",
+    !gradoFueraDeEtapa.success,
+  );
 
   const asignacionValida = asignarDocenteSchema.safeParse({ docenteId: "d1" });
   check("asignarDocenteSchema con un docenteId pasa", asignacionValida.success);
@@ -105,6 +145,20 @@ const altaAlumno = await registrarAlumno(BASE, {
 check("sesión del SUPERADMIN de la semilla", Boolean(sesionAdmin));
 check("sesión de docente de la semilla", Boolean(sesionDocente));
 check("se registra el alumno de prueba", altaAlumno.ok);
+
+// Estado de partida del alumno: registrado SIN ciclo/grado, así que todavía
+// no tiene etapa declarada —el caso exacto de "sin grado" que el cliente
+// pidió resolver al matricular.
+let diagnosticoAntes = null;
+if (altaAlumno.sesion) {
+  const rDiagAntes = await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: altaAlumno.sesion } });
+  diagnosticoAntes = await rDiagAntes.json().catch(() => ({}));
+  check(
+    "el alumno de prueba arranca SIN etapa declarada (etapaSinConfigurar)",
+    diagnosticoAntes?.etapaSinConfigurar === true,
+    JSON.stringify(diagnosticoAntes),
+  );
+}
 
 // ── B.1 El candado de la zona ────────────────────────────────────────────────
 console.log("\n · B.1 Sólo el SUPERADMIN entra");
@@ -166,6 +220,7 @@ if (sesionAdmin) {
       headers: { "Content-Type": "application/json", cookie: sesionAdmin },
       body: JSON.stringify({
         nombre: `QA Admin Aulas ${sufijo}`,
+        etapa: "SECUNDARIA",
         grado: 5,
         seccion: `Q${sufijo.slice(-3)}`,
         institucionId: unaInstitucion.id,
@@ -177,6 +232,7 @@ if (sesionAdmin) {
       rCrear.status === 201 && cuerpoCrear.aula?.id && cuerpoCrear.aula?.docenteId === null,
       JSON.stringify(cuerpoCrear),
     );
+    check("…y con la etapa que se mandó", cuerpoCrear.aula?.etapa === "SECUNDARIA", JSON.stringify(cuerpoCrear));
     aulaCreada = cuerpoCrear.aula;
 
     const rListado = await fetch(`${BASE}/api/admin/aulas`, { headers: { cookie: sesionAdmin } });
@@ -289,6 +345,35 @@ if (sesionAdmin) {
         rComoDocenteTitular.status === 200,
         `HTTP ${rComoDocenteTitular.status}`,
       );
+
+      // «Al asignar el aula, el backend debe registrar la matrícula y
+      // persistir el grado académico del estudiante para que no figure como
+      // "sin grado"»: el alumno arrancó sin etapa (comprobado arriba); la
+      // aula SÍ la declara (SECUNDARIA, 5.º); tras matricularlo, ya no debe
+      // figurar "sin grado".
+      if (altaAlumno.sesion) {
+        const rDiagDespues = await fetch(`${BASE}/api/diagnostico`, { headers: { cookie: altaAlumno.sesion } });
+        const diagnosticoDespues = await rDiagDespues.json().catch(() => ({}));
+        check(
+          "…y al matricularlo se le completa el grado solo: ya NO figura 'sin grado'",
+          diagnosticoDespues?.etapaSinConfigurar !== true,
+          JSON.stringify(diagnosticoDespues),
+        );
+
+        // Lo mismo, pero confirmado directo en el perfil guardado —no
+        // depende de que exista currículo publicado para ese grado, que es
+        // lo único que `/api/diagnostico` puede ver—.
+        const rAlumnoActualizado = await fetch(
+          `${BASE}/api/admin/usuarios?rol=ESTUDIANTE&q=qa.adminaulas.${sufijo}`,
+          { headers: { cookie: sesionAdmin } },
+        );
+        const { usuarios: alumnoActualizado } = await rAlumnoActualizado.json().catch(() => ({ usuarios: [] }));
+        check(
+          "…con la etapa y el curso exactos de la aula a la que se matriculó (SECUNDARIA, 5.º), en el perfil guardado",
+          alumnoActualizado?.[0]?.etapa === "SECUNDARIA" && alumnoActualizado?.[0]?.curso === 5,
+          JSON.stringify(alumnoActualizado?.[0]),
+        );
+      }
     }
 
     const rAulaInexistente = await fetch(`${BASE}/api/admin/matriculas`, {
@@ -311,6 +396,55 @@ if (sesionAdmin) {
         "matricular a una cuenta que NO es de alumno (p. ej. un docente): 409, no se cuela",
         rMatricularDocente.status === 409,
         `HTTP ${rMatricularDocente.status}`,
+      );
+    }
+  }
+}
+
+// ── B.2bis El autocompletado NO pisa una etapa ya declarada ─────────────────
+console.log("\n · B.2bis matricular a un alumno que YA tiene grado propio no se lo pisa");
+if (sesionAdmin && aulaCreada) {
+  const altaAlumno2 = await registrarAlumno(BASE, {
+    email: `qa.adminaulas2.${sufijo}@mentoriamath.local`,
+    password: "Alumno-2026",
+    nombre: "QA AdminAulas Con Grado Propio",
+  });
+  check("se registra el segundo alumno de prueba", altaAlumno2.ok);
+
+  if (altaAlumno2.sesion) {
+    const rDeclarar = await fetch(`${BASE}/api/estudiante/nivel-educativo`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", cookie: altaAlumno2.sesion },
+      body: JSON.stringify({ etapa: "PRIMARIA", curso: 2 }),
+    });
+    check("declara su propia etapa —Primaria, 2.º— ANTES de matricularse", rDeclarar.status === 200, `HTTP ${rDeclarar.status}`);
+
+    const rUsuariosAlumno2 = await fetch(`${BASE}/api/admin/usuarios?rol=ESTUDIANTE&q=qa.adminaulas2.${sufijo}`, {
+      headers: { cookie: sesionAdmin },
+    });
+    const { usuarios: alumnos2 } = await rUsuariosAlumno2.json().catch(() => ({ usuarios: [] }));
+    const elAlumno2 = alumnos2?.[0];
+    check("el segundo alumno de prueba aparece en la búsqueda de usuarios", Boolean(elAlumno2));
+
+    if (elAlumno2) {
+      // `aulaCreada` es SECUNDARIA, 5.º —distinta, a propósito, de lo que el
+      // alumno ya declaró—, para que una sobrescritura accidental sea
+      // imposible de confundir con una coincidencia.
+      const rMatricula2 = await fetch(`${BASE}/api/admin/matriculas`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", cookie: sesionAdmin },
+        body: JSON.stringify({ estudianteId: elAlumno2.id, aulaId: aulaCreada.id }),
+      });
+      check("se le matricula igual, en una aula de OTRA etapa", rMatricula2.status === 201, `HTTP ${rMatricula2.status}`);
+
+      const rAlumno2Despues = await fetch(`${BASE}/api/admin/usuarios?rol=ESTUDIANTE&q=qa.adminaulas2.${sufijo}`, {
+        headers: { cookie: sesionAdmin },
+      });
+      const { usuarios: alumnos2Despues } = await rAlumno2Despues.json().catch(() => ({ usuarios: [] }));
+      check(
+        "…y su grado declarado (Primaria, 2.º) NO se pisa con el de la aula (Secundaria, 5.º)",
+        alumnos2Despues?.[0]?.etapa === "PRIMARIA" && alumnos2Despues?.[0]?.curso === 2,
+        JSON.stringify(alumnos2Despues?.[0]),
       );
     }
   }

@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   try {
     const [estudiante, aula] = await Promise.all([
       prisma.usuario.findUnique({ where: { id: datos.estudianteId }, select: { id: true, rol: true } }),
-      prisma.aula.findUnique({ where: { id: datos.aulaId }, select: { id: true, activa: true } }),
+      prisma.aula.findUnique({ where: { id: datos.aulaId }, select: { id: true, activa: true, etapa: true, grado: true } }),
     ]);
     if (!estudiante) return noEncontrado("Ese alumno");
     if (estudiante.rol !== "ESTUDIANTE") {
@@ -46,6 +46,20 @@ export async function POST(req: Request) {
     const matricula = await prisma.matricula.create({
       data: { aulaId: aula.id, estudianteId: estudiante.id },
     });
+
+    // "Persistir el grado académico del estudiante para que no figure como
+    // 'sin grado'" (cierre HITO 4, a petición del cliente). Sólo si el aula
+    // SÍ declara etapa —las creadas antes de esa corrección no la tienen— y
+    // el perfil TODAVÍA no tiene una propia: un alumno puede estar
+    // matriculado en aulas de etapas distintas (refuerzo, clases
+    // particulares), así que la última aula a la que se une no pisa la etapa
+    // que ya había declarado.
+    if (aula.etapa) {
+      await prisma.perfilEstudiante.updateMany({
+        where: { usuarioId: estudiante.id, etapa: null },
+        data: { etapa: aula.etapa, curso: aula.grado },
+      });
+    }
 
     return NextResponse.json({ matricula }, { status: 201 });
   } catch (e) {

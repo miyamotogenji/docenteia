@@ -246,8 +246,17 @@ model Institucion {
 model Aula {
   id           String   @id @default(cuid())
   nombre       String
-  /// Grado dentro de la etapa (p. ej. 3). La etapa misma no se repite aquí: ya
-  /// la declara el colegio al que pertenece el aula en su propio currículo.
+  /// ETAPA EDUCATIVA del aula (cierre HITO 4, a petición del cliente: sin
+  /// esto, `grado` era ambiguo —"grado 3" no dice si es primaria, secundaria
+  /// o superior—, así que no había con qué completar el perfil académico de
+  /// un alumno al matricularlo). Optativo porque las aulas creadas ANTES de
+  /// esta corrección no la tienen y no se migran con un valor inventado;
+  /// `null` simplemente significa que esa aula no participa del autocompletado
+  /// de grado al matricular (ver POST /api/admin/matriculas y
+  /// /api/estudiante/unirse). Toda aula NUEVA sí la exige: ver
+  /// `aulaAdminSchema` en lib/admin/aulas.ts.
+  etapa        EtapaEducativa?
+  /// Grado dentro de la etapa (p. ej. 3).
   grado        Int
   /// Sección dentro del grado (p. ej. "B").
   seccion      String

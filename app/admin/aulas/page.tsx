@@ -42,6 +42,7 @@ export default async function PaginaAulasAdmin() {
   const aulasVista: AulaAdminVista[] = aulas.map((a) => ({
     id: a.id,
     nombre: a.nombre,
+    etapa: a.etapa,
     grado: a.grado,
     seccion: a.seccion,
     codigoAcceso: a.codigoAcceso,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { EtapaEducativa } from "@prisma/client";
 import { Fragment, useState, useTransition } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -10,12 +11,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { pedir } from "@/lib/docente/cliente";
-import { GRADO_MAX, GRADO_MIN } from "@/lib/docente/aulas";
+import { ETAPAS, cursoValido, etapaPorValor, etiquetaCurso } from "@/lib/curriculo/etapas";
 import { cn } from "@/lib/utils";
 
 export interface AulaAdminVista {
   id: string;
   nombre: string;
+  etapa: EtapaEducativa | null;
   grado: number;
   seccion: string;
   codigoAcceso: string;
@@ -65,14 +67,22 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
   const [guardando, setGuardando] = useState(false);
 
   // ── Crear aula (estructura base, SIN docente) ──────────────────────────
+  // La etapa va PRIMERO (cierre HITO 4, a petición del cliente): sin ella,
+  // "grado 3" es ambiguo —primaria, secundaria o superior—, y es lo que deja
+  // completar el perfil académico del alumno solo, al matricularlo (ver
+  // POST /api/admin/matriculas). El selector de grado, igual que en el alta
+  // de un alumno, se acota a los cursos reales de la etapa elegida: no se
+  // puede pedir un "8.º de secundaria", que no existe.
   const [creando, setCreando] = useState(false);
-  const [nueva, setNueva] = useState({ nombre: "", grado: "", seccion: "", institucionId: "" });
+  const [nueva, setNueva] = useState({ nombre: "", etapa: "", grado: "", seccion: "", institucionId: "" });
+  const etapaDeNuevaAula = etapaPorValor(nueva.etapa);
 
   const crearAula = () => {
-    const grado = Number(nueva.grado);
     if (!nueva.nombre.trim()) return setAviso({ tono: "mal", texto: "El aula necesita un nombre." });
-    if (!Number.isInteger(grado) || grado < GRADO_MIN || grado > GRADO_MAX) {
-      return setAviso({ tono: "mal", texto: `El grado debe estar entre ${GRADO_MIN} y ${GRADO_MAX}.` });
+    if (!nueva.etapa) return setAviso({ tono: "mal", texto: "Elige la etapa del aula." });
+    const grado = Number(nueva.grado);
+    if (!nueva.grado || !cursoValido(nueva.etapa as EtapaEducativa, grado)) {
+      return setAviso({ tono: "mal", texto: "Elige un grado válido dentro de la etapa." });
     }
     if (!nueva.seccion.trim()) return setAviso({ tono: "mal", texto: "La sección no puede estar vacía." });
     if (!nueva.institucionId) return setAviso({ tono: "mal", texto: "Elige a qué institución pertenece." });
@@ -83,6 +93,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
         metodo: "POST",
         cuerpo: {
           nombre: nueva.nombre.trim(),
+          etapa: nueva.etapa,
           grado,
           seccion: nueva.seccion.trim(),
           institucionId: nueva.institucionId,
@@ -90,7 +101,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
       });
       setGuardando(false);
       if (r.ok) {
-        setNueva({ nombre: "", grado: "", seccion: "", institucionId: "" });
+        setNueva({ nombre: "", etapa: "", grado: "", seccion: "", institucionId: "" });
         setCreando(false);
         setAviso({ tono: "ok", texto: `Aula "${nueva.nombre.trim()}" creada. Asígnale un docente desde la tabla.` });
         router.refresh();
@@ -188,7 +199,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
 
       {creando && (
         <Card>
-          <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-4">
+          <CardContent className="grid gap-3 pt-6 sm:grid-cols-2 lg:grid-cols-5">
             <div className="space-y-1.5">
               <Label htmlFor="admin-aula-nombre">Nombre del salón</Label>
               <Input
@@ -199,16 +210,36 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="admin-aula-grado">Grado</Label>
-              <Input
+              <Label htmlFor="admin-aula-etapa">Etapa</Label>
+              <Select
+                id="admin-aula-etapa"
+                value={nueva.etapa}
+                onChange={(e) => setNueva({ ...nueva, etapa: e.target.value, grado: "" })}
+              >
+                <option value="">Elige una</option>
+                {ETAPAS.map((e) => (
+                  <option key={e.valor} value={e.valor}>
+                    {e.nombre}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="admin-aula-grado">{etapaDeNuevaAula?.unidad ?? "Grado"}</Label>
+              <Select
                 id="admin-aula-grado"
-                type="number"
-                min={GRADO_MIN}
-                max={GRADO_MAX}
-                placeholder="3"
                 value={nueva.grado}
+                disabled={!etapaDeNuevaAula}
                 onChange={(e) => setNueva({ ...nueva, grado: e.target.value })}
-              />
+              >
+                <option value="">Elige uno</option>
+                {etapaDeNuevaAula &&
+                  Array.from({ length: etapaDeNuevaAula.cursos }, (_, i) => i + 1).map((c) => (
+                    <option key={c} value={c}>
+                      {etiquetaCurso(nueva.etapa as EtapaEducativa, c)}
+                    </option>
+                  ))}
+              </Select>
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="admin-aula-seccion">Sección</Label>
@@ -234,7 +265,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
                 ))}
               </Select>
             </div>
-            <div className="sm:col-span-2 lg:col-span-4">
+            <div className="sm:col-span-2 lg:col-span-5">
               <Button onClick={crearAula} disabled={guardando}>
                 Crear aula
               </Button>
@@ -264,7 +295,7 @@ export function GestorAulasAdmin({ aulas, instituciones, docentes }: Props) {
                 <Fragment key={a.id}>
                   <tr className="border-t">
                     <td className="px-3 py-2 font-medium">
-                      {a.grado}.º {a.seccion}
+                      {a.etapa ? etiquetaCurso(a.etapa, a.grado) : `${a.grado}.º`} {a.seccion}
                       <div className="font-normal text-muted-foreground">{a.nombre}</div>
                       {!a.activa && (
                         <Badge variant="contorno" className="mt-1 text-[0.65rem]">

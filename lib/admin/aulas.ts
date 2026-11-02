@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { aulaSchema } from "../docente/aulas.ts";
+import { cursoValido } from "../curriculo/etapas.ts";
 
 /**
  * Gestión centralizada de aulas y matrículas (checklist actualizado de HITO
@@ -24,9 +25,27 @@ import { aulaSchema } from "../docente/aulas.ts";
  * sesión): el administrador gestiona TODA la plataforma, no un colegio
  * propio, así que no hay sesión de la que deducirlo.
  */
-export const aulaAdminSchema = aulaSchema.extend({
-  institucionId: z.string().trim().min(1, "Falta elegir la institución."),
-});
+export const aulaAdminSchema = aulaSchema
+  .extend({
+    institucionId: z.string().trim().min(1, "Falta elegir la institución."),
+    /**
+     * LA ETAPA DEL AULA (cierre de HITO 4, a petición del cliente: "el rol
+     * Estudiante sí debe tener institución" —un alumno la tiene por esta vía,
+     * aula por aula, nunca por `Usuario.institucionId`, que sigue siendo
+     * sólo de DOCENTE/DIRECTOR/SUPERADMIN— y "al asignar el aula, persistir
+     * el grado académico del estudiante"). Sin esto, `grado` (1 a 12) es
+     * ambiguo —no se sabe si "grado 3" es primaria, secundaria o superior—,
+     * así que no hay con qué completar el perfil del alumno al matricularlo.
+     * Obligatoria aquí (a diferencia de `Aula.etapa` en el esquema, que es
+     * optativa para no romper las aulas creadas antes de esta corrección):
+     * toda aula NUEVA la declara.
+     */
+    etapa: z.enum(["PRIMARIA", "SECUNDARIA", "SUPERIOR"]),
+  })
+  .refine((d) => cursoValido(d.etapa, d.grado), {
+    message: "Ese grado no existe dentro de la etapa elegida.",
+    path: ["grado"],
+  });
 export type EntradaAulaAdmin = z.infer<typeof aulaAdminSchema>;
 
 /**
