@@ -18,8 +18,9 @@
 //      sólo un campo que se guarda, es lo que `auth.ts` ya mira), y el
 //      candado de "no te modifiques a ti mismo".
 //   E. POST /api/admin/usuarios (checklist actualizado): el "Formulario de
-//      Docentes" y el "Formulario de Alumnos" —alta directa, independiente
-//      de la institución o el aula a la que vayan a parar—.
+//      Docentes", el "Formulario de Alumnos" y el "Formulario de
+//      Directores" —alta directa, independiente de la institución o el aula
+//      a la que vayan a parar—.
 //
 //   node qa/hito4-admin-usuarios.mjs
 //   BASE_URL=http://localhost:3000 node qa/hito4-admin-usuarios.mjs
@@ -370,10 +371,27 @@ console.log("\n · E. POST /api/admin/usuarios — alta directa de docentes y al
     body: JSON.stringify({ nombre: "x", email: `qa.rol.${sufijo}@mentoriamath.local`, password: "12345678", rol: "SUPERADMIN" }),
   });
   check(
-    "crear un SUPERADMIN (o DIRECTOR) por aquí no está permitido: sólo DOCENTE y ESTUDIANTE",
+    "crear un SUPERADMIN por aquí no está permitido: ese alta se sigue haciendo a mano",
     rRolNoPermitido.status === 400,
     `HTTP ${rRolNoPermitido.status}`,
   );
+
+  // Formulario de Directores (cierre de Hito 4, a petición del cliente):
+  // mismos tres campos que el de Docentes.
+  const correoDirector = `qa.altadirector.${sufijo}@mentoriamath.local`;
+  const rCrearDirector = await apiAdmin("/api/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify({ nombre: "QA Alta Director", email: correoDirector, password: "Director-2026", rol: "DIRECTOR" }),
+  });
+  const cuerpoDirector = await rCrearDirector.json().catch(() => ({}));
+  check(
+    "crea un DIRECTOR con sólo nombre, correo y contraseña —sin institución—",
+    rCrearDirector.status === 201 && cuerpoDirector.usuario?.rol === "DIRECTOR",
+    `HTTP ${rCrearDirector.status} · ${JSON.stringify(cuerpoDirector)}`,
+  );
+
+  const sesionDirectorNuevo = await iniciarSesion(BASE, correoDirector, "Director-2026");
+  check("…y esa cuenta puede iniciar sesión de verdad, con la contraseña puesta", Boolean(sesionDirectorNuevo));
 }
 
 salir();

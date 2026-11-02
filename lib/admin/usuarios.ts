@@ -66,10 +66,14 @@ export type EstadoUsuario = z.infer<typeof estadoUsuarioSchema>;
  * `/api/registro`: "los perfiles DOCENTE, DIRECTOR y SUPERADMIN los crea un
  * administrador".
  *
- * Deliberadamente sólo DOCENTE y ESTUDIANTE —el pliego pide esos dos
- * formularios, no uno genérico para cualquier rol—: un DIRECTOR o un
- * SUPERADMIN nuevo se sigue dando de alta a mano (Prisma Studio o la
- * semilla), como ya era el caso.
+ * DOCENTE, ESTUDIANTE y DIRECTOR (cierre de Hito 4, a petición del cliente:
+ * `/admin/usuarios` no tenía alta directa de director, sólo docente y
+ * alumno) — mismo formulario mínimo que un DOCENTE (nombre, correo,
+ * contraseña): la institución se vincula DESPUÉS, en la tabla de abajo,
+ * igual que ya hacía un docente. SUPERADMIN sigue fuera de este alta directa
+ * a propósito —es el único rol con acceso a este mismo panel, así que crear
+ * uno de más no es un alta de rutina—: se sigue dando de alta a mano (Prisma
+ * Studio o la semilla).
  *
  * `etapa`/`curso` son optativos incluso para un alumno: si el administrador
  * no los sabe al darlo de alta, el propio alumno los completa en su primer
@@ -81,7 +85,7 @@ export const crearUsuarioSchema = z
     nombre: z.string().trim().min(2, "El nombre es demasiado corto.").max(120),
     email: z.string().trim().toLowerCase().email("Correo electrónico no válido."),
     password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres.").max(200),
-    rol: z.enum(["DOCENTE", "ESTUDIANTE"]),
+    rol: z.enum(["DOCENTE", "ESTUDIANTE", "DIRECTOR"]),
     etapa: z.enum(["PRIMARIA", "SECUNDARIA", "SUPERIOR"]).optional(),
     curso: z.number().int().min(1).max(10).optional(),
   })
