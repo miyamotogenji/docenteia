@@ -37,6 +37,7 @@ export async function GET() {
       aulas: aulas.map((a) => ({
         id: a.id,
         nombre: a.nombre,
+        etapa: a.etapa,
         grado: a.grado,
         seccion: a.seccion,
         codigoAcceso: a.codigoAcceso,
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
         aula = await prisma.aula.create({
           data: {
             nombre: datos.nombre,
+            etapa: datos.etapa,
             grado: datos.grado,
             seccion: datos.seccion,
             codigoAcceso: generarCodigoAcceso(),

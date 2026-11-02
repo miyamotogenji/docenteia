@@ -85,6 +85,16 @@ export async function POST(req: Request) {
       data: { aulaId: aula.id, estudianteId: sesion.user.id },
     });
 
+    // Mismo autocompletado de grado que `POST /api/admin/matriculas`: si el
+    // aula declara etapa y el alumno todavía no tiene una propia, se la
+    // completa con la del aula a la que se acaba de unir.
+    if (aula.etapa) {
+      await prisma.perfilEstudiante.updateMany({
+        where: { usuarioId: sesion.user.id, etapa: null },
+        data: { etapa: aula.etapa, curso: aula.grado },
+      });
+    }
+
     return NextResponse.json(
       {
         ok: true,
