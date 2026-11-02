@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { exigirSuperadmin } from "@/lib/admin/api";
 import { crearUsuarioSchema } from "@/lib/admin/usuarios";
 import { fallo, leerCuerpo } from "@/lib/docente/api";
-import { ROLES } from "@/lib/rbac";
+import { ORDEN_JERARQUICO_ROL, ROLES } from "@/lib/rbac";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -39,7 +39,13 @@ export async function GET(req: Request) {
               }
             : {}),
         },
-        orderBy: [{ rol: "asc" }, { nombre: "asc" }],
+        // El orden jerárquico-operativo (Administrador → Director → Docentes
+        // → Alumnos) no se puede pedir aquí: Postgres ordena un enum por su
+        // posición de DECLARACIÓN, no alfabéticamente, y `Rol` declara
+        // ESTUDIANTE primero (ver `lib/rbac.ts`) por motivos de RBAC ajenos a
+        // cómo se quiere VER esta lista. Se ordena por nombre a secas y se
+        // reordena por jerarquía después, en memoria (ver `ORDEN_JERARQUICO_ROL`).
+        orderBy: [{ nombre: "asc" }],
         select: {
           id: true,
           nombre: true,
@@ -59,6 +65,11 @@ export async function GET(req: Request) {
           // para cualquier otro rol llega vacío sin más condición.
           matriculas: {
             select: {
+              // Vía de enrolamiento (observación del cliente, cierre HITO 4:
+              // "auditar la vía de enrolamiento del estudiante"), visible
+              // directo en la fila del alumno —sin tener que ir a mirar
+              // /admin/auditoria para algo que ya se está mostrando aquí—.
+              origen: true,
               aula: {
                 select: { nombre: true, grado: true, seccion: true, institucion: { select: { nombre: true } } },
               },
@@ -81,8 +92,16 @@ export async function GET(req: Request) {
       }),
     ]);
 
+    // Orden jerárquico-operativo pedido por el cliente: Administrador,
+    // Director, Docentes, Alumnos —en ese orden, siempre, sin importar el
+    // filtro—. `.sort` de V8 es estable, así que el `orderBy: nombre` de la
+    // consulta sigue decidiendo el orden alfabético DENTRO de cada rol.
+    const usuariosOrdenados = [...usuarios].sort(
+      (a, b) => ORDEN_JERARQUICO_ROL[a.rol] - ORDEN_JERARQUICO_ROL[b.rol],
+    );
+
     return NextResponse.json({
-      usuarios: usuarios.map((u) => ({
+      usuarios: usuariosOrdenados.map((u) => ({
         id: u.id,
         nombre: u.nombre,
         email: u.email,
@@ -98,6 +117,7 @@ export async function GET(req: Request) {
           grado: m.aula.grado,
           seccion: m.aula.seccion,
           aula: m.aula.nombre,
+          origen: m.origen,
         })),
       })),
       instituciones,

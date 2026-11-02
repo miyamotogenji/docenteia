@@ -43,23 +43,42 @@ export async function POST(req: Request) {
     });
     if (yaMatriculado) return conflicto("Ese alumno ya está matriculado en esa aula.");
 
-    const matricula = await prisma.matricula.create({
-      data: { aulaId: aula.id, estudianteId: estudiante.id },
-    });
-
-    // "Persistir el grado académico del estudiante para que no figure como
-    // 'sin grado'" (cierre HITO 4, a petición del cliente). Sólo si el aula
-    // SÍ declara etapa —las creadas antes de esa corrección no la tienen— y
-    // el perfil TODAVÍA no tiene una propia: un alumno puede estar
-    // matriculado en aulas de etapas distintas (refuerzo, clases
-    // particulares), así que la última aula a la que se une no pisa la etapa
-    // que ya había declarado.
-    if (aula.etapa) {
-      await prisma.perfilEstudiante.updateMany({
-        where: { usuarioId: estudiante.id, etapa: null },
-        data: { etapa: aula.etapa, curso: aula.grado },
+    // Transacción interactiva: la matrícula, el autocompletado de grado y su
+    // rastro de auditoría se escriben juntos o no se escribe nada —así el
+    // registro de "quién matriculó a quién" (observación del cliente, cierre
+    // HITO 4: "auditar la vía de enrolamiento del estudiante") nunca queda
+    // desalineado con lo que de verdad pasó en la base.
+    const matricula = await prisma.$transaction(async (tx) => {
+      const creada = await tx.matricula.create({
+        data: { aulaId: aula.id, estudianteId: estudiante.id, origen: "ADMIN", creadoPorId: permiso.quien.usuarioId },
       });
-    }
+
+      // "Persistir el grado académico del estudiante para que no figure como
+      // 'sin grado'" (cierre HITO 4, a petición del cliente). Sólo si el
+      // aula SÍ declara etapa —las creadas antes de esa corrección no la
+      // tienen— y el perfil TODAVÍA no tiene una propia: un alumno puede
+      // estar matriculado en aulas de etapas distintas (refuerzo, clases
+      // particulares), así que la última aula a la que se une no pisa la
+      // etapa que ya había declarado.
+      if (aula.etapa) {
+        await tx.perfilEstudiante.updateMany({
+          where: { usuarioId: estudiante.id, etapa: null },
+          data: { etapa: aula.etapa, curso: aula.grado },
+        });
+      }
+
+      await tx.logAuditoria.create({
+        data: {
+          usuarioId: permiso.quien.usuarioId,
+          accion: "MATRICULA_CREADA",
+          entidad: "Matricula",
+          entidadId: creada.id,
+          datosNuevos: { estudianteId: estudiante.id, aulaId: aula.id, origen: "ADMIN" },
+        },
+      });
+
+      return creada;
+    });
 
     return NextResponse.json({ matricula }, { status: 201 });
   } catch (e) {

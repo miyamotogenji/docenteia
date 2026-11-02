@@ -26,6 +26,7 @@ const SECCIONES = [
   { href: "/admin/ejercicios", titulo: "Ejercicios" },
   { href: "/admin/temas", titulo: "Temas" },
   { href: "/admin/aulas", titulo: "Aulas" },
+  { href: "/admin/auditoria", titulo: "Auditoría" },
   { href: "/docente", titulo: "Panel Docente" },
   { href: "/director", titulo: "Panel Directivo" },
 ];

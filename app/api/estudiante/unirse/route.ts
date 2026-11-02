@@ -81,8 +81,11 @@ export async function POST(req: Request) {
       );
     }
 
+    // `origen` explícito, aunque coincida con el default del esquema: deja a
+    // la vista, sin tener que ir a mirar `schema.prisma`, que ÉSTA es la
+    // única vía que de verdad produce CODIGO_INVITACION (ver `OrigenMatricula`).
     await prisma.matricula.create({
-      data: { aulaId: aula.id, estudianteId: sesion.user.id },
+      data: { aulaId: aula.id, estudianteId: sesion.user.id, origen: "CODIGO_INVITACION" },
     });
 
     // Mismo autocompletado de grado que `POST /api/admin/matriculas`: si el

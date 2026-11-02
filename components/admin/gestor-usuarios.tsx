@@ -19,7 +19,17 @@ interface MatriculaVista {
   grado: number;
   seccion: string;
   aula: string;
+  origen: "CODIGO_INVITACION" | "ADMIN" | "DOCENTE";
 }
+
+// Observación del cliente, cierre HITO 4: "auditar la vía de enrolamiento
+// del estudiante". Se muestra junto a cada matrícula, sin que el admin
+// tenga que ir hasta /admin/auditoria para algo que ya está mirando aquí.
+const ETIQUETA_ORIGEN: Record<MatriculaVista["origen"], string> = {
+  CODIGO_INVITACION: "código",
+  ADMIN: "admin",
+  DOCENTE: "docente",
+};
 
 interface UsuarioVista {
   id: string;
@@ -534,7 +544,8 @@ export function GestorUsuarios({ miPropioId }: Props) {
                                 <ul className="space-y-0.5 text-xs text-muted-foreground">
                                   {u.matriculas.map((m, i) => (
                                     <li key={i}>
-                                      {m.institucion} · {m.grado}.º {m.seccion}
+                                      {m.institucion} · {m.grado}.º {m.seccion}{" "}
+                                      <span className="text-[0.65rem]">({ETIQUETA_ORIGEN[m.origen]})</span>
                                     </li>
                                   ))}
                                 </ul>
