@@ -121,6 +121,37 @@ export function GestorUsuarios({ miPropioId }: Props) {
     });
   };
 
+  // ── Formulario de Directores: mismos tres campos que el de Docentes —la ──
+  // institución se vincula después, en la tabla de abajo, igual que ya hace
+  // un docente—. SUPERADMIN se queda fuera a propósito: ver el comentario de
+  // `crearUsuarioSchema`.
+  const [creandoDirector, setCreandoDirector] = useState(false);
+  const [nuevoDirector, setNuevoDirector] = useState({ nombre: "", email: "", password: "" });
+
+  const crearDirector = () => {
+    if (!nuevoDirector.nombre.trim()) return setAviso({ tono: "mal", texto: "El director necesita un nombre." });
+    if (!nuevoDirector.email.trim()) return setAviso({ tono: "mal", texto: "El director necesita un correo." });
+    if (nuevoDirector.password.length < 8) {
+      return setAviso({ tono: "mal", texto: "La contraseña debe tener al menos 8 caracteres." });
+    }
+    setGuardandoAlta(true);
+    iniciar(async () => {
+      const r = await pedir("/api/admin/usuarios", {
+        metodo: "POST",
+        cuerpo: { ...nuevoDirector, nombre: nuevoDirector.nombre.trim(), email: nuevoDirector.email.trim(), rol: "DIRECTOR" },
+      });
+      setGuardandoAlta(false);
+      if (r.ok) {
+        setNuevoDirector({ nombre: "", email: "", password: "" });
+        setCreandoDirector(false);
+        setAviso({ tono: "ok", texto: `Director "${nuevoDirector.nombre.trim()}" creado. Vincúlalo a una institución en la tabla de abajo.` });
+        cargar();
+      } else {
+        setAviso({ tono: "mal", texto: r.error });
+      }
+    });
+  };
+
   // ── Formulario de Alumnos: entidad maestra, con su etapa/curso ya ────────
   // listos de una vez si el administrador los sabe —si no, el propio
   // alumno los completa en su primer inicio de sesión—.
@@ -180,6 +211,9 @@ export function GestorUsuarios({ miPropioId }: Props) {
         <Button variant="outline" size="sm" onClick={() => setCreandoDocente((v) => !v)}>
           {creandoDocente ? "Cancelar" : "Crear docente"}
         </Button>
+        <Button variant="outline" size="sm" onClick={() => setCreandoDirector((v) => !v)}>
+          {creandoDirector ? "Cancelar" : "Crear director"}
+        </Button>
         <Button variant="outline" size="sm" onClick={() => setCreandoAlumno((v) => !v)}>
           {creandoAlumno ? "Cancelar" : "Crear alumno"}
         </Button>
@@ -221,6 +255,47 @@ export function GestorUsuarios({ miPropioId }: Props) {
             </div>
             <Button onClick={crearDocente} disabled={guardandoAlta}>
               Crear docente
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {creandoDirector && (
+        <Card>
+          <CardContent className="space-y-3 pt-6">
+            <p className="text-sm font-medium">Formulario de Directores</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-director-nombre">Nombre</Label>
+                <Input
+                  id="nuevo-director-nombre"
+                  value={nuevoDirector.nombre}
+                  onChange={(e) => setNuevoDirector({ ...nuevoDirector, nombre: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-director-email">Correo</Label>
+                <Input
+                  id="nuevo-director-email"
+                  type="email"
+                  placeholder="director@colegio.edu"
+                  value={nuevoDirector.email}
+                  onChange={(e) => setNuevoDirector({ ...nuevoDirector, email: e.target.value })}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="nuevo-director-password">Contraseña</Label>
+                <Input
+                  id="nuevo-director-password"
+                  type="password"
+                  placeholder="Al menos 8 caracteres"
+                  value={nuevoDirector.password}
+                  onChange={(e) => setNuevoDirector({ ...nuevoDirector, password: e.target.value })}
+                />
+              </div>
+            </div>
+            <Button onClick={crearDirector} disabled={guardandoAlta}>
+              Crear director
             </Button>
           </CardContent>
         </Card>
