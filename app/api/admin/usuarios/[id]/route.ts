@@ -43,7 +43,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   try {
     const actual = await prisma.usuario.findUnique({
       where: { id },
-      select: { id: true, rol: true, institucionId: true },
+      select: { id: true, rol: true, activo: true, institucionId: true },
     });
     if (!actual) return noEncontrado("Ese usuario");
 
@@ -60,28 +60,76 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
         );
       }
     }
+    // El valor DE VERDAD resultante de institucionId —igual a `institucionResultante`
+    // salvo por el autolimpiado de arriba—, para que la auditoría registre
+    // exactamente lo que se escribe, no lo que se pidió.
+    const institucionIdFinal =
+      datos.institucionId !== undefined
+        ? datos.institucionId
+        : !rolUsaInstitucion(rolResultante) && actual.institucionId
+          ? null
+          : actual.institucionId;
 
-    const usuario = await prisma.usuario.update({
-      where: { id },
-      data: {
-        ...(datos.activo !== undefined ? { activo: datos.activo } : {}),
-        ...(datos.rol !== undefined ? { rol: datos.rol } : {}),
-        ...(datos.institucionId !== undefined
-          ? { institucionId: datos.institucionId }
-          : !rolUsaInstitucion(rolResultante) && actual.institucionId
-            ? { institucionId: null }
-            : {}),
-      },
-      select: {
-        id: true,
-        nombre: true,
-        email: true,
-        rol: true,
-        activo: true,
-        institucionId: true,
-        institucion: { select: { nombre: true } },
-      },
-    });
+    // Trazabilidad (observación del cliente, cierre HITO 4: "no queda
+    // registro de qué administrador modificó el rol, aplicó la suspensión,
+    // o vinculó la cuenta a una institución"). Una fila por campo que de
+    // verdad cambió —no una genérica "se actualizó"—, para que el registro
+    // se lea solo, sin cruzarlo con otra consulta.
+    const cambios: { accion: string; datosPrevios: Prisma.InputJsonValue; datosNuevos: Prisma.InputJsonValue }[] = [];
+    if (datos.rol !== undefined && datos.rol !== actual.rol) {
+      cambios.push({ accion: "ROL_MODIFICADO", datosPrevios: { rol: actual.rol }, datosNuevos: { rol: datos.rol } });
+    }
+    if (datos.activo !== undefined && datos.activo !== actual.activo) {
+      cambios.push({
+        accion: datos.activo ? "CUENTA_ACTIVADA" : "CUENTA_SUSPENDIDA",
+        datosPrevios: { activo: actual.activo },
+        datosNuevos: { activo: datos.activo },
+      });
+    }
+    if (institucionIdFinal !== actual.institucionId) {
+      cambios.push({
+        accion: institucionIdFinal ? "INSTITUCION_VINCULADA" : "INSTITUCION_DESVINCULADA",
+        datosPrevios: { institucionId: actual.institucionId },
+        datosNuevos: { institucionId: institucionIdFinal },
+      });
+    }
+
+    // Una sola transacción: el cambio y su rastro de auditoría se escriben
+    // juntos o no se escribe ninguno —así nunca queda una modificación real
+    // sin su registro, ni un registro de un cambio que al final no se aplicó—.
+    const [usuario] = await prisma.$transaction([
+      prisma.usuario.update({
+        where: { id },
+        data: {
+          ...(datos.activo !== undefined ? { activo: datos.activo } : {}),
+          ...(datos.rol !== undefined ? { rol: datos.rol } : {}),
+          ...(datos.institucionId !== undefined
+            ? { institucionId: datos.institucionId }
+            : !rolUsaInstitucion(rolResultante) && actual.institucionId
+              ? { institucionId: null }
+              : {}),
+        },
+        select: {
+          id: true,
+          nombre: true,
+          email: true,
+          rol: true,
+          activo: true,
+          institucionId: true,
+          institucion: { select: { nombre: true } },
+        },
+      }),
+      prisma.logAuditoria.createMany({
+        data: cambios.map((c) => ({
+          usuarioId: permiso.quien.usuarioId,
+          accion: c.accion,
+          entidad: "Usuario",
+          entidadId: id,
+          datosPrevios: c.datosPrevios,
+          datosNuevos: c.datosNuevos,
+        })),
+      }),
+    ]);
 
     return NextResponse.json({
       usuario: {

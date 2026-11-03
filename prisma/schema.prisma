@@ -133,6 +133,21 @@ enum OrigenContenido {
   DOCENTE
 }
 
+/// Vía de enrolamiento de una matrícula (observación del cliente, cierre
+/// HITO 4: "en la tabla matrículas falta un campo creadoPorId [...] para
+/// auditar la vía de enrolamiento del estudiante"). `CODIGO_INVITACION` es
+/// el único origen que existía hasta esta corrección —el alumno se
+/// matricula solo, con el código que reparte el docente—; `ADMIN` es la
+/// matriculación directa de `POST /api/admin/matriculas`. `DOCENTE` queda
+/// reservado para el día que el panel docente matricule directamente —hoy
+/// ningún endpoint lo produce—, para no tener que ampliar el enum (y su
+/// migración) cuando exista.
+enum OrigenMatricula {
+  CODIGO_INVITACION
+  ADMIN
+  DOCENTE
+}
+
 /// Ciclo de vida del contenido de autoría docente.
 ///
 /// El borrador es trabajo en curso y NO llega al alumno; publicado es lo que la
@@ -199,9 +214,17 @@ model Usuario {
   institucion   Institucion? @relation(fields: [institucionId], references: [id], onDelete: SetNull)
 
   aulasComoDocente Aula[]         @relation("DocenteDeAula")
-  matriculas       Matricula[]
+  matriculas       Matricula[]    @relation("AlumnoDeLaMatricula")
   tareasAsignadas  Tarea[]        @relation("DocenteDeTarea")
   entregas         EntregaTarea[]
+
+  // Auditoría (observación del cliente, cierre HITO 4). Ambas son el lado
+  // "quién lo hizo" de una acción ajena —nunca de la propia cuenta del
+  // alumno, que ya se identifica con `estudianteId`/`entidadId`—, así que
+  // ninguna de las dos crece con el uso normal de la plataforma, sólo con
+  // lo que un ADMIN o un DOCENTE hacen en nombre de otro.
+  matriculasCreadas Matricula[]    @relation("CreadorDeMatricula")
+  logsComoAutor     LogAuditoria[] @relation("AutorDeLog")
 
   @@index([rol])
   @@index([institucionId])
@@ -304,13 +327,65 @@ model Matricula {
   aula   Aula   @relation(fields: [aulaId], references: [id], onDelete: Cascade)
 
   estudianteId String
-  estudiante   Usuario @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
+  estudiante   Usuario @relation("AlumnoDeLaMatricula", fields: [estudianteId], references: [id], onDelete: Cascade)
+
+  /// Vía de enrolamiento. Default CODIGO_INVITACION porque es, con
+  /// certeza, el origen real de TODA matrícula creada antes de esta
+  /// migración: la matriculación directa por el admin es nueva en este
+  /// mismo hito. Ver `OrigenMatricula`.
+  origen OrigenMatricula @default(CODIGO_INVITACION)
+  /// Quién ejecutó la acción, cuando no fue el propio alumno (un admin que
+  /// lo matricula desde /admin/usuarios). `null` cuando `origen` es
+  /// CODIGO_INVITACION: ahí el autor YA es `estudianteId`, duplicarlo aquí
+  /// no añadiría información. SetNull: si esa cuenta de admin se borra, la
+  /// matrícula no desaparece con ella, sólo pierde el dato de quién la hizo.
+  creadoPorId String?
+  creadoPor   Usuario? @relation("CreadorDeMatricula", fields: [creadoPorId], references: [id], onDelete: SetNull)
 
   // Un alumno no se matricula dos veces en la misma aula: es el 409 que
   // devuelve POST /api/estudiante/unirse cuando ya pertenece a ella.
   @@unique([aulaId, estudianteId])
   @@index([estudianteId])
   @@map("matriculas")
+}
+
+/// Rastro de quién hizo qué sobre qué fila (observación del cliente, cierre
+/// HITO 4: "el sistema no registra qué usuario ejecuta las acciones
+/// administrativas... se sugiere incorporar una tabla de auditoría").
+///
+/// Genérica a propósito —`entidad`/`entidadId` en vez de una tabla nueva por
+/// cada cosa auditable—: el panel de administración sigue creciendo (aulas,
+/// contenido) y cada acción nueva no necesita su propio esquema, sólo
+/// escribir una fila aquí.
+model LogAuditoria {
+  id String @id @default(cuid())
+
+  /// Quién ejecutó la acción. SetNull: si esa cuenta se borra, el hecho
+  /// histórico sigue siendo cierto, sólo pierde a quién atribuírselo.
+  usuarioId String?
+  usuario   Usuario? @relation("AutorDeLog", fields: [usuarioId], references: [id], onDelete: SetNull)
+
+  /// Qué pasó (p. ej. "ROL_MODIFICADO", "CUENTA_SUSPENDIDA",
+  /// "CUENTA_ACTIVADA", "INSTITUCION_VINCULADA", "INSTITUCION_DESVINCULADA",
+  /// "MATRICULA_CREADA"). Texto libre, no enum: el catálogo de acciones
+  /// auditables crece con el panel, y forzar una migración por cada una
+  /// nueva costaría más fricción de la que un enum aquí vale la pena.
+  accion String
+  /// Sobre qué modelo ("Usuario", "Matricula") y qué fila.
+  entidad   String
+  entidadId String
+
+  /// Estado antes/después, sólo de los campos que de verdad cambiaron —no
+  /// la fila entera—: es lo que hace legible el registro sin tener que
+  /// cruzarlo con otra consulta.
+  datosPrevios Json?
+  datosNuevos  Json?
+
+  creadoEn DateTime @default(now())
+
+  @@index([entidad, entidadId])
+  @@index([usuarioId])
+  @@map("logs_auditoria")
 }
 
 /// Una tarea que el docente programa para toda un aula, con su ventana de

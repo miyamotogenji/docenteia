@@ -82,3 +82,22 @@ export const ETIQUETA_ROL: Record<Rol, string> = {
   DIRECTOR: "Director",
   SUPERADMIN: "Administrador de la plataforma",
 };
+
+/**
+ * Orden jerárquico-operativo para listados administrativos (observación del
+ * cliente, cierre HITO 4: con el `orderBy` alfabético por `Rol` que usaba
+ * `GET /api/admin/usuarios`, ESTUDIANTE —el más numeroso, con mucha
+ * diferencia— quedaba primero en la tabla y relegaba al Administrador, al
+ * Director y a los Docentes al fondo, tras decenas de alumnos).
+ *
+ * Deliberadamente NO es el orden de `ROLES` (que va de menor a mayor
+ * alcance, pensado para el RBAC): éste va al revés, de mayor a menor, porque
+ * es el orden de una lista para MIRAR —los perfiles clave primero, sin
+ * scroll innecesario—, no el de un razonamiento sobre permisos.
+ */
+export const ORDEN_JERARQUICO_ROL: Record<Rol, number> = {
+  SUPERADMIN: 0,
+  DIRECTOR: 1,
+  DOCENTE: 2,
+  ESTUDIANTE: 3,
+};
